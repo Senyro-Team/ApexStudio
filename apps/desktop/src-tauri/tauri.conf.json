@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Apex Studio",
+  "version": "0.1.0",
+  "identifier": "de.apexdesigns.apexstudio",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{ "title": "Apex Studio", "width": 1100, "height": 760, "minWidth": 760, "minHeight": 600 }],
+    "security": { "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; script-src 'self'" }
+  },
+  "bundle": { "active": false, "icon": [] }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:apex-studio:schemas:apexstd-manifest-v1",
+  "title": "Apex Studio package manifest v1",
+  "type": "object",
+  "required": ["format_version", "package_id", "project_id", "project_revision", "app_version", "exported_at", "export_profile", "files"],
+  "properties": {
+    "format_version": { "const": 1 },
+    "package_id": { "type": "string", "format": "uuid" },
+    "project_id": { "type": "string", "format": "uuid" },
+    "project_revision": { "type": "integer", "minimum": 1 },
+    "app_version": { "type": "string", "minLength": 1 },
+    "exported_at": { "type": "string", "format": "date-time" },
+    "export_profile": { "enum": ["backup_private", "team_transfer_private", "client_share"] },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "size_bytes", "sha256", "media_type"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)(?!.*:)[^\\u0000-\\u001f]+$" },
+          "size_bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+          "media_type": { "type": "string", "minLength": 1, "maxLength": 128 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

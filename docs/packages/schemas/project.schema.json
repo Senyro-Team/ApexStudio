@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:apex-studio:schemas:apexstd-project-v1",
+  "title": "Apex Studio project document v1",
+  "type": "object",
+  "required": ["format_version", "export_profile", "project", "commissions", "provenance", "extensions"],
+  "properties": {
+    "format_version": { "const": 1 },
+    "export_profile": { "enum": ["backup_private", "team_transfer_private", "client_share"] },
+    "project": { "type": "object", "required": ["id", "name"], "properties": { "id": { "type": "string", "format": "uuid" }, "name": { "type": "string", "minLength": 1 } }, "additionalProperties": true },
+    "commissions": { "type": "array", "items": { "type": "object" } },
+    "provenance": { "type": "object", "required": ["source_project_id", "source_project_revision"], "properties": { "source_project_id": { "type": "string", "format": "uuid" }, "source_project_revision": { "type": "integer", "minimum": 1 } }, "additionalProperties": false },
+    "extensions": { "type": "object", "description": "Optional namespaced extension fields retained by importers." }
+  },
+  "additionalProperties": false
+}

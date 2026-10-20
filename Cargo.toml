@@ -1,0 +1,38 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/apex-domain",
+  "crates/apex-core",
+  "crates/apex-storage",
+  "crates/apex-images",
+  "crates/apex-package",
+  "crates/apex-roblox",
+  "crates/apex-cli",
+  "apps/desktop/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.90"
+
+[workspace.dependencies]
+chrono = { version = "0.4.42", features = ["serde", "clock"] }
+clap = { version = "4.5.50", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+thiserror = "2.0.17"
+uuid = { version = "1.28.0", features = ["serde", "v7"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "backup"] }
+dirs = "7.0.0"
+reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "json", "multipart", "rustls"] }
+keyring = "4.2.0"
+sha2 = "0.11.1"
+png = "0.18.1"
+unicode-normalization = "0.1.26"
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
+apex-domain = { path = "crates/apex-domain" }
+apex-core = { path = "crates/apex-core" }
+apex-storage = { path = "crates/apex-storage" }
+apex-images = { path = "crates/apex-images" }

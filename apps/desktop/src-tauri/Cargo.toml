@@ -1,0 +1,20 @@
+[package]
+name = "apex-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "=2.7.3", features = [] }
+
+[dependencies]
+apex-core.workspace = true
+apex-domain.workspace = true
+apex-images.workspace = true
+apex-storage.workspace = true
+serde.workspace = true
+tauri = { version = "=2.12.4", features = [] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
