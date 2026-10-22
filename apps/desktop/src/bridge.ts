@@ -223,3 +223,44 @@ export const copyAssetItem = (
   isFolder: boolean,
   folderId: string | null,
 ) => invoke<void>("copy_asset_item", { projectId, id, isFolder, folderId });
+
+export interface PublishingImage {
+  hash: string;
+  name: string;
+}
+export interface PublishingLivery {
+  vehicle: string;
+  primaryColor: string;
+  secondaryColor: string | null;
+  opacity: number;
+  sides: { side: string; decalId: string }[];
+}
+export interface PublishingData {
+  title: string;
+  description: string;
+  tags: string[];
+  youtubeUrl: string | null;
+  media: PublishingImage[];
+  liveries: PublishingLivery[];
+}
+export interface PublishingDraft {
+  data: PublishingData;
+  revision: number;
+}
+export interface PublishingPreview extends PublishingImage {
+  size: number;
+  preview: string | null;
+}
+export const publishingDraft = (projectId: string) =>
+  invoke<PublishingDraft>("publishing_draft", { projectId });
+export const publishingPreviews = (images: PublishingImage[]) =>
+  invoke<PublishingPreview[]>("publishing_previews", { images });
+export const savePublishing = (
+  projectId: string,
+  revision: number,
+  data: PublishingData,
+) => invoke<PublishingDraft>("save_publishing", { projectId, revision, data });
+export const pickPublishingImages = (projectId: string) =>
+  invoke<PublishingPreview[] | null>("pick_publishing_images", { projectId });
+export const exportPublishing = (projectId: string) =>
+  invoke<boolean>("export_publishing", { projectId });

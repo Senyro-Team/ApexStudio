@@ -24,7 +24,7 @@ pub enum Error {
     Archived,
     #[error("{0}")]
     InvalidContent(String),
-    #[error("This note changed elsewhere. Reopen it before saving your changes.")]
+    #[error("This record changed elsewhere. Reopen it before saving your changes.")]
     Conflict,
 }
 
@@ -89,3 +89,6 @@ mod tests {
         }
     }
 }
+
+mod publishing;
+pub use publishing::*;

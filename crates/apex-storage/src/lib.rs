@@ -15,7 +15,8 @@ mod notes;
 mod packages;
 mod projects;
 pub use packages::PackagePreview;
-const SCHEMA_VERSION: u32 = 4;
+mod publishing;
+const SCHEMA_VERSION: u32 = 5;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
@@ -99,6 +100,15 @@ impl Workspace {
               CREATE UNIQUE INDEX livery_slots ON asset_placements(folder_id,slot) WHERE slot IS NOT NULL;
               CREATE TABLE asset_versions(id TEXT PRIMARY KEY,asset_id TEXT NOT NULL REFERENCES assets(id),hash TEXT NOT NULL REFERENCES managed_files(hash),name TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%fZ','now')),UNIQUE(asset_id,hash,name));
               PRAGMA user_version=4; COMMIT;").map_err(storage)?;
+        }
+        if version < 5 {
+            if version > 0 {
+                workspace.backup(&workspace.root.join("backups").join(format!(
+                    "before-schema-5-{}.apexbackup",
+                    uuid::Uuid::now_v7()
+                )))?;
+            }
+            connection.execute_batch("BEGIN IMMEDIATE;CREATE TABLE publishing_drafts(project_id TEXT PRIMARY KEY REFERENCES projects(id),data TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1);CREATE TABLE publishing_media(project_id TEXT NOT NULL REFERENCES publishing_drafts(project_id),hash TEXT NOT NULL REFERENCES managed_files(hash),name TEXT NOT NULL,ordinal INTEGER NOT NULL,PRIMARY KEY(project_id,hash));PRAGMA user_version=5;COMMIT;").map_err(storage)?;
         }
         Ok(workspace)
     }

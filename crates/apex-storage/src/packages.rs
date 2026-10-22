@@ -42,6 +42,8 @@ struct Manifest {
     placements: Vec<apex_core::Placement>,
     #[serde(default)]
     versions: Vec<apex_core::AssetVersion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    publishing: Option<apex_core::PublishingInput>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,7 +64,7 @@ fn validate_graph(m: &Manifest) -> Result<(), Error> {
     }
     let hashes: HashSet<_> = m.blobs.iter().map(|b| b.hash.as_str()).collect();
     let ids: HashSet<_> = m.assets.iter().map(|a| a.id.as_str()).collect();
-    if m.version == 2 && (ids.len() != m.assets.len() || ids.contains("")) {
+    if m.version >= 2 && (ids.len() != m.assets.len() || ids.contains("")) {
         return Err(invalid("Invalid asset IDs."));
     }
     for f in &m.folders {
@@ -118,6 +120,17 @@ fn validate_graph(m: &Manifest) -> Result<(), Error> {
             || v.created_at.len() > 60
         {
             return Err(invalid("Invalid version metadata."));
+        }
+    }
+    if let Some(draft) = &m.publishing {
+        draft.validate(false)?;
+        if m.kind != "project"
+            || draft
+                .media
+                .iter()
+                .any(|image| !hashes.contains(image.hash.as_str()))
+        {
+            return Err(invalid("Publishing preview is missing from package."));
         }
     }
     Ok(())
@@ -181,7 +194,7 @@ fn checked(path: &Path) -> Result<Checked, Error> {
         }
         serde_json::from_reader(entry.take(8 * 1024 * 1024 + 1)).map_err(storage)?
     };
-    if ![1, 2].contains(&manifest.version)
+    if ![1, 2, 3].contains(&manifest.version)
         || !["project", "workspace"].contains(&manifest.kind.as_str())
         || manifest.blobs.len() > 10000
         || manifest.notes.len() > 1000
@@ -274,6 +287,8 @@ fn checked(path: &Path) -> Result<Checked, Error> {
             "asset_folders",
             "asset_placements",
             "asset_versions",
+            "publishing_drafts",
+            "publishing_media",
         ]);
         let mut stmt=db.prepare("SELECT name,type FROM sqlite_master WHERE type IN ('table','view','trigger') AND name NOT LIKE 'sqlite_%'").map_err(storage)?;
         let schema = stmt
@@ -448,6 +463,21 @@ impl Workspace {
                 hashes.insert(hash);
             }
         }
+        let publishing = if embedded {
+            let draft = self.publishing(id)?;
+            if draft.revision > 0 {
+                Some(draft.data)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(draft) = &publishing {
+            for image in &draft.media {
+                hashes.insert(image.hash.clone());
+            }
+        }
         let blobs = hashes
             .into_iter()
             .map(|hash| {
@@ -458,7 +488,7 @@ impl Workspace {
             })
             .collect::<Result<Vec<_>, Error>>()?;
         let m = Manifest {
-            version: 2,
+            version: 3,
             kind: "project".into(),
             project: Some(project.fields),
             notes,
@@ -468,6 +498,7 @@ impl Workspace {
             folders,
             placements,
             versions,
+            publishing,
         };
         self.write_archive(&m, None, destination)
     }
@@ -566,6 +597,16 @@ impl Workspace {
                 .map_err(storage)?;
             }
         }
+        if let Some(draft) = c.manifest.publishing {
+            tx.execute(
+                "INSERT INTO publishing_drafts(project_id,data,revision) VALUES(?1,?2,1)",
+                rusqlite::params![id, serde_json::to_string(&draft).map_err(storage)?],
+            )
+            .map_err(storage)?;
+            for (index, image) in draft.media.iter().enumerate() {
+                tx.execute("INSERT INTO publishing_media(project_id,hash,name,ordinal) VALUES(?1,?2,?3,?4)",rusqlite::params![id,image.hash,image.name,i64::try_from(index).map_err(storage)?]).map_err(storage)?;
+            }
+        }
         tx.commit().map_err(storage)?;
         Ok(id)
     }
@@ -607,6 +648,7 @@ impl Workspace {
             folders: Vec::new(),
             placements: Vec::new(),
             versions: Vec::new(),
+            publishing: None,
         };
         self.write_archive(&m, Some(&path), destination)
     }
@@ -722,6 +764,7 @@ mod tests {
             folders: Vec::new(),
             placements: Vec::new(),
             versions: Vec::new(),
+            publishing: None,
         };
         let mut zip = ZipWriter::new(fs::File::create(&path).unwrap());
         zip.start_file("manifest.json", SimpleFileOptions::default())

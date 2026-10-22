@@ -4,6 +4,7 @@ use tauri::Manager;
 mod assets;
 mod notes;
 mod projects;
+mod publishing;
 
 #[derive(serde::Serialize)]
 struct CommandError {
@@ -63,6 +64,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            publishing::publishing_draft,
+            publishing::publishing_previews,
+            publishing::save_publishing,
+            publishing::pick_publishing_images,
+            publishing::export_publishing,
             workspace_info,
             rename_workspace,
             projects::list_projects,
