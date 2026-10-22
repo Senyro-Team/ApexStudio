@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, type DragEvent } from "react";
 import { FolderOpen, File, ChevronRight, X, Layers } from "lucide-react";
 import {
   assetBoard,
+  assignAssetSlot,
+  copyAssetItem,
   saveFolder,
   moveAsset,
   assetVersions,
@@ -19,6 +21,9 @@ import {
   type Project,
   type LiveryDraft,
 } from "./bridge";
+import SlotEditor from "./SlotEditor";
+type Item = { id: string; folder: boolean };
+type Clipboard = Item & { cut: boolean };
 const empty: AssetBoard = { assets: [], folders: [], placements: [] };
 export default function AssetBrowser({
   project,
@@ -33,6 +38,7 @@ export default function AssetBrowser({
   onBusy: (value: boolean) => void;
   onChange: () => void;
 }) {
+  const browserRef = useRef<HTMLElement>(null);
   const [board, setBoard] = useState<AssetBoard>(empty),
     [folderId, setFolderId] = useState<string | null>(null),
     [selected, setSelected] = useState<string | null>(null),
@@ -52,10 +58,26 @@ export default function AssetBrowser({
     [slots, setSlots] = useState<(string | null)[]>([]),
     [cover, setCover] = useState<number | null>(null),
     [moveTo, setMoveTo] = useState<string | null>(null);
+  const [explorerSelection, setExplorerSelection] = useState<Item | null>(null);
+  const [clipboard, setClipboard] = useState<Clipboard | null>(null);
+  const [vehicleOpen, setVehicleOpen] = useState(false);
+  const [vehicleIndex, setVehicleIndex] = useState(0);
+  const matches =
+    catalogue?.vehicles
+      .filter((v) =>
+        `${v.name} ${v.team}`
+          .toLowerCase()
+          .includes(vehicleQuery.trim().toLowerCase()),
+      )
+      .slice(0, 8) ?? [];
+  const locked = busy || project.archived || !!draft || !!folderForm;
   const folder = board.folders.find((f) => f.id === folderId),
     asset = board.assets.find((a) => a.id === selected),
     placement = board.placements.find((p) => p.assetId === selected),
     vehicle = catalogue?.vehicles.find((v) => v.id === vehicleId);
+  useEffect(() => {
+    browserRef.current?.focus({ preventScroll: true });
+  }, [folderId]);
   useEffect(() => {
     onBusy(busy || Boolean(draft) || Boolean(folderForm));
     return () => onBusy(false);
@@ -129,6 +151,7 @@ export default function AssetBrowser({
   }
   function navigate(id: string | null) {
     setFolderId(id);
+    setExplorerSelection(null);
     setSelected(null);
     setQuery("");
     setNotice("");
@@ -151,7 +174,12 @@ export default function AssetBrowser({
         setVehicleId(folder?.kind === "livery" ? folder.vehicleId || "" : "");
         setSlots(d.files.map((f) => f.suggestedSlot));
         setCover(null);
-        setVehicleQuery("");
+        setVehicleQuery(
+          folder?.kind === "livery"
+            ? (catalogue?.vehicles.find((v) => v.id === folder.vehicleId)
+                ?.name ?? "")
+            : "",
+        );
       }
     } catch (e) {
       setError(errorMessage(e));
@@ -161,13 +189,90 @@ export default function AssetBrowser({
   }
   const issues = slots.flatMap((slot, i) =>
     slot &&
-    ((vehicle && !vehicle.slots.some((s) => s.key === slot)) ||
+    (!/^(Window )?(Left|Right|Front|Back|Top) ([1-9][0-9]?|100)$/.test(slot) ||
       slots.indexOf(slot) !== i)
       ? [
-          `${draft?.files[i].name}: ${slots.indexOf(slot) !== i ? "duplicate slot" : "slot unavailable for this vehicle"}`,
+          `${draft?.files[i].name}: ${slots.indexOf(slot) !== i ? "duplicate slot" : "enter a slot number from 1 to 100"}`,
         ]
       : [],
   );
+  async function addImages() {
+    if (!draft) return;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await prepareLivery(project.id, draft.token);
+      if (next) {
+        setSlots((old) => [
+          ...old,
+          ...next.files.slice(draft.files.length).map((f) => f.suggestedSlot),
+        ]);
+        setDraft(next);
+      }
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  function copySelection(cut: boolean) {
+    if (!locked && explorerSelection) {
+      setClipboard({ ...explorerSelection, cut });
+      setNotice(cut ? "Ready to move." : "Ready to copy.");
+    }
+  }
+  async function transfer(item: Clipboard, target: string | null) {
+    if (locked) return;
+    await act(
+      async () => {
+        if (item.cut) {
+          if (item.folder) {
+            const source = board.folders.find((f) => f.id === item.id);
+            if (!source) throw Error("Folder no longer exists.");
+            await saveFolder(project.id, source.id, target, source.name);
+          } else await moveAsset(item.id, target);
+          setClipboard(null);
+          setExplorerSelection(null);
+          setSelected(null);
+        } else await copyAssetItem(project.id, item.id, item.folder, target);
+      },
+      item.cut ? "Moved." : "Copied.",
+    );
+  }
+  function drop(e: DragEvent, target: string | null) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (locked) return;
+    try {
+      const item = JSON.parse(
+        e.dataTransfer.getData("application/x-apex-item"),
+      );
+      if (
+        item.project !== project.id ||
+        typeof item.id !== "string" ||
+        typeof item.folder !== "boolean"
+      )
+        return;
+      void transfer(
+        { id: item.id, folder: item.folder, cut: !e.ctrlKey },
+        target,
+      );
+    } catch {
+      /* Ignore drags from outside the asset browser. */
+    }
+  }
+  function drag(e: DragEvent, item: Item) {
+    if (locked) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = "copyMove";
+    e.dataTransfer.setData(
+      "application/x-apex-item",
+      JSON.stringify({ ...item, project: project.id }),
+    );
+    setExplorerSelection(item);
+  }
   async function finish() {
     if (!draft) return;
     await act(async () => {
@@ -215,7 +320,29 @@ export default function AssetBrowser({
     }
   }
   return (
-    <section className="asset-browser" aria-label="Project assets">
+    <section
+      className="asset-browser"
+      ref={browserRef}
+      tabIndex={-1}
+      aria-label="Project assets"
+      onKeyDown={(e) => {
+        if (
+          (e.target as HTMLElement).closest(
+            "input,textarea,select,[contenteditable=true]",
+          )
+        )
+          return;
+        if (
+          (e.ctrlKey || e.metaKey) &&
+          ["c", "x", "v"].includes(e.key.toLowerCase())
+        ) {
+          e.preventDefault();
+          if (e.key.toLowerCase() === "v") {
+            if (clipboard) void transfer(clipboard, folderId);
+          } else copySelection(e.key.toLowerCase() === "x");
+        }
+      }}
+    >
       {error && (
         <p className="error pre-wrap" role="alert">
           {error}
@@ -225,6 +352,10 @@ export default function AssetBrowser({
       <div className="asset-path" aria-label="Asset folder path">
         <button
           className="text-button"
+          onDragOver={(e) => {
+            if (!locked) e.preventDefault();
+          }}
+          onDrop={(e) => drop(e, null)}
           disabled={busy || !!draft || !!folderForm}
           onClick={() => navigate(null)}
         >
@@ -386,41 +517,110 @@ export default function AssetBrowser({
                 disabled={busy || folder?.kind === "livery"}
               />
             </label>
+          </div>
+          <div className="vehicle-picker">
             <label>
-              Find vehicle
+              Vehicle
               <input
-                aria-label="Find vehicle"
-                placeholder="Vehicle name or team"
+                role="combobox"
+                aria-label="Livery vehicle"
+                aria-expanded={
+                  vehicleOpen && !!vehicleQuery.trim() && !vehicleId
+                }
+                aria-controls="livery-vehicle-results"
+                aria-autocomplete="list"
+                aria-activedescendant={
+                  vehicleOpen &&
+                  vehicleQuery.trim() &&
+                  !vehicleId &&
+                  matches[vehicleIndex]
+                    ? `vehicle-option-${matches[vehicleIndex].id}`
+                    : undefined
+                }
+                autoComplete="off"
+                placeholder="Type a vehicle name or team"
                 value={vehicleQuery}
-                onChange={(e) => setVehicleQuery(e.target.value)}
                 disabled={busy || folder?.kind === "livery"}
+                onFocus={() => setVehicleOpen(true)}
+                onBlur={() => setVehicleOpen(false)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setVehicleOpen(false);
+                  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setVehicleOpen(true);
+                    setVehicleIndex((i) =>
+                      Math.max(
+                        0,
+                        Math.min(
+                          matches.length - 1,
+                          i + (e.key === "ArrowDown" ? 1 : -1),
+                        ),
+                      ),
+                    );
+                  }
+                  if (
+                    e.key === "Enter" &&
+                    vehicleOpen &&
+                    !vehicleId &&
+                    vehicleQuery.trim() &&
+                    matches[vehicleIndex]
+                  ) {
+                    e.preventDefault();
+                    const v = matches[vehicleIndex];
+                    setVehicleId(v.id);
+                    setVehicleQuery(`${v.name} - ${v.team}`);
+                    setVehicleOpen(false);
+                  }
+                }}
+                onChange={(e) => {
+                  setVehicleQuery(e.target.value);
+                  setVehicleId("");
+                  setVehicleIndex(0);
+                  setVehicleOpen(true);
+                }}
               />
             </label>
-          </div>
-          <label>
-            Vehicle
-            <select
-              aria-label="Livery vehicle"
-              value={vehicleId}
-              onChange={(e) => setVehicleId(e.target.value)}
-              disabled={busy || folder?.kind === "livery"}
-            >
-              <option value="">Choose vehicle</option>
-              {catalogue?.vehicles
-                .filter(
-                  (v) =>
-                    v.id === vehicleId ||
+            {vehicleOpen && vehicleQuery.trim() && !vehicleId && (
+              <div
+                id="livery-vehicle-results"
+                role="listbox"
+                aria-label="Vehicle suggestions"
+              >
+                {catalogue?.vehicles
+                  .filter((v) =>
                     `${v.name} ${v.team}`
                       .toLowerCase()
-                      .includes(vehicleQuery.toLowerCase()),
-                )
-                .map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} · {v.team}
-                  </option>
-                ))}
-            </select>
-          </label>
+                      .includes(vehicleQuery.trim().toLowerCase()),
+                  )
+                  .slice(0, 8)
+                  .map((v) => (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={matches[vehicleIndex]?.id === v.id}
+                      id={`vehicle-option-${v.id}`}
+                      key={v.id}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setVehicleId(v.id);
+                        setVehicleQuery(`${v.name} - ${v.team}`);
+                        setVehicleOpen(false);
+                      }}
+                    >
+                      {v.name}
+                      <small>
+                        {v.team} - {v.liverySupport}
+                      </small>
+                    </button>
+                  ))}
+                {!catalogue?.vehicles.some((v) =>
+                  `${v.name} ${v.team}`
+                    .toLowerCase()
+                    .includes(vehicleQuery.trim().toLowerCase()),
+                ) && <p>No matching vehicles</p>}
+              </div>
+            )}
+          </div>
           {vehicle && (
             <div className="catalogue-status">
               <p>
@@ -438,33 +638,27 @@ export default function AssetBrowser({
             {draft.files.map((f, i) => (
               <div className="assignment-row" key={f.index}>
                 <span>{f.name}</span>
-                <select
-                  aria-label={`Slot for ${f.name}`}
+                <SlotEditor
+                  label={f.name}
+                  value={slots[i]}
                   disabled={busy}
-                  value={slots[i] ?? ""}
-                  onChange={(e) =>
-                    setSlots((values) =>
-                      values.map((s, j) =>
-                        j === i ? e.target.value || null : s,
-                      ),
+                  onChange={(value) =>
+                    setSlots((old) =>
+                      old.map((slot, j) => (j === i ? value : slot)),
                     )
                   }
-                >
-                  <option value="">Unassigned</option>
-                  {slots[i] &&
-                    !vehicle?.slots.some((s) => s.key === slots[i]) && (
-                      <option value={slots[i]!}>
-                        {slots[i]} — {vehicle ? "unavailable" : "suggested"}
-                      </option>
-                    )}
-                  {vehicle?.slots.map((s) => (
-                    <option key={s.key} value={s.key}>
-                      {s.key} · {s.status}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             ))}
+          </div>
+          <div className="button-row">
+            <button
+              className="secondary"
+              disabled={busy || draft.files.length >= 100}
+              onClick={() => void addImages()}
+            >
+              Add images
+            </button>
           </div>
           <label>
             Cover image
@@ -520,6 +714,49 @@ export default function AssetBrowser({
       ) : (
         !folderForm && (
           <>
+            <div className="explorer-toolbar button-row">
+              <button
+                className="secondary"
+                disabled={locked || !explorerSelection?.folder}
+                onClick={() =>
+                  explorerSelection && navigate(explorerSelection.id)
+                }
+              >
+                Open folder
+              </button>
+              <button
+                className="secondary"
+                disabled={locked || !explorerSelection}
+                onClick={() => copySelection(false)}
+              >
+                Copy
+              </button>
+              <button
+                className="secondary"
+                disabled={locked || !explorerSelection}
+                onClick={() => copySelection(true)}
+              >
+                Cut
+              </button>
+              <button
+                className="secondary"
+                disabled={
+                  locked ||
+                  !clipboard ||
+                  (clipboard.folder && folder?.kind === "livery")
+                }
+                onClick={() => clipboard && void transfer(clipboard, folderId)}
+              >
+                Paste
+              </button>
+              {clipboard && (
+                <span className="field-hint">
+                  {clipboard.cut ? "Move" : "Copy"}:{" "}
+                  {board.folders.find((f) => f.id === clipboard.id)?.name ??
+                    board.assets.find((a) => a.id === clipboard.id)?.name}
+                </span>
+              )}
+            </div>
             <div className="file-toolbar">
               <input
                 aria-label="Search folder"
@@ -534,12 +771,44 @@ export default function AssetBrowser({
             {loading ? (
               <p role="status">Loading files…</p>
             ) : (
-              <div className="asset-grid">
+              <div
+                className="asset-grid"
+                onDragOver={(e) => {
+                  if (!locked) e.preventDefault();
+                }}
+                onDrop={(e) => drop(e, folderId)}
+              >
                 {currentFolders.map((f) => (
                   <button
                     key={f.id}
-                    className="asset-tile folder-tile"
-                    onClick={() => navigate(f.id)}
+                    className={`asset-tile folder-tile ${explorerSelection?.id === f.id ? "selected" : ""} ${clipboard?.cut && clipboard.id === f.id ? "is-cut" : ""}`}
+                    disabled={busy}
+                    aria-pressed={explorerSelection?.id === f.id}
+                    title="Double-click to open"
+                    onFocus={() =>
+                      setExplorerSelection({ id: f.id, folder: true })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        navigate(f.id);
+                      }
+                    }}
+                    draggable={!locked}
+                    onDragStart={(e) => drag(e, { id: f.id, folder: true })}
+                    onDragOver={(e) => {
+                      if (!locked) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }
+                    }}
+                    onDrop={(e) => drop(e, f.id)}
+                    onClick={() => {
+                      setExplorerSelection({ id: f.id, folder: true });
+                      setSelected(null);
+                    }}
+                    onDoubleClick={() => navigate(f.id)}
                   >
                     <div className="asset-thumbnail">
                       {f.preview ? (
@@ -557,8 +826,16 @@ export default function AssetBrowser({
                 {currentFiles.map((a) => (
                   <button
                     key={a.id}
-                    className="asset-tile"
+                    className={`asset-tile ${explorerSelection?.id === a.id ? "selected" : ""} ${clipboard?.cut && clipboard.id === a.id ? "is-cut" : ""}`}
+                    disabled={busy}
+                    aria-pressed={explorerSelection?.id === a.id}
+                    onFocus={() =>
+                      setExplorerSelection({ id: a.id, folder: false })
+                    }
+                    draggable={!locked}
+                    onDragStart={(e) => drag(e, { id: a.id, folder: false })}
                     onClick={() => {
+                      setExplorerSelection({ id: a.id, folder: false });
                       setSelected(a.id);
                       setMoveTo(
                         board.placements.find((p) => p.assetId === a.id)
@@ -608,7 +885,24 @@ export default function AssetBrowser({
           {asset.preview && (
             <img className="inspector-preview" src={asset.preview} alt="" />
           )}
-          <p>{placement?.slot ?? "Unassigned file"}</p>
+          {folder?.kind === "livery" ? (
+            <label>
+              Texture slot
+              <SlotEditor
+                label={asset.name}
+                value={placement?.slot ?? null}
+                disabled={busy || project.archived}
+                onChange={(slot) =>
+                  void act(
+                    () => assignAssetSlot(asset.id, slot),
+                    "Slot updated.",
+                  )
+                }
+              />
+            </label>
+          ) : (
+            <p>{placement?.slot ?? "Unassigned file"}</p>
+          )}
           <button
             className="secondary"
             disabled={busy}

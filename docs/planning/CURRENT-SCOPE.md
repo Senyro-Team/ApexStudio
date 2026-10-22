@@ -100,3 +100,7 @@ All six livery wizard steps have been inspected at their basic free-post path; n
 Review preference (2026-10-22): the user is back at their PC. Start the current app at the end of each implementation/review pass so they can review it themselves. Phase 4 folder/livery features were authorised and implemented; the agreed plan is in PHASE-04-PLAN.md and verification is in ../phases/PHASE-04.md.
 
 Git preference (2026-10-22): commit each completed code change; make a checkpoint commit when Phase 5 starts. Fix the requested asset-manager issues first; Phase 5 remains planned until authorised.
+
+Catalogue update: Phase 4 uses the supplied official Livery Templates Status workbook snapshot, with body/window status and source rows. It supersedes wiki sourcing; old wiki names are retained only for compatibility with existing project metadata.
+
+Phase 5 remains planned in PHASE-05-PLAN.md. Asset-manager follow-up and explorer operation limits are documented in ../phases/PHASE-04-FIXES.md.

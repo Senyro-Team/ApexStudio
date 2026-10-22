@@ -108,6 +108,9 @@ impl Workspace {
             return None;
         }
         let path = self.root.join("thumbnails").join(format!("{hash}.png"));
+        if !path.exists() {
+            self.prepare_thumbnail(hash);
+        }
         if fs::metadata(&path).ok()?.len() > 512 * 1024 {
             return None;
         }
@@ -120,9 +123,17 @@ impl Workspace {
     }
     pub(super) fn prepare_thumbnail(&self, hash: &str) {
         // Decode only bounded PNGs. Unsupported/malformed files remain ordinary assets.
+        if self
+            .root
+            .join("thumbnails")
+            .join(format!("{hash}.png"))
+            .exists()
+        {
+            return;
+        }
         let result = (|| -> Option<()> {
             let path = self.root.join("files").join(hash);
-            if fs::metadata(&path).ok()?.len() > 8 * 1024 * 1024 {
+            if fs::metadata(&path).ok()?.len() > 20 * 1024 * 1024 {
                 return None;
             }
             let mut header = [0u8; 24];
@@ -132,14 +143,19 @@ impl Workspace {
             }
             let width = u32::from_be_bytes(header[16..20].try_into().ok()?);
             let height = u32::from_be_bytes(header[20..24].try_into().ok()?);
-            if width == 0 || height == 0 || u64::from(width) * u64::from(height) > 16_000_000 {
+            if width == 0 || height == 0 || width > 8000 || height > 8000 {
                 return None;
             }
-            let image = image::load_from_memory_with_format(
-                &fs::read(&path).ok()?,
+            let mut reader = image::ImageReader::with_format(
+                std::io::BufReader::new(fs::File::open(&path).ok()?),
                 image::ImageFormat::Png,
-            )
-            .ok()?;
+            );
+            let mut limits = image::Limits::default();
+            limits.max_image_width = Some(8000);
+            limits.max_image_height = Some(8000);
+            limits.max_alloc = Some(256 * 1024 * 1024);
+            reader.limits(limits);
+            let image = reader.decode().ok()?;
             let mut bytes = std::io::Cursor::new(Vec::new());
             image
                 .thumbnail(320, 200)

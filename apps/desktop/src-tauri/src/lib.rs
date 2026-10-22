@@ -83,6 +83,8 @@ pub fn run() {
             notes::inspect_archive,
             notes::apply_archive,
             assets::asset_board,
+            assets::assign_asset_slot,
+            assets::copy_asset_item,
             assets::save_folder,
             assets::move_asset,
             assets::asset_versions,

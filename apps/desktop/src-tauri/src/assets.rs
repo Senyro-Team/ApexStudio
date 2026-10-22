@@ -105,6 +105,7 @@ pub async fn set_folder_cover(
 #[tauri::command]
 pub async fn prepare_livery(
     project_id: String,
+    token: Option<String>,
     app: tauri::AppHandle,
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<Option<DraftInfo>, CommandError> {
@@ -154,12 +155,39 @@ pub async fn prepare_livery(
             });
             files.push((target, name));
         }
-        let token = uuid::Uuid::now_v7().to_string();
         let state = app.state::<LiveryDrafts>();
         let mut drafts = state
             .0
             .lock()
             .map_err(|_| Error::Storage("Livery selection unavailable.".into()))?;
+        if let Some(token) = token {
+            let draft = drafts.get_mut(&token).ok_or(Error::NotFound)?;
+            if draft.project != project_id || draft.files.len() + files.len() > 100 {
+                return Err(Error::InvalidContent(
+                    "Choose up to 100 PNG images in this project.".into(),
+                ));
+            }
+            let start = draft.files.len();
+            let mut appended = Vec::new();
+            for (i, (path, name)) in files.into_iter().enumerate() {
+                let destination = draft._dir.path().join(format!("{}.png", start + i));
+                std::fs::copy(path, &destination).map_err(|e| Error::Storage(e.to_string()))?;
+                appended.push((destination, name));
+            }
+            draft.files.extend(appended);
+            let files = draft
+                .files
+                .iter()
+                .enumerate()
+                .map(|(index, (_, name))| Candidate {
+                    index,
+                    name: name.clone(),
+                    suggested_slot: apex_core::suggest_slot(name),
+                })
+                .collect();
+            return Ok(Some(DraftInfo { token, files }));
+        }
+        let token = uuid::Uuid::now_v7().to_string();
         drafts.clear();
         drafts.insert(
             token.clone(),
@@ -240,4 +268,25 @@ pub async fn cancel_livery(
         })?
         .remove(&token);
     Ok(())
+}
+
+#[tauri::command]
+pub async fn assign_asset_slot(
+    id: String,
+    slot: Option<String>,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<(), CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || ws.assign_slot(&id, slot.as_deref())).await
+}
+#[tauri::command]
+pub async fn copy_asset_item(
+    project_id: String,
+    id: String,
+    is_folder: bool,
+    folder_id: Option<String>,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<(), CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || ws.copy_item(&project_id, &id, is_folder, folder_id.as_deref())).await
 }

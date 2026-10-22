@@ -192,8 +192,8 @@ export const restoreAssetVersion = (id: string, versionId: string) =>
   invoke<void>("restore_asset_version", { id, versionId });
 export const setFolderCover = (id: string) =>
   invoke<boolean>("set_folder_cover", { id });
-export const prepareLivery = (projectId: string) =>
-  invoke<LiveryDraft | null>("prepare_livery", { projectId });
+export const prepareLivery = (projectId: string, token: string | null = null) =>
+  invoke<LiveryDraft | null>("prepare_livery", { projectId, token });
 export const commitLivery = (
   token: string,
   parentId: string | null,
@@ -214,3 +214,12 @@ export const commitLivery = (
   });
 export const cancelLivery = (token: string) =>
   invoke<void>("cancel_livery", { token });
+
+export const assignAssetSlot = (id: string, slot: string | null) =>
+  invoke<void>("assign_asset_slot", { id, slot });
+export const copyAssetItem = (
+  projectId: string,
+  id: string,
+  isFolder: boolean,
+  folderId: string | null,
+) => invoke<void>("copy_asset_item", { projectId, id, isFolder, folderId });

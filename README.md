@@ -54,3 +54,5 @@ Schema upgrades are transactional; newer schemas are rejected. The app never ope
 Application licence is still being finalised; no MIT/open-source grant is implied. Apex branding is supplied for in-app use only. Archivo remains under its own SIL OFL 1.1 licence in `apps/desktop/public/fonts/OFL.txt`. Third-party dependencies retain their licences. Do not publish a release before code and brand terms are finalised.
 
 Current scope: `docs/planning/CURRENT-SCOPE.md`. Validation and limitations: [Phase 4](docs/phases/PHASE-04.md), [Phase 3](docs/phases/PHASE-03.md), [Phase 2](docs/phases/PHASE-02.md), [Phase 1](docs/phases/PHASE-01.md).
+
+Asset-manager follow-up: see [changes and verification](docs/phases/PHASE-04-FIXES.md). Phase 5 is [planned](docs/planning/PHASE-05-PLAN.md), not started.

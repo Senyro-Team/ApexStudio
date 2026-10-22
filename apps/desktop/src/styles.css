@@ -1403,3 +1403,107 @@ textarea:focus-visible {
     flex-wrap: wrap;
   }
 }
+
+/* Asset explorer states and livery review controls. */
+button:disabled,
+button:disabled:hover {
+  background: #292b31;
+  color: #777b86;
+  border-color: #34363e;
+  opacity: 1;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.folder-tile .asset-thumbnail {
+  padding: 0;
+  overflow: hidden;
+}
+.folder-tile .asset-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.asset-tile.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.asset-tile[draggable="true"] {
+  cursor: grab;
+}
+.explorer-toolbar {
+  margin: 16px 0;
+  flex-wrap: wrap;
+}
+.slot-editor {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+.slot-editor select {
+  flex: 1;
+  min-width: 0;
+}
+.slot-editor input {
+  width: 78px;
+  flex: none;
+}
+.vehicle-picker {
+  position: relative;
+  max-width: 620px;
+  margin-bottom: 24px;
+}
+.vehicle-picker [role="listbox"] {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+}
+.vehicle-picker [role="option"] {
+  display: block;
+  text-align: left;
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  background: transparent;
+}
+.vehicle-picker [role="option"]:hover,
+.vehicle-picker [role="option"]:focus {
+  background: var(--raised);
+}
+.vehicle-picker [role="option"] small {
+  display: block;
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+.asset-browser .slot-editor input {
+  width: 78px;
+  margin: 0;
+}
+.asset-browser .slot-editor select {
+  margin: 0;
+}
+.asset-grid {
+  min-height: 110px;
+}
+.vehicle-picker [role="option"][aria-selected="true"] {
+  background: var(--raised);
+}
+
+.asset-browser:focus {
+  outline: none;
+}
+.asset-tile.is-cut {
+  opacity: 0.5;
+}
+
+.explorer-toolbar {
+  justify-content: flex-start;
+  gap: 12px;
+}

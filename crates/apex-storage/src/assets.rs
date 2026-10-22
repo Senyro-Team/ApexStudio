@@ -108,6 +108,12 @@ impl Workspace {
         self.editable_project(project)?;
         validate_folder_name(name)?;
         self.validate_parent(project, parent)?;
+        let collision: bool = self.connection()?.query_row("SELECT EXISTS(SELECT 1 FROM asset_folders WHERE project_id=?1 AND parent_id IS ?2 AND name=?3 COLLATE NOCASE AND (?4 IS NULL OR id<>?4))",params![project,parent,name.trim(),id],|r|r.get(0)).map_err(storage)?;
+        if collision {
+            return Err(bad(
+                "A folder with this name already exists here. Rename it before moving.",
+            ));
+        }
         let id = match id {
             Some(id) => {
                 let f = self.folder(id)?;
@@ -150,7 +156,187 @@ impl Workspace {
                 return Err(bad("Choose a folder in this project."));
             }
         }
+        let current: Option<Option<String>> = self
+            .connection()?
+            .query_row(
+                "SELECT folder_id FROM asset_placements WHERE asset_id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(storage)?;
+        if current.flatten().as_deref() == folder {
+            return Ok(());
+        }
         self.connection()?.execute("INSERT INTO asset_placements(asset_id,folder_id,slot) VALUES(?1,?2,NULL) ON CONFLICT(asset_id) DO UPDATE SET folder_id=excluded.folder_id,slot=NULL",params![id,folder]).map_err(storage)?;
+        Ok(())
+    }
+    pub fn assign_slot(&self, id: &str, slot: Option<&str>) -> Result<(), Error> {
+        let a = self
+            .assets(None)?
+            .into_iter()
+            .find(|a| a.id == id)
+            .ok_or(Error::NotFound)?;
+        self.editable_project(&a.project_id)?;
+        let board = self.board(&a.project_id)?;
+        let placement = board
+            .placements
+            .iter()
+            .find(|p| p.asset_id == id)
+            .ok_or(Error::NotFound)?;
+        let folder = self.folder(
+            placement
+                .folder_id
+                .as_deref()
+                .ok_or_else(|| bad("Open a livery to assign a side."))?,
+        )?;
+        if folder.kind != "livery" || slot.is_some_and(|s| !valid_slot(s)) {
+            return Err(bad("Choose a side and a number from 1 to 100."));
+        }
+        if slot.is_some()
+            && board.placements.iter().any(|p| {
+                p.asset_id != id && p.folder_id == placement.folder_id && p.slot.as_deref() == slot
+            })
+        {
+            return Err(bad(
+                "That slot is already assigned. Clear its existing assignment first.",
+            ));
+        }
+        self.connection()?
+            .execute(
+                "UPDATE asset_placements SET slot=?1 WHERE asset_id=?2",
+                params![slot, id],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    /// Copy a tree in one transaction. Immutable blobs are shared; records and history get new IDs.
+    pub fn copy_item(
+        &self,
+        project: &str,
+        id: &str,
+        is_folder: bool,
+        target: Option<&str>,
+    ) -> Result<(), Error> {
+        self.editable_project(project)?;
+        let board = self.board(project)?;
+        if is_folder {
+            self.validate_parent(project, target)?;
+        } else if let Some(fid) = target {
+            if self.folder(fid)?.project_id != project {
+                return Err(Error::NotFound);
+            }
+        }
+        let mut db = self.connection()?;
+        let tx = db.transaction().map_err(storage)?;
+        let mut mapping = std::collections::HashMap::new();
+        if is_folder {
+            let root = board
+                .folders
+                .iter()
+                .find(|f| f.id == id)
+                .ok_or(Error::NotFound)?;
+            let mut children = vec![root];
+            let mut i = 0;
+            while i < children.len() {
+                let current = children[i].id.clone();
+                if children.len() > 2000 {
+                    return Err(bad("This folder contains too many folders to copy."));
+                }
+                children.extend(
+                    board
+                        .folders
+                        .iter()
+                        .filter(|f| f.parent_id.as_deref() == Some(&current)),
+                );
+                i += 1;
+            }
+            if target.is_some_and(|t| children.iter().any(|f| f.id == t)) {
+                return Err(bad("A folder cannot be copied inside itself."));
+            }
+            let mut name = root.name.clone();
+            let mut number = 1;
+            while board
+                .folders
+                .iter()
+                .any(|f| f.parent_id.as_deref() == target && f.name.eq_ignore_ascii_case(&name))
+            {
+                name = format!(
+                    "{} (copy {})",
+                    root.name.chars().take(100).collect::<String>(),
+                    number
+                );
+                number += 1;
+            }
+            for f in children {
+                let new_id = uuid::Uuid::now_v7().to_string();
+                let parent = if f.id == id {
+                    target.map(str::to_owned)
+                } else {
+                    f.parent_id.as_ref().and_then(|p| mapping.get(p).cloned())
+                };
+                tx.execute("INSERT INTO asset_folders(id,project_id,parent_id,name,kind,vehicle_id,cover_hash) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![new_id,project,parent,if f.id==id {&name} else {&f.name},f.kind,f.vehicle_id,f.cover_hash]).map_err(storage)?;
+                mapping.insert(f.id.clone(), new_id);
+            }
+        } else if !board.assets.iter().any(|a| a.id == id) {
+            return Err(Error::NotFound);
+        }
+        for a in &board.assets {
+            let placement = board.placements.iter().find(|p| p.asset_id == a.id);
+            let old_folder = placement.and_then(|p| p.folder_id.as_ref());
+            if (is_folder && !old_folder.is_some_and(|f| mapping.contains_key(f)))
+                || (!is_folder && a.id != id)
+            {
+                continue;
+            }
+            let destination = if is_folder {
+                old_folder.and_then(|f| mapping.get(f)).map(String::as_str)
+            } else {
+                target
+            };
+            let slot = if is_folder {
+                placement.and_then(|p| p.slot.as_deref())
+            } else {
+                None
+            };
+            let aid = uuid::Uuid::now_v7().to_string();
+            let mut name = a.name.clone();
+            if !is_folder {
+                let mut number = 1;
+                while board.assets.iter().any(|other| {
+                    other.name.eq_ignore_ascii_case(&name)
+                        && board
+                            .placements
+                            .iter()
+                            .find(|p| p.asset_id == other.id)
+                            .and_then(|p| p.folder_id.as_deref())
+                            == target
+                }) {
+                    let path = Path::new(&a.name);
+                    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+                    name = match path.extension() {
+                        Some(ext) => format!("{stem} (copy {number}).{}", ext.to_string_lossy()),
+                        None => format!("{stem} (copy {number})"),
+                    };
+                    number += 1;
+                }
+            }
+            tx.execute(
+                "INSERT INTO assets(id,project_id,name,hash) VALUES(?1,?2,?3,?4)",
+                params![aid, project, name, a.hash],
+            )
+            .map_err(storage)?;
+            tx.execute(
+                "INSERT INTO asset_placements(asset_id,folder_id,slot) VALUES(?1,?2,?3)",
+                params![aid, destination, slot],
+            )
+            .map_err(storage)?;
+            for v in self.versions(&a.id)? {
+                tx.execute("INSERT INTO asset_versions(id,asset_id,hash,name,created_at) VALUES(?1,?2,?3,?4,?5)",params![uuid::Uuid::now_v7().to_string(),aid,v.hash,v.name,v.created_at]).map_err(storage)?;
+            }
+        }
+        tx.commit().map_err(storage)?;
         Ok(())
     }
     pub fn import_files_into(
@@ -291,7 +477,7 @@ impl Workspace {
         validate_folder_name(name)?;
         self.validate_parent(project, parent)?;
         let catalogue = apex_core::vehicle_catalogue()?;
-        let v = catalogue
+        let _vehicle = catalogue
             .vehicles
             .iter()
             .find(|v| v.id == vehicle)
@@ -307,7 +493,7 @@ impl Workspace {
         for (path, filename, slot) in files {
             validate_png(path)?;
             if let Some(slot) = slot {
-                if !v.slots.iter().any(|s| s.key == *slot) || !seen.insert(slot.clone()) {
+                if !valid_slot(slot) || !seen.insert(slot.clone()) {
                     return Err(bad(
                         "Resolve duplicate or unsupported slots before importing.",
                     ));
@@ -389,6 +575,27 @@ impl Workspace {
         tx.commit().map_err(storage)?;
         Ok(id)
     }
+}
+fn valid_slot(slot: &str) -> bool {
+    let Some((side, number)) = slot.rsplit_once(' ') else {
+        return false;
+    };
+    [
+        "Left",
+        "Right",
+        "Front",
+        "Back",
+        "Top",
+        "Window Left",
+        "Window Right",
+        "Window Front",
+        "Window Back",
+        "Window Top",
+    ]
+    .contains(&side)
+        && number
+            .parse::<u8>()
+            .is_ok_and(|n| (1..=100).contains(&n) && n.to_string() == number)
 }
 pub fn validate_png(path: &Path) -> Result<(), Error> {
     if fs::metadata(path).map_err(storage)?.len() > 20 * 1024 * 1024 {
@@ -578,6 +785,156 @@ mod tests {
             .is_err());
         assert!(ws.folders(&p.id).unwrap().is_empty());
         assert!(ws.assets(Some(&p.id)).unwrap().is_empty());
+    }
+    #[test]
+    fn explorer_copy_preserves_livery_history_and_rejects_invalid_targets() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path().join("ws")).unwrap();
+        let p = ws
+            .save_project(
+                None,
+                ProjectInput {
+                    name: "Explorer".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let other = ws
+            .save_project(
+                None,
+                ProjectInput {
+                    name: "Other".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let root = ws.save_folder(&p.id, None, None, "Liveries").unwrap();
+        let target = ws.save_folder(&p.id, None, None, "Destination").unwrap();
+        let vehicle = apex_core::vehicle_catalogue().unwrap().vehicles.remove(0);
+        let path = dir.path().join("Left1.png");
+        png(&path, 1);
+        let files = vec![(path.clone(), "Left1.png".into(), Some("Left 1".into()))];
+        let livery = ws
+            .import_livery(
+                &p.id,
+                Some(&root.id),
+                None,
+                "Patrol",
+                &vehicle.id,
+                &files,
+                Some(0),
+            )
+            .unwrap();
+        png(&path, 2);
+        ws.import_livery(
+            &p.id,
+            Some(&root.id),
+            Some(&livery),
+            "Patrol",
+            &vehicle.id,
+            &files,
+            None,
+        )
+        .unwrap();
+        let aid = ws.board(&p.id).unwrap().assets[0].id.clone();
+        ws.assign_slot(&aid, Some("Window Front 2")).unwrap();
+        assert!(ws.assign_slot(&aid, Some("Window Front 0")).is_err());
+        assert!(ws.copy_item(&p.id, &root.id, true, Some(&root.id)).is_err());
+        assert!(ws.copy_item(&other.id, &root.id, true, None).is_err());
+        assert!(ws.copy_item(&p.id, &root.id, true, Some(&livery)).is_err());
+        ws.copy_item(&p.id, &root.id, true, Some(&target.id))
+            .unwrap();
+        let board = ws.board(&p.id).unwrap();
+        assert_eq!(board.assets.len(), 2);
+        let cloned = board.assets.iter().find(|a| a.id != aid).unwrap();
+        assert_eq!(ws.versions(&cloned.id).unwrap().len(), 2);
+        assert_eq!(
+            board
+                .placements
+                .iter()
+                .find(|p| p.asset_id == cloned.id)
+                .unwrap()
+                .slot
+                .as_deref(),
+            Some("Window Front 2")
+        );
+        let copied_root = board
+            .folders
+            .iter()
+            .find(|f| f.parent_id.as_deref() == Some(&target.id))
+            .unwrap();
+        let copied_livery = board
+            .folders
+            .iter()
+            .find(|f| f.parent_id.as_deref() == Some(&copied_root.id))
+            .unwrap();
+        assert_eq!(
+            copied_livery.cover_hash,
+            ws.folder(&livery).unwrap().cover_hash
+        );
+        ws.copy_item(&p.id, &aid, false, Some(&livery)).unwrap();
+        let board = ws.board(&p.id).unwrap();
+        let copied_file = board
+            .assets
+            .iter()
+            .find(|a| a.id != aid && a.id != cloned.id)
+            .unwrap();
+        assert!(ws
+            .assign_slot(&copied_file.id, Some("Window Front 2"))
+            .is_err());
+        ws.move_asset(&aid, Some(&livery)).unwrap();
+        assert_eq!(
+            ws.board(&p.id)
+                .unwrap()
+                .placements
+                .iter()
+                .find(|p| p.asset_id == aid)
+                .unwrap()
+                .slot
+                .as_deref(),
+            Some("Window Front 2")
+        );
+        ws.move_asset(&aid, Some(&target.id)).unwrap();
+        assert!(ws
+            .board(&p.id)
+            .unwrap()
+            .placements
+            .iter()
+            .find(|p| p.asset_id == aid)
+            .unwrap()
+            .slot
+            .is_none());
+        ws.save_folder(&p.id, Some(&livery), None, "Patrol")
+            .unwrap();
+        assert!(ws.folder(&livery).unwrap().parent_id.is_none());
+    }
+    #[test]
+    fn large_png_previews_regenerate_after_cache_loss() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path().join("ws")).unwrap();
+        let p = ws
+            .save_project(
+                None,
+                ProjectInput {
+                    name: "Previews".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let path = dir.path().join("large.png");
+        image::RgbImage::from_pixel(4100, 4000, image::Rgb([50, 100, 150]))
+            .save(&path)
+            .unwrap();
+        ws.import_files_into(&p.id, None, &[path]).unwrap();
+        let asset = ws.assets(Some(&p.id)).unwrap().remove(0);
+        assert!(asset.preview.is_some());
+        fs::remove_file(
+            ws.root
+                .join("thumbnails")
+                .join(format!("{}.png", asset.hash)),
+        )
+        .unwrap();
+        assert!(ws.assets(Some(&p.id)).unwrap()[0].preview.is_some());
     }
     #[test]
     fn schema_three_backup_restores_and_migrates_with_safety_snapshot() {
