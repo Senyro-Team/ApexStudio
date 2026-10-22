@@ -1,6 +1,6 @@
 # Phase 5 — Publishing preparation and ERLCX assistance
 
-Status: planned, not started. The user requested asset-manager fixes before authorising Phase 5. Make a Git checkpoint commit when Phase 5 starts, then commit each completed code change.
+Status: authorised and starting 2026-10-22, after the asset drag/layout fix (a21f85f). This document update is the requested Phase 5 checkpoint. Commit each completed code change.
 
 ## Planned deliverables
 
@@ -14,3 +14,7 @@ Status: planned, not started. The user requested asset-manager fixes before auth
 The first supported category is liveries. Actual Roblox account uploads are a separate later integration; existing decal IDs can be entered for this handoff. Group uploads, payments, workflows, analytics and other ERLCX categories are outside this phase. Resolve the final bundle/retention details as part of Phase 5 planning, before implementing the extension.
 
 Authoritative scope: CURRENT-SCOPE.md. Wizard inspection and adapter constraints: EXTENSION-SPEC.md.
+
+## Implementation decisions
+
+Use a versioned .apexpublish ZIP with public.json and explicitly selected preview media. No local listener or browser credentials. Store editable project publishing drafts and preview references locally with revision checks; include them in complete workspace backups. Extension imported bundles stay in IndexedDB until Clear draft (including across browser restart); explicitly state this retention in the extension and documentation. This avoids Chrome session storage quota limits for image bundles. No draft contents are sent until the user invokes Fill current step. The extension is delivered as a ZIP for manual unpacked installation; do not install it automatically.
