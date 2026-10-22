@@ -338,3 +338,65 @@ it("drops a dragged file into a folder without treating it as a copy", async () 
   expect(moveAsset).toHaveBeenCalledWith("file", "target");
   expect(copyAssetItem).not.toHaveBeenCalled();
 });
+
+it("keeps selection actions hidden until needed and highlights valid drag-entry targets", async () => {
+  const user = userEvent.setup();
+  vi.mocked(assetBoard).mockResolvedValue({
+    assets: [],
+    placements: [],
+    folders: [
+      {
+        id: "source",
+        name: "Sources",
+        projectId: "project",
+        kind: "folder",
+        parentId: null,
+        vehicleId: null,
+        coverHash: null,
+        preview: null,
+      },
+      {
+        id: "target",
+        name: "Destination",
+        projectId: "project",
+        kind: "folder",
+        parentId: null,
+        vehicleId: null,
+        coverHash: null,
+        preview: null,
+      },
+    ],
+  });
+  render(
+    <AssetBrowser
+      project={project}
+      catalogue={catalogue}
+      onBusy={() => {}}
+      onChange={() => {}}
+    />,
+  );
+  const source = await screen.findByRole("button", { name: /Sources Folder/ });
+  const target = screen.getByRole("button", { name: /Destination Folder/ });
+  expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Paste" })).toBeNull();
+  const data = new Map<string, string>();
+  const dataTransfer = {
+    setData: (k: string, v: string) => data.set(k, v),
+    getData: (k: string) => data.get(k) ?? "",
+    effectAllowed: "",
+    dropEffect: "",
+  };
+  fireEvent.dragStart(source, { dataTransfer });
+  expect(fireEvent.dragEnter(target, { dataTransfer })).toBe(false);
+  expect(target.classList.contains("drop-target")).toBe(true);
+  fireEvent.dragEnd(source, { dataTransfer });
+  expect(target.classList.contains("drop-target")).toBe(false);
+  await user.dblClick(source);
+  expect(
+    screen.getByLabelText("Folder actions").closest("details"),
+  ).toHaveProperty("open", false);
+  await user.click(screen.getByLabelText("Folder actions"));
+  expect(
+    screen.getByRole("button", { name: "Rename / move folder" }),
+  ).toBeTruthy();
+});

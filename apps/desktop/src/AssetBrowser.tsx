@@ -1,5 +1,13 @@
+import useAssetDrag from "./useAssetDrag";
 import { useEffect, useState, useRef, type DragEvent } from "react";
-import { FolderOpen, File, ChevronRight, X, Layers } from "lucide-react";
+import {
+  FolderOpen,
+  File,
+  ChevronRight,
+  X,
+  Layers,
+  MoreHorizontal,
+} from "lucide-react";
 import {
   assetBoard,
   assignAssetSlot,
@@ -39,6 +47,10 @@ export default function AssetBrowser({
   onChange: () => void;
 }) {
   const browserRef = useRef<HTMLElement>(null);
+  const dragged = useRef<Item | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null | undefined>(
+    undefined,
+  );
   const [board, setBoard] = useState<AssetBoard>(empty),
     [folderId, setFolderId] = useState<string | null>(null),
     [selected, setSelected] = useState<string | null>(null),
@@ -70,6 +82,29 @@ export default function AssetBrowser({
           .includes(vehicleQuery.trim().toLowerCase()),
       )
       .slice(0, 8) ?? [];
+  function canDrop(item: Item, target: string | null) {
+    if (
+      item.folder &&
+      board.folders.find((f) => f.id === target)?.kind === "livery"
+    )
+      return false;
+    let ancestor = target;
+    const visited = new Set<string>();
+    while (ancestor) {
+      if (item.folder && (ancestor === item.id || visited.has(ancestor)))
+        return false;
+      visited.add(ancestor);
+      ancestor = board.folders.find((f) => f.id === ancestor)?.parentId ?? null;
+    }
+    return true;
+  }
+  const pointerDrag = useAssetDrag(
+    busy || project.archived || !!draft || !!folderForm,
+    canDrop,
+    (item, target, copy) => {
+      void transfer({ ...item, cut: !copy }, target);
+    },
+  );
   const locked = busy || project.archived || !!draft || !!folderForm;
   const folder = board.folders.find((f) => f.id === folderId),
     asset = board.assets.find((a) => a.id === selected),
@@ -239,9 +274,32 @@ export default function AssetBrowser({
       item.cut ? "Moved." : "Copied.",
     );
   }
+  function dragOver(e: DragEvent, target: string | null) {
+    const item = dragged.current;
+    if (locked || !item) return;
+    let ancestor = target;
+    const visited = new Set<string>();
+    while (ancestor) {
+      if (item.folder && (ancestor === item.id || visited.has(ancestor)))
+        return;
+      visited.add(ancestor);
+      ancestor = board.folders.find((f) => f.id === ancestor)?.parentId ?? null;
+    }
+    if (
+      item.folder &&
+      board.folders.find((f) => f.id === target)?.kind === "livery"
+    )
+      return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = e.ctrlKey ? "copy" : "move";
+    setDropTarget(target);
+  }
   function drop(e: DragEvent, target: string | null) {
     e.preventDefault();
     e.stopPropagation();
+    setDropTarget(undefined);
+    dragged.current = null;
     if (locked) return;
     try {
       const item = JSON.parse(
@@ -266,6 +324,7 @@ export default function AssetBrowser({
       e.preventDefault();
       return;
     }
+    dragged.current = item;
     e.dataTransfer.effectAllowed = "copyMove";
     e.dataTransfer.setData(
       "application/x-apex-item",
@@ -325,7 +384,16 @@ export default function AssetBrowser({
       ref={browserRef}
       tabIndex={-1}
       aria-label="Project assets"
+      onPointerMove={pointerDrag.move}
+      onPointerUp={pointerDrag.end}
+      onPointerCancel={pointerDrag.cancel}
+      onClickCapture={pointerDrag.click}
+      onDragEnd={() => {
+        dragged.current = null;
+        setDropTarget(undefined);
+      }}
       onKeyDown={(e) => {
+        if (e.key === "Escape") pointerDrag.cancel();
         if (
           (e.target as HTMLElement).closest(
             "input,textarea,select,[contenteditable=true]",
@@ -352,9 +420,9 @@ export default function AssetBrowser({
       <div className="asset-path" aria-label="Asset folder path">
         <button
           className="text-button"
-          onDragOver={(e) => {
-            if (!locked) e.preventDefault();
-          }}
+          data-drop-folder=""
+          onDragEnter={(e) => dragOver(e, null)}
+          onDragOver={(e) => dragOver(e, null)}
           onDrop={(e) => drop(e, null)}
           disabled={busy || !!draft || !!folderForm}
           onClick={() => navigate(null)}
@@ -367,16 +435,57 @@ export default function AssetBrowser({
             <button
               className="text-button"
               disabled={busy || !!draft || !!folderForm}
+              data-drop-folder={f.id}
+              onDragEnter={(e) => dragOver(e, f.id)}
+              onDragOver={(e) => dragOver(e, f.id)}
+              onDrop={(e) => drop(e, f.id)}
               onClick={() => navigate(f.id)}
             >
               {f.name}
             </button>
           </span>
         ))}
+        {folder && !draft && !folderForm && (
+          <details className="asset-folder-menu">
+            <summary aria-label="Folder actions" title="Folder actions">
+              <MoreHorizontal size={20} />
+            </summary>
+            <div className="asset-folder-menu-items">
+              <button
+                className="text-button"
+                disabled={project.archived || busy}
+                onClick={(e) => {
+                  e.currentTarget.closest("details")?.removeAttribute("open");
+                  setFolderForm("edit");
+                  setFolderName(folder.name);
+                  setParent(folder.parentId);
+                }}
+              >
+                Rename / move folder
+              </button>
+              <button
+                className="text-button"
+                disabled={project.archived || busy}
+                onClick={(e) => {
+                  e.currentTarget.closest("details")?.removeAttribute("open");
+                  void act(() => setFolderCover(folder.id));
+                }}
+              >
+                Set cover
+              </button>
+            </div>
+          </details>
+        )}
       </div>
       {!draft && !folderForm && (
-        <div className="asset-actions">
-          <div className="button-row">
+        <div className="asset-command-bar">
+          <input
+            aria-label="Search folder"
+            placeholder="Search this folder"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <div className="asset-create-actions">
             <button
               className="primary"
               disabled={project.archived || busy}
@@ -405,28 +514,6 @@ export default function AssetBrowser({
               </button>
             )}
           </div>
-          {folder && (
-            <div className="button-row">
-              <button
-                className="text-button"
-                disabled={project.archived || busy}
-                onClick={() => {
-                  setFolderForm("edit");
-                  setFolderName(folder.name);
-                  setParent(folder.parentId);
-                }}
-              >
-                Rename / move folder
-              </button>
-              <button
-                className="text-button"
-                disabled={project.archived || busy}
-                onClick={() => void act(() => setFolderCover(folder.id))}
-              >
-                Set cover
-              </button>
-            </div>
-          )}
         </div>
       )}
       {folder?.kind === "livery" && !draft && (
@@ -714,74 +801,81 @@ export default function AssetBrowser({
       ) : (
         !folderForm && (
           <>
-            <div className="explorer-toolbar button-row">
-              <button
-                className="secondary"
-                disabled={locked || !explorerSelection?.folder}
-                onClick={() =>
-                  explorerSelection && navigate(explorerSelection.id)
-                }
-              >
-                Open folder
-              </button>
-              <button
-                className="secondary"
-                disabled={locked || !explorerSelection}
-                onClick={() => copySelection(false)}
-              >
-                Copy
-              </button>
-              <button
-                className="secondary"
-                disabled={locked || !explorerSelection}
-                onClick={() => copySelection(true)}
-              >
-                Cut
-              </button>
-              <button
-                className="secondary"
-                disabled={
-                  locked ||
-                  !clipboard ||
-                  (clipboard.folder && folder?.kind === "livery")
-                }
-                onClick={() => clipboard && void transfer(clipboard, folderId)}
-              >
-                Paste
-              </button>
-              {clipboard && (
-                <span className="field-hint">
-                  {clipboard.cut ? "Move" : "Copy"}:{" "}
-                  {board.folders.find((f) => f.id === clipboard.id)?.name ??
-                    board.assets.find((a) => a.id === clipboard.id)?.name}
-                </span>
-              )}
-            </div>
-            <div className="file-toolbar">
-              <input
-                aria-label="Search folder"
-                placeholder="Search this folder"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <span>
-                {currentFolders.length} folders · {currentFiles.length} files
+            <div className="asset-selection-strip">
+              <span className="asset-selection-name">
+                {explorerSelection
+                  ? (board.folders.find((f) => f.id === explorerSelection.id)
+                      ?.name ??
+                    board.assets.find((a) => a.id === explorerSelection.id)
+                      ?.name)
+                  : `${currentFolders.length} folders · ${currentFiles.length} files`}
               </span>
+              <div className="explorer-toolbar button-row">
+                {explorerSelection?.folder && (
+                  <button
+                    className="text-button"
+                    disabled={locked}
+                    onClick={() =>
+                      explorerSelection && navigate(explorerSelection.id)
+                    }
+                  >
+                    Open folder
+                  </button>
+                )}
+                {explorerSelection && (
+                  <button
+                    className="text-button"
+                    disabled={locked}
+                    onClick={() => copySelection(false)}
+                  >
+                    Copy
+                  </button>
+                )}
+                {explorerSelection && (
+                  <button
+                    className="text-button"
+                    disabled={locked}
+                    onClick={() => copySelection(true)}
+                  >
+                    Cut
+                  </button>
+                )}
+                {clipboard && (
+                  <button
+                    className="secondary"
+                    disabled={
+                      locked || (clipboard.folder && folder?.kind === "livery")
+                    }
+                    onClick={() =>
+                      clipboard && void transfer(clipboard, folderId)
+                    }
+                  >
+                    Paste
+                  </button>
+                )}
+                {clipboard && (
+                  <span className="field-hint">
+                    {clipboard.cut ? "Move" : "Copy"}:{" "}
+                    {board.folders.find((f) => f.id === clipboard.id)?.name ??
+                      board.assets.find((a) => a.id === clipboard.id)?.name}
+                  </span>
+                )}
+              </div>
             </div>
             {loading ? (
               <p role="status">Loading files…</p>
             ) : (
               <div
                 className="asset-grid"
-                onDragOver={(e) => {
-                  if (!locked) e.preventDefault();
-                }}
+                data-drop-folder={folderId ?? ""}
+                onDragEnter={(e) => dragOver(e, folderId)}
+                onDragOver={(e) => dragOver(e, folderId)}
                 onDrop={(e) => drop(e, folderId)}
               >
                 {currentFolders.map((f) => (
                   <button
                     key={f.id}
-                    className={`asset-tile folder-tile ${explorerSelection?.id === f.id ? "selected" : ""} ${clipboard?.cut && clipboard.id === f.id ? "is-cut" : ""}`}
+                    className={`asset-tile folder-tile ${explorerSelection?.id === f.id ? "selected" : ""} ${clipboard?.cut && clipboard.id === f.id ? "is-cut" : ""} ${dropTarget === f.id || pointerDrag.target === f.id ? "drop-target" : ""}`}
                     disabled={busy}
                     aria-pressed={explorerSelection?.id === f.id}
                     title="Double-click to open"
@@ -795,14 +889,19 @@ export default function AssetBrowser({
                         navigate(f.id);
                       }
                     }}
-                    draggable={!locked}
+                    data-drop-folder={f.id}
+                    data-draggable={!locked}
+                    onPointerDown={(e) =>
+                      pointerDrag.start(e, {
+                        id: f.id,
+                        folder: true,
+                        name: f.name,
+                      })
+                    }
+                    draggable={false}
                     onDragStart={(e) => drag(e, { id: f.id, folder: true })}
-                    onDragOver={(e) => {
-                      if (!locked) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }
-                    }}
+                    onDragEnter={(e) => dragOver(e, f.id)}
+                    onDragOver={(e) => dragOver(e, f.id)}
                     onDrop={(e) => drop(e, f.id)}
                     onClick={() => {
                       setExplorerSelection({ id: f.id, folder: true });
@@ -812,7 +911,7 @@ export default function AssetBrowser({
                   >
                     <div className="asset-thumbnail">
                       {f.preview ? (
-                        <img src={f.preview} alt="" />
+                        <img src={f.preview} alt="" draggable={false} />
                       ) : f.kind === "livery" ? (
                         <Layers size={40} />
                       ) : (
@@ -832,7 +931,15 @@ export default function AssetBrowser({
                     onFocus={() =>
                       setExplorerSelection({ id: a.id, folder: false })
                     }
-                    draggable={!locked}
+                    data-draggable={!locked}
+                    onPointerDown={(e) =>
+                      pointerDrag.start(e, {
+                        id: a.id,
+                        folder: false,
+                        name: a.name,
+                      })
+                    }
+                    draggable={false}
                     onDragStart={(e) => drag(e, { id: a.id, folder: false })}
                     onClick={() => {
                       setExplorerSelection({ id: a.id, folder: false });
@@ -845,7 +952,7 @@ export default function AssetBrowser({
                   >
                     <div className="asset-thumbnail">
                       {a.preview ? (
-                        <img src={a.preview} alt="" />
+                        <img src={a.preview} alt="" draggable={false} />
                       ) : (
                         <File size={32} />
                       )}
@@ -871,6 +978,15 @@ export default function AssetBrowser({
             )}
           </>
         )
+      )}
+      {pointerDrag.preview && (
+        <div
+          className="asset-drag-preview"
+          style={{ left: pointerDrag.preview.x, top: pointerDrag.preview.y }}
+        >
+          {pointerDrag.preview.copy ? "Copy" : "Move"}:{" "}
+          {pointerDrag.preview.name}
+        </div>
       )}
       {asset && !draft && (
         <aside className="asset-inspector" aria-label="File details">

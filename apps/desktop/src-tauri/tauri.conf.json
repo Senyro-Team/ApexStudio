@@ -17,7 +17,8 @@
         "width": 1280,
         "height": 900,
         "minWidth": 700,
-        "minHeight": 600
+        "minHeight": 600,
+        "dragDropEnabled": false
       }
     ],
     "security": {
@@ -25,5 +26,7 @@
       "capabilities": ["default"]
     }
   },
-  "bundle": { "active": false }
+  "bundle": {
+    "active": false
+  }
 }
