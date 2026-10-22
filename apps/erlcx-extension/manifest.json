@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Apex Studio — ERLCX Assistant",
+  "version": "0.1.0",
+  "description": "Import an Apex Studio publishing bundle and fill the current ERLCX livery step on request.",
+  "permissions": ["activeTab", "scripting"],
+  "action": { "default_popup": "popup.html", "default_title": "Apex Studio" },
+  "icons": { "32": "icon32.png", "128": "icon128.png" },
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'none'; object-src 'none'; base-uri 'none'"
+  }
+}

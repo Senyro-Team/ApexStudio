@@ -95,7 +95,7 @@ button {
 .muted {
   color: var(--muted);
 }
-nav {
+.sidebar nav {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1625,4 +1625,210 @@ button:disabled:hover {
   border-radius: 6px;
   padding: 10px 14px;
   font-size: 13px;
+}
+
+.publishing-editor {
+  max-width: 1000px;
+}
+.publishing-steps {
+  display: flex;
+  gap: 20px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 32px;
+}
+.publishing-steps button {
+  padding: 12px 0;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+.publishing-steps [aria-current="step"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.publishing-fields {
+  max-width: 680px;
+  min-width: 0;
+}
+.publishing-fields label {
+  display: block;
+  margin: 24px 0 8px;
+  font-size: 14px;
+}
+.publishing-fields input:not([type="checkbox"]):not([type="color"]),
+.publishing-fields textarea {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+}
+.publishing-fields textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  resize: vertical;
+}
+.publishing-section-actions,
+.publishing-add-livery {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 16px 0 24px;
+}
+.publishing-section-actions .button-row {
+  gap: 12px;
+}
+.publishing-media-list {
+  list-style: none;
+  padding: 0;
+}
+.publishing-media-list li {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+.publishing-media-list img {
+  width: 128px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.publishing-media-list strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.publishing-media-list small {
+  display: block;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.publishing-media-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+}
+.publishing-asset-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.publishing-code-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 32px;
+}
+.publishing-livery-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.publishing-livery-list button {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.publishing-livery-list [aria-pressed="true"] {
+  border-color: var(--accent);
+}
+.publishing-colours {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+}
+.publishing-colours input[type="number"] {
+  width: 100px !important;
+}
+.publishing-side {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+.publishing-side .slot-editor input {
+  width: 60px !important;
+  margin: 0 !important;
+}
+.publishing-side .slot-editor select {
+  min-width: 0;
+}
+.publishing-editor select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+}
+.publishing-footer {
+  display: flex;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+  margin-top: 36px;
+}
+.publishing-review {
+  max-width: 720px;
+}
+@media (max-width: 1000px) {
+  .publishing-code-layout {
+    grid-template-columns: 1fr;
+  }
+  .publishing-livery-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .publishing-side {
+    grid-template-columns: 1fr;
+  }
+  .publishing-media-list li {
+    flex-wrap: wrap;
+  }
+}
+
+.publishing-steps {
+  flex-direction: row;
+  flex: none;
+  flex-wrap: wrap;
+}
+.publishing-steps button {
+  flex: none;
+  width: auto;
+}
+.publishing-colours input[type="color"],
+.publishing-fields > input[type="color"] {
+  width: 80px;
+  height: 44px;
+  padding: 4px;
+}
+.publishing-fields .field-hint {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.publishing-fields .check-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.publishing-fields .check-label input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: none;
+}
+.publishing-review > p + p {
+  margin-top: 12px;
+}
+.publishing-review > div {
+  margin-top: 24px;
+}
+.publishing-review > .primary {
+  margin-top: 24px;
 }

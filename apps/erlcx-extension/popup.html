@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Apex Studio</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icon32.png" alt="" /><strong>Apex Studio</strong
+      ><span>ERLCX</span>
+    </header>
+    <main>
+      <label class="import-label"
+        >Publishing bundle<input id="bundle" type="file" accept=".apexpublish"
+      /></label>
+      <p id="status" role="status">Import a publishing bundle to begin.</p>
+      <section id="draft" hidden>
+        <h1 id="title"></h1>
+        <p id="summary"></p>
+        <div id="images"></div>
+        <details>
+          <summary>Public content</summary>
+          <p id="description"></p>
+          <p id="tags"></p>
+          <div id="codes"></div>
+        </details>
+        <label class="replace"
+          ><input id="replace" type="checkbox" />Replace existing text
+          fields</label
+        ><button id="fill" class="primary">Fill current step</button>
+        <div class="actions">
+          <button id="undo">Undo filled fields</button
+          ><button id="clear">Clear draft</button>
+        </div>
+        <p class="retention">
+          Stored in this browser until Clear draft, including across restarts.
+        </p>
+      </section>
+      <section id="report" aria-live="polite"></section>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,6 +1,7 @@
 import AssetBrowser from "./AssetBrowser";
 import { lazy, Suspense } from "react";
 const Notes = lazy(() => import("./Notes"));
+const Publishing = lazy(() => import("./Publishing"));
 import { ArchiveImport, ProjectExport } from "./Packages";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -655,7 +656,7 @@ export default function Projects({
             role="group"
             aria-label="Project sections"
           >
-            {["Assets", "Notes", "Details"].map((item) => (
+            {["Assets", "Notes", "Publishing", "Details"].map((item) => (
               <button
                 key={item}
                 disabled={noteDirty && tab !== item}
@@ -686,6 +687,14 @@ export default function Projects({
               onBusy={setNoteDirty}
               onChange={() => void refresh()}
             />
+          ) : tab === "Publishing" ? (
+            <Suspense fallback={<p role="status">Loading publishing draft…</p>}>
+              <Publishing
+                project={project}
+                catalogue={catalogue}
+                onEditingChange={setNoteDirty}
+              />
+            </Suspense>
           ) : tab === "Details" ? (
             <section className="project-metadata">
               <h2>Project details</h2>

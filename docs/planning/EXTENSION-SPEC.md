@@ -2,6 +2,12 @@
 
 Current scope and distribution decisions are tracked in CURRENT-SCOPE.md. No Web Store release is requested; plan an unpacked build first rather than claiming ordinary Windows .crx installation.
 
+## Implementation addendum — 2026-10-22
+
+The development build now uses a version-1 `.apexpublish` ZIP and Manifest V3 assistant with only activeTab/scripting. Imported public metadata and selected PNG blobs persist in IndexedDB until Clear draft; this supersedes earlier storage proposals. Distribution is a manually installed unpacked ZIP. No browser installation or settings changes are performed by the build.
+
+Fresh signed-in DOM inspection reconfirmed Categories, Details and Media. Current public upload-page JavaScript confirmed Codes placeholders, dynamic row controls, portalled colour popovers and opacity bounds 0–100. Local fixtures exercise these controls. Fresh full Media/Codes filling in Chrome remains unverified because the research connector could not attach local images. Historical successful wizard inspection below does not substitute for this implementation check. No post or draft was submitted. See ../phases/PHASE-05.md and ../../apps/erlcx-extension/README.md.
+
 ## Media step verification — 2026-10-21
 
 Follow-up: the user manually selected the two authorised images. The tool then reached Codes, Monetization and Submit. This supersedes the access blocker described below. No draft was saved, agreement accepted or post published.

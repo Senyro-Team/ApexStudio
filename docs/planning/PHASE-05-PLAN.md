@@ -1,6 +1,6 @@
 # Phase 5 — Publishing preparation and ERLCX assistance
 
-Status: authorised and starting 2026-10-22, after the asset drag/layout fix (a21f85f). This document update is the requested Phase 5 checkpoint. Commit each completed code change.
+Status: development implementation delivered 2026-10-22; checkpoint c90fde7 followed the asset drag/layout fix a21f85f. Full live Media/Codes autofill remains a manual verification item. See ../phases/PHASE-05.md for evidence and limitations.
 
 ## Planned deliverables
 

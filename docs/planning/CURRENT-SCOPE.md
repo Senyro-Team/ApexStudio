@@ -104,3 +104,7 @@ Git preference (2026-10-22): commit each completed code change; make a checkpoin
 Catalogue update: Phase 4 uses the supplied official Livery Templates Status workbook snapshot, with body/window status and source rows. It supersedes wiki sourcing; old wiki names are retained only for compatibility with existing project metadata.
 
 Phase 5 remains planned in PHASE-05-PLAN.md. Asset-manager follow-up and explorer operation limits are documented in ../phases/PHASE-04-FIXES.md.
+
+## Phase 5 development implementation — 2026-10-22
+
+Project publishing drafts, ordered PNG previews, manual existing decal IDs and public-only `.apexpublish` export are implemented. Complete backups and embedded project packages preserve drafts and selected media. An unpacked Chrome assistant is built for manual installation and per-step filling. It never advances or publishes. Full live Media/Codes autofill remains a manual verification item; see ../phases/PHASE-05.md. Roblox account upload is not part of this implementation.
