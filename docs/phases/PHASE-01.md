@@ -1,56 +1,40 @@
-# Phase 01 – Repository, Toolchain und modularer Core
+# Phase 1 — foundation
 
-## Scope and status
+2026-10-22. Fresh implementation authorised by the user following the spacious mockup revision. Scope is foundation, not the project-management vertical slice. Native verification completed after the user installed the C++ workload.
 
-This phase establishes the repository layout and a minimal real project workflow. Product and data contracts derive from the supplied Phase 00/01 packet dated 2026-10-19. The package is a plan; no pre-existing application behavior or test results are assumed.
+## Implemented
 
-Implemented source scope: Cargo workspace; Rust domain and application service; temporary in-memory project repository; standalone CLI; Tauri 2 + React + TypeScript shell with a narrow command bridge; versioned DTO fields; minimal capabilities; pinned toolchain/package manager; CI definitions.
+- Cargo workspace: core validation/use-case contracts, SQLite storage adapter, and Tauri 2 desktop adapter.
+- React/TypeScript shell: dashboard, Projects, Notes, Assets, Uploads and Settings; responsive sidebar, keyboard labels, focus and reduced-motion support.
+- Real empty states; browser preview explicitly disconnected from native storage. No localStorage fake persistence, mock projects, provider requests, credentials or telemetry.
+- Local Archivo font/OFL, supplied Apex logo and generated application icons.
+- Workspace creation under app-local data, transactional schema v1, WAL/foreign keys/busy timeout, newer-schema refusal, persisted workspace name command and UI.
+- Managed-file foundation streams arbitrary regular files into immutable SHA-256 blobs; originals preserved and duplicate bytes deduplicated. No UI import yet. Crash recovery may need orphan-blob reconciliation in a later phase.
+- Frontend tests and Rust storage tests; locked dependencies and CI checks defined. CI has not been run remotely.
 
-## Data and API contracts
+## Validation
 
-- Project IDs are UUIDv7 strings; timestamps are UTC RFC 3339; revision starts at 1.
-- Local calendar dates are represented separately from UTC instants; file references use normalized relative paths.
-- Schema, IPC, event, and hash algorithm versions have separate Rust newtypes.
-- Project names are trimmed and limited to 120 Unicode scalar values; control characters and empty names are rejected in Rust.
-- Roblox IDs have a dedicated string value type and are never represented as JavaScript numbers.
-- `CreateProject` and `ListProjects` share `apex-core` use cases across CLI and Tauri.
-- The in-memory repository is temporary and is recreated for each process. Nothing in this phase claims durable persistence.
-- Tauri exposes only `create_project` and `list_projects`; frontend calls use the typed `ProjectDto` and error shapes.
-- Version fields are distinct for schema, IPC, event, and hashing contracts. The common event envelope is reserved for later event-producing workflows.
+- `npm run build`: passed (TypeScript and production bundle).
+- `npm test`: three interaction tests passed, including name-save result and failed-save feedback. These mock the IPC boundary; they do not establish native persistence.
+- `npm audit`: zero known vulnerabilities after updating the initial test-tool dependencies.
+- `cargo test --locked`: all four core/storage tests passed, including settings reopen, file preservation/deduplication, and newer-schema refusal. The first native compile exposed unsupported unsigned SQLite conversions, corrected with checked i64/u64 conversions.
+- `cargo check --locked -p apex-desktop`: passed. Core/storage Clippy with warnings denied passed. Rust formatting passed.
+- `cargo build --locked -p apex-desktop --features custom-protocol`: passed. A distinct library name avoids the binary/library Windows PDB collision. The custom-protocol feature embeds the production frontend so the executable does not need Vite.
+- Native debug executable launched; the real Settings form saved 'Apex Designs', displayed success and updated the header. Closed the window and reopened the executable; the header still displayed 'Apex Designs'. Screenshot: phase-01-native.png. The local workspace remains available; no project/sample data was inserted.
+- No signed installer or release build produced. This is a verified development foundation, not a feature-complete app.
+- Browser preview inspected at desktop (1280×900) and narrow viewport; navigation and layout checked. Fixed icon-only navigation accessible labels after inspection.
+- Impeccable detector returned no findings for the shell files.
 
-## Toolchain recorded in repository
+## Machine setup and blocker
 
-- Rust toolchain: 1.96.0, edition 2024 (minimum declared Rust version: 1.90)
-- Node.js: 24 (local machine reported 24.x)
-- pnpm: 12.8.1
-- React 19.3.1, TypeScript 7.0.2, Vite 8.3.4
-- Tauri JS API/CLI: 2.12.4 / 2.12.3
-- Tauri Rust crate: 2.12.4; tauri-build: 2.7.3
+Rust 1.99.1, rustfmt and clippy were installed using the official rustup installer without changing PATH. Node 26.12.0 was already installed. Add `.cargo/bin` to a terminal PATH to use cargo normally.
 
-Frontend package versions were queried from the npm registry on 2026-10-19 and are pinned exactly. Rust crate constraints are pinned by `Cargo.lock` once generated.
+Initial blocker (resolved): automatic approval review rejected the official Build Tools install command with “blocked by policy”; no alternate route was attempted. The user installed the Desktop development with C++ workload. Visual Studio 18 BuildTools is now detected and both compilation and native restart persistence were verified. WebView2 was already installed. Platform prerequisites: https://v2.tauri.app/start/prerequisites/ .
 
-## Validation record
+To build a self-contained development executable: `npm run build`, then `cargo build --locked -p apex-desktop --features custom-protocol`. Launch `target/debug/apex-desktop.exe`. For hot reload use `npm run desktop`. The OS-reported local-data path is displayed in Settings; when launched by packaged host tools Windows may redirect it into the host's local package cache. Do not hardcode this machine's reported path.
 
-Verified on 2026-10-19 with Rust 1.96.0 / Node 24.19.0 / pnpm 12.8.1:
+## Later work
 
-- `pnpm install --frozen-lockfile` — passed.
-- `cargo fmt --all -- --check` — passed.
-- `cargo test --workspace --locked` — passed; 6 behavior tests passed, remaining placeholder crates had no tests.
-- `cargo clippy --workspace --all-targets --locked -- -D warnings` — passed.
-- `pnpm typecheck` and `pnpm build` — passed.
-- CLI smoke: `apex --help`, `project create`, and `project list --json` all exited successfully. A fresh `project list` returned `[]`, confirming per-process temporary storage.
+Projects/notes/asset UI, vehicle catalogue, backup/restore, packages, Roblox and extension work are not implemented. The settings page clearly labels backup as future work. Workspace path selection and multi-workspace switching are not part of this initial fixed-workspace foundation.
 
-An initial workspace test exposed a missing Windows icon resource. A simple source SVG and generated platform icons were added; the subsequent full workspace test passed. A first TypeScript run also caught the CSS module declaration gap; adding the Vite declaration made the typecheck pass. These were corrected before accepting Phase 1 as tested. A visible Tauri window/E2E interaction was not run in this environment. DTO drift generation/checking remains open.
-
-## Known limitations / Phase 02 handoff
-
-- Project data disappears when CLI exits or desktop closes. Phase 2 must replace the temporary adapter with SQLite without duplicating the application use cases.
-- The CLI has no persistent cross-command storage yet; `project list --json` returns the current process's repository contents (empty in a fresh invocation).
-- No `UnitOfWork`, BlobStore, SecretStore, production provider, or outbox implementation exists; ports are scaffolding only.
-- No generated DTO drift check is configured yet; Rust DTOs and `apps/desktop/src/types.ts` are manually paired.
-- Desktop bundle packaging is disabled pending branding-rights review and distribution phase.
-- No end-to-end UI or adapter contract tests were added or run.
-
-## Next phase entry conditions
-
-Keep the use-case service as the single source for project creation/listing. Introduce schema/migrations, persistence and restart/transaction behavior in `apex-storage`; preserve the explicit temporary adapter only for isolated development if still useful. Add DTO generation or a checked schema-generation workflow before growing bridge contracts.
+No user database was migrated from the old implementation. Existing unrelated deleted files remain deleted; fresh implementations deliberately replace matching source paths. Old history includes tracked node_modules files; new ignore rules prevent new dependency additions but do not untrack legacy entries automatically. No commits or staging changes were made.

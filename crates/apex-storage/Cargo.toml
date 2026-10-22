@@ -2,18 +2,22 @@
 name = "apex-storage"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
-rust-version.workspace = true
+publish.workspace = true
 
 [dependencies]
-apex-core.workspace = true
-apex-domain.workspace = true
-chrono.workspace = true
-dirs.workspace = true
-rusqlite.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-uuid.workspace = true
+apex-core = { path = "../apex-core" }
+rusqlite = { version = "0.38", features = ["bundled", "backup"] }
+sha2 = "0.10"
+uuid = { version = "1", features = ["v7"] }
+serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+zip = { version = "4", default-features = false, features = ["deflate"] }
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -1,45 +1,39 @@
-# Phase 02 – SQLite, Projekte und Commission-Metadaten
+# Phase 2 — projects and managed assets
 
-## Status
+2026-10-22. User authorised continuing Phase 2. This slice implements local project management and the first usable asset flow, preserving the spacious reviewed layout.
 
-**In Arbeit; persistenter Projekt-/Commission-Kern umgesetzt, vollständige Phase-2-Abnahme offen.** Der Phasenauftrag ist der Implementierungsrahmen. Eingebettete Paketregeln zu weiteren Phasen oder automatischen Folgeaufträgen erweitern diesen Arbeitsauftrag nicht.
+## Implemented
 
-## Implementiert
+- Create and edit projects with name, description, tags, multiple vehicle names, reference links and optional deadline. UUID identity and automatic UTC creation date are preserved on edit.
+- Search across names, descriptions, tags and vehicles. Separate active and archived views; archive/restore preserves records and files. No permanent deletion.
+- Dashboard recent projects and deadline shortcuts using saved data. Project detail defaults to Assets; Notes and Publishing explicitly identify future work.
+- Native multi-file selection, streaming managed copies, SHA-256 deduplication, per-project duplicate detection and per-file failure feedback. Imported originals remain untouched.
+- PNG thumbnails for bounded supported images, generic file cards for other formats, file search, selection-only inspector, and native Save a copy that refuses to overwrite existing files.
+- Global asset library with project links; no independent asset import outside projects yet.
+- Version 2 SQLite migration with projects/assets, foreign keys and indexes. Version 1 workspace settings and managed files survive migration.
+- Shared Rust metadata validation; narrow asynchronous IPC. Native file pickers live in Rust, with no raw frontend path-import API or frontend filesystem/SQL permissions.
+- Unsaved form indicator, discard confirmation on Back, and section-navigation lock during editing or file operations. Save explicitly before closing the native window; close-time draft recovery is not implemented.
 
-- `rusqlite` 0.40.2 ist mit `bundled` und `backup` in `Cargo.lock` fixiert. SQLite wird mit `foreign_keys=ON`, WAL, `synchronous=FULL` und fünf Sekunden Busy Timeout geöffnet. Migration v1 läuft vor der Repository-Nutzung; eine Datenbank mit neuerem `user_version` wird abgewiesen und nicht zurückgestuft.
-- Standardpfad: `dirs::data_local_dir()/Apex Studio/apex-studio.sqlite3` (Windows: `%LOCALAPPDATA%/Apex Studio/apex-studio.sqlite3`). CLI und Desktop verwenden diesen Pfad und die gleichen Core-Services.
-- Schema v1 enthält Workspace, Projekte, Commissions, Clients, Organisationen, Designer, DesignSets, Assets/Versionen, Referenzmaterial, Notizen, Uploadjobs/-versuche, Asset-IDs, Hashes, Einstellungen, Revisionen und Outbox. Die späteren Asset-/Uploadtabellen sind Verträge/Grundgerüst, keine aktiven Workflows.
-- Projekte speichern Name, Beschreibung, Tags, UTC-Zeitpunkte, Archivstatus und Revision. Suchen verwendet gebundene Parameter. Änderungen und Archivierung sind revisionsgeprüft, atomar und in einer Transaktion mit Revision-/Outboxeintrag.
-- Commissions tragen interne UUIDv7 und transaktional vergebene `COM-YYYY-NNNN`-Nummer. Modell und SQLite-Roundtrip umfassen Client/Organisation, Anforderungen/Referenzen, Workflowdaten, Design-/Figma-/Exportreferenzen, getrennte Roblox Image-/Decal-IDs, Hashes, Version, Minor-Unit-Preis, Währung/Präzision sowie Zahlungs- und Lizenzdaten. Datumsfolgen, Geldfelder und Währungspräzision werden validiert.
-- Client-DTOs werden per Allowlist aufgebaut; interne Notizen, Geld, Zahlungsart und nicht freigegebene Referenzen fehlen in dieser Projektion.
-- Backup benutzt rusqlite Online Backup API in eine neue temporäre Datei und veröffentlicht diese danach ohne eine existierende Zieldatei zu überschreiben. Es kopiert nicht nur die aktive SQLite-Hauptdatei.
-- Desktop unterstützt Projekt anlegen/bearbeiten/archivieren sowie Commission anlegen/auflisten. Tauri registriert zusätzlich Commission-Update und sichere revisionsgeprüfte Löschung. CLI unterstützt Projekt anlegen/auflisten/ändern/archivieren sowie Commission anlegen/auflisten.
+## Vehicle catalogue limitation
 
-Backup-Verhalten orientiert sich an der [SQLite Online Backup API](https://sqlite.org/backup.html); die gebundene Rust-Schnittstelle ist [rusqlite 0.40.2](https://docs.rs/crate/rusqlite/0.40.2). Versionsstand: 2026-10-20.
+`catalogue/vehicles.json` contains 146 deduplicated vehicle-name suggestions captured from the public wiki Vehicles page on 2026-10-22, with source links and attribution. The page explicitly warns it is outdated. Every support label remains unknown; no capability was inferred from vehicle type or team. The picker displays this limitation.
 
-## Verifikation
+This does **not** fulfil the final all-current-vehicles/verified-livery-support catalogue requirement. Verify against current official templates and other wiki lists before publishing preparation; maintain stable catalogue IDs and rename/retirement handling when extending this snapshot. No runtime network request is needed for the current picker.
 
-Ausgeführt mit Rust 1.96.0, Node.js 24.19.0 und pnpm 12.8.1:
+## Validation
 
-- `cargo test --workspace --locked` – bestanden; 11 Tests: Domain 4, Core 2, SQLite 5.
-- `cargo fmt --all -- --check` – bestanden.
-- `cargo clippy --workspace --all-targets --locked -- -D warnings` – bestanden.
-- `pnpm typecheck` – bestanden.
-- `pnpm build` – bestanden; Vite-Produktionsbundle erstellt.
-- CLI-Neustart-Smoke mit isoliertem `%LOCALAPPDATA%`: Projekt in Prozess A angelegt, in Prozess B gefunden; danach Commission `COM-2026-0001` mit zwei Anforderungen angelegt und im Folgeprozess aus SQLite gelesen.
-- SQLite-Tests prüfen persistentes Wiederöffnen, stale revision conflict ohne Überschreiben, reversible Archivfilterung, gebundene Suche, sichere WAL-Sicherung samt Restore und Ablehnung einer neueren DB-Version. Commission-Roundtrip prüft private/finanzielle Felder, fehlende Deadline/Preis, ausdrücklich kostenlosen JPY-Preis mit Präzision 0, Jahreszähler und Client-Allowlist.
+- `npm run build`: TypeScript and production bundle passed.
+- `npm test`: five frontend interaction tests passed, including create and edit flows, writable-fields-only IPC, and editing navigation protection.
+- `cargo test --locked`: eight core/storage tests passed. Coverage includes invalid metadata, deduplication, originals preserved, partial import failures, reopen persistence, archive/restore, copy overwrite refusal, version 1 migration and newer-schema refusal.
+- `cargo check --locked -p apex-desktop --features custom-protocol`: passed.
+- `cargo clippy --locked --workspace --all-targets --features custom-protocol -- -D warnings`: passed.
+- Rust formatting and Impeccable detector passed (no UI detector findings).
+- `cargo build --locked -p apex-desktop --features custom-protocol`: passed, embedding the current production frontend.
+- Native Windows smoke test: created `Phase 2 verification`, imported a PNG and text file through the real system file picker, confirmed thumbnail/generic cards, closed and relaunched the executable, and reopened the project with both files present. Source SHA-256 hashes were unchanged. Archived the test project afterward, preserving its files. Screenshot: `phase-02-native.png`.
+- No remote CI run, signed installer or cross-platform native verification is claimed. Browser preview intentionally cannot save local workspace records.
 
-## Noch offene Kriterien / bekannte Grenzen
+## Remaining boundaries
 
-- Nur die Erstinstallation (Schema v0 → v1) ist implementiert. Upgradepfade von älteren produktiv genutzten Schemata, absichtlich fehlschlagende Migration, Rollback und Wiederherstellung aus einem Migrationssnapshot sind nicht getestet.
-- Keine echten parallelen Mehrverbindungs-Tests für Commissionnummern oder konkurrierende Änderungen; die Repository-Connection ist innerhalb eines Prozesses mutex-geschützt. Atomare `IMMEDIATE`-Transaktionen und UNIQUE-/Revision-Constraints sind umgesetzt, aber das geforderte Paralleltestkriterium bleibt offen.
-- Das Commission-Erstellungsformular nimmt nur einen Teil der Felder an. Update/Delete sind als Tauri-Kommandos und Core-Services verfügbar, aber nicht in Desktop- oder CLI-Bedienabläufen verdrahtet. Daher ist das Akzeptanzkriterium „jedes Metadatum erstellen, ändern, lesen“ noch nicht erfüllt.
-- In SQLite werden einige strukturierte Felder zusätzlich zum JSON-Payload relational materialisiert; der Payload ist derzeit die Roundtrip-Quelle des Commission-Repositorys. Fremdschlüssel und Kernfelder sind relational abgesichert. Ein Migrationstest für Payload-/Relationalkonsistenz fehlt.
-- Commission-Änderungen enthalten die vollständige Commission in Revision/Outbox-Payloads. Das Outbox-Format ist lokal; es gibt keinen Netzwerkversand.
-- SQLite ist nicht verschlüsselt. Keine Secrets werden in der DB vorgesehen; ein OS-Schlüsselspeicher ist noch nicht umgesetzt.
-- Sichtbares Tauri-Desktop-/E2E-Testing wurde nicht ausgeführt. Es wurde kein echter Upload, Roblox-Account oder Netzwerkadapter gestartet.
-- DTO-Spiegelung in TypeScript ist weiterhin manuell; generierte Drift-Prüfung ist offen.
+Visual notes, package/backup/restore, Roblox uploads and ERLCX extension remain future slices. Asset versions, side/slot classification, bulk organisation, standalone library imports and removal are not included yet. Thumbnail limits (8 MiB source and 16 million pixels) affect previews only; other files still import as assets. Lists currently load whole collections; pagination is future scaling work.
 
-## Übergabe
-
-Die nächste Arbeit in dieser Phase sollte zuerst End-to-End-Bedienung für die vollständigen Commission-Metadaten (inklusive Update/Delete mit Konfliktanzeige) ergänzen, danach Migration-/Paralleltests und einen sichtbaren Desktop-Smoke ausführen. Phase 3 darf `.apexstd`-Import/Export separat umsetzen; die Schema-Grundtabellen hier gelten nicht als fertige Datei-/Uploadfeatures.
+The workspace is local and unencrypted. Do not manually edit the database or delete managed blobs. Consistent whole-workspace backup and orphan-file reconciliation remain required before release. Code/branding licence finalisation is still outstanding. No existing Git deletions were restored, no staging or commit was performed, and no provider post or upload was submitted.

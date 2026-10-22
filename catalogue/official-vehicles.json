@@ -1,0 +1,7586 @@
+{
+  "capturedAt": "2026-10-22",
+  "updatedAt": "2026-10-07",
+  "source": "User-supplied official Livery Templates Status.xlsx",
+  "sourceSha256": "a1942d9b77758e2b226ead9aa889bf8af142c995c9f8eae362587399fceaf407",
+  "completeness": "Official template catalogue snapshot; blank statuses remain unspecified.",
+  "license": "Source supplied for catalogue integration; distribution terms require confirmation before release.",
+  "vehicles": [
+    {
+      "id": "856b51bfc57cadc67737",
+      "name": "4-Wheeler",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A3",
+        "Window Templates!A3"
+      ]
+    },
+    {
+      "id": "1ea2830a583b48bf1de6",
+      "name": "Averon Q8 2022",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A4",
+        "Window Templates!A4"
+      ]
+    },
+    {
+      "id": "98e062e85e98292d8638",
+      "name": "BKM Munich 2020",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A5",
+        "Window Templates!A5"
+      ]
+    },
+    {
+      "id": "36a0a537d5bab44b5745",
+      "name": "Bullhorn BH15 SSV 2009",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [
+        "Fix: Front 2 coming in next update"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Back 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Back 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A6",
+        "Window Templates!A6"
+      ]
+    },
+    {
+      "id": "56e31e7aa880c622eee5",
+      "name": "Bullhorn Determinator C/T 2022",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Model Issue",
+      "notes": [
+        "Windows not separated"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A7",
+        "Window Templates!A7"
+      ]
+    },
+    {
+      "id": "92186b37e03c3edc9e4b",
+      "name": "Bullhorn Determinator SFP Fury 2022",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Model Issue",
+      "notes": [
+        "Windows not separated"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A8",
+        "Window Templates!A8"
+      ]
+    },
+    {
+      "id": "ade6d45d22df805afe7d",
+      "name": "Bullhorn Determinator SFP Fury Blackjack Widebody 2022",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Model Issue",
+      "notes": [
+        "Windows not separated"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A9",
+        "Window Templates!A9"
+      ]
+    },
+    {
+      "id": "70c0ca9b738756ff2a4d",
+      "name": "Bullhorn Foreman 1988",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "In Progress",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A10",
+        "Window Templates!A10"
+      ]
+    },
+    {
+      "id": "c2dbb11e104021e56249",
+      "name": "Bullhorn Prancer Fury Widebody Pursuit 2020",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A11",
+        "Window Templates!A11"
+      ]
+    },
+    {
+      "id": "007fd1042c01714fa80b",
+      "name": "Bullhorn Prancer Pursuit 2011",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A12",
+        "Window Templates!A12"
+      ]
+    },
+    {
+      "id": "edeb9d168f11da382128",
+      "name": "Bullhorn Prancer Pursuit 2015",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A13",
+        "Window Templates!A13"
+      ]
+    },
+    {
+      "id": "a1ff6f87f860e0736c9c",
+      "name": "Bullhorn Pueblo Pursuit 2022",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "Completed",
+      "notes": [
+        "Model was incorrectly rotated while making templates which caused inconsistencies; being reworked"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A14",
+        "Window Templates!A14"
+      ]
+    },
+    {
+      "id": "9854515184eaa3bc05e7",
+      "name": "Canyon Descender",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Front 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A15",
+        "Window Templates!A15"
+      ]
+    },
+    {
+      "id": "8d62e92e51193969a474",
+      "name": "Celestial Truckatron 2024",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A16",
+        "Window Templates!A16"
+      ]
+    },
+    {
+      "id": "86acee7deb321bf10902",
+      "name": "Chevlon Amigo LZR 2011",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Model Issue",
+      "notes": [
+        "Windows not separated"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A17",
+        "Window Templates!A17"
+      ]
+    },
+    {
+      "id": "968f793981c471036c3f",
+      "name": "Chevlon Antelope SS 1994",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A18",
+        "Window Templates!A18"
+      ]
+    },
+    {
+      "id": "63fe5931dcc39acfe1a3",
+      "name": "Chevlon Camion PPV 2000",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A19",
+        "Window Templates!A19"
+      ]
+    },
+    {
+      "id": "2589bd3bd1956196855d",
+      "name": "Chevlon Camion PPV 2008",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A20",
+        "Window Templates!A20"
+      ]
+    },
+    {
+      "id": "151b633be3c044a5a831",
+      "name": "Chevlon Camion PPV 2018",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A21",
+        "Window Templates!A21"
+      ]
+    },
+    {
+      "id": "e1e7dfe823bec12f617b",
+      "name": "Chevlon Camion PPV 2021",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Back 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A22",
+        "Window Templates!A22"
+      ]
+    },
+    {
+      "id": "60b06099ee20a1d92e1e",
+      "name": "Chevlon Captain PPV 2009",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "Completed",
+      "notes": [
+        "Model was incorrectly rotated while making templates which caused inconsistencies; being reworked"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A23",
+        "Window Templates!A23"
+      ]
+    },
+    {
+      "id": "1cda4f7f7cc40a957b40",
+      "name": "Chevlon Commuter Van 2006",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A24",
+        "Window Templates!A24"
+      ]
+    },
+    {
+      "id": "e0942eb11bf0e4e67ba7",
+      "name": "Chevlon Corbeta RZR 2014",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Model Issue",
+      "notes": [
+        "Windows not separated"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A25",
+        "Window Templates!A25"
+      ]
+    },
+    {
+      "id": "6214429b6a2ddba917bb",
+      "name": "Chevlon Inferno 1981",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Model Issue",
+      "notes": [
+        "Windows not separated"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A26",
+        "Window Templates!A26"
+      ]
+    },
+    {
+      "id": "393b0cef51756610ca6e",
+      "name": "Chevlon Platoro PPV 2019",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": "Not in Drive",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Not in Drive",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Not in Drive",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A27",
+        "Window Templates!A27"
+      ]
+    },
+    {
+      "id": "7091fb256c8acc0fb7bb",
+      "name": "Emergency Services Falcon Advance+ 2020",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "In Progress",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A28",
+        "Window Templates!A28"
+      ]
+    },
+    {
+      "id": "bb5322eca17ba62cdcde",
+      "name": "Equipment Trailer",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A29",
+        "Window Templates!A29"
+      ]
+    },
+    {
+      "id": "45f8f9802650f694a848",
+      "name": "Falcon Advance 350 2020",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A30",
+        "Window Templates!A30"
+      ]
+    },
+    {
+      "id": "b4c497d8e3d1e7901f5d",
+      "name": "Falcon Advance XET 2022",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Back 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A31",
+        "Window Templates!A31"
+      ]
+    },
+    {
+      "id": "ab3252168775b84f5700",
+      "name": "Falcon eStallion 2024",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 4",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 4",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A32",
+        "Window Templates!A32"
+      ]
+    },
+    {
+      "id": "b7839abdb61c7966970f",
+      "name": "Falcon Global 350 2013",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Back 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A33",
+        "Window Templates!A33"
+      ]
+    },
+    {
+      "id": "df2b4aa0f5463f8c093c",
+      "name": "Falcon Interceptor Sedan 2017",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A34",
+        "Window Templates!A34"
+      ]
+    },
+    {
+      "id": "b184091f365daf7736d5",
+      "name": "Falcon Interceptor Utility 2013",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 4",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 4",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A35",
+        "Window Templates!A35"
+      ]
+    },
+    {
+      "id": "ba879dba6064ccbe20aa",
+      "name": "Falcon Interceptor Utility 2019",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A36",
+        "Window Templates!A36"
+      ]
+    },
+    {
+      "id": "29d8efa555300121840d",
+      "name": "Falcon Interceptor Utility 2024",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [
+        "Fix: Left 1, Right 1 and Top 1 front fender model issue fix coming in the next update!"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 4",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 4",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A37",
+        "Window Templates!A37"
+      ]
+    },
+    {
+      "id": "b7cb4264a0a4b383196a",
+      "name": "Falcon Prime Eques Interceptor 2003",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A38",
+        "Window Templates!A38"
+      ]
+    },
+    {
+      "id": "cc1084ffa760efadc8c9",
+      "name": "Falcon Rampage Interceptor 2021",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A39",
+        "Window Templates!A39"
+      ]
+    },
+    {
+      "id": "44b8ef5a54b7d669a59d",
+      "name": "Falcon Stallion 350 2015",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Model Issue",
+      "notes": [
+        "Windows not separated"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A40",
+        "Window Templates!A40"
+      ]
+    },
+    {
+      "id": "73e49d2048bfa6874ae3",
+      "name": "Falcon Traveller 2002",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A41",
+        "Window Templates!A41"
+      ]
+    },
+    {
+      "id": "b9a8fb49ef2fda8d9c1e",
+      "name": "Falcon Traveller PPV 2022",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Back 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A42",
+        "Window Templates!A42"
+      ]
+    },
+    {
+      "id": "ae342510e77e9ced04ba",
+      "name": "Ferdinand Rapido GTR3 2023",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A43",
+        "Window Templates!A43"
+      ]
+    },
+    {
+      "id": "43e263dd96801db6c3c0",
+      "name": "Mobile Command 2005",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "In Progress",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A44",
+        "Window Templates!A44"
+      ]
+    },
+    {
+      "id": "c81a9d1a372dc223d148",
+      "name": "Mobile Surveillance Trailer",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A45",
+        "Window Templates!A45"
+      ]
+    },
+    {
+      "id": "c64b7121fdf472295386",
+      "name": "Patrol Boat",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Front 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A46",
+        "Window Templates!A46"
+      ]
+    },
+    {
+      "id": "72f9737ac27ad53ca7a3",
+      "name": "Prisoner Transport Bus",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Model Issue",
+      "notes": [
+        "Windows not separated"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A47",
+        "Window Templates!A47"
+      ]
+    },
+    {
+      "id": "123e3bd52da3479e3d5f",
+      "name": "Silhouette Discorso 2024",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A48",
+        "Window Templates!A48"
+      ]
+    },
+    {
+      "id": "a4e821f69aa7a934c721",
+      "name": "Stuttgart Runner Prisoner Transport 2020",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Not in Game",
+      "notes": [
+        "Problem in game, will be pushed with next bug fix"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Not in Game",
+          "kind": "window"
+        },
+        {
+          "key": "Window Back 2",
+          "status": "Not in Game",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A49",
+        "Window Templates!A49"
+      ]
+    },
+    {
+      "id": "044c89527a347ef096d3",
+      "name": "SWAT Armored Truck 2011",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Model Issue",
+      "notes": [
+        "Windows not separated"
+      ],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A50",
+        "Window Templates!A50"
+      ]
+    },
+    {
+      "id": "2df8e4da848ed03181b5",
+      "name": "Extended Utility Trailer",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A51",
+        "Window Templates!A51"
+      ]
+    },
+    {
+      "id": "a80a279832fc10d7b824",
+      "name": "Flood Light Trailer",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A52",
+        "Window Templates!A52"
+      ]
+    },
+    {
+      "id": "bac5fc7c33d8d3f882b4",
+      "name": "Speed Radar Trailer",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A53",
+        "Window Templates!A53"
+      ]
+    },
+    {
+      "id": "0e7646babc63744489d6",
+      "name": "Utility Trailer",
+      "team": "Law Enforcement Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A54",
+        "Window Templates!A54"
+      ]
+    },
+    {
+      "id": "7da6caae01aa8e706623",
+      "name": "4-Wheeler",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A56",
+        "Window Templates!A56"
+      ]
+    },
+    {
+      "id": "d312cb6a3c2f53b7c2e2",
+      "name": "Brush Falcon Advance+ 2020",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Front 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "In Progress",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A57",
+        "Window Templates!A57"
+      ]
+    },
+    {
+      "id": "beee988b2e0b960351ea",
+      "name": "Bullhorn Pueblo Pursuit 2022",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A58",
+        "Window Templates!A58"
+      ]
+    },
+    {
+      "id": "01f47fa251cc73d40979",
+      "name": "Canyon Descender",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A59",
+        "Window Templates!A59"
+      ]
+    },
+    {
+      "id": "8537bf88c9351e21d600",
+      "name": "Chevlon Camion 2018",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": null,
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A60"
+      ]
+    },
+    {
+      "id": "e0b7ecd20d30014f1d21",
+      "name": "Chevlon L/15 Brush Truck 1981",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A61",
+        "Window Templates!A61"
+      ]
+    },
+    {
+      "id": "f24026450c6b5ceeb8d3",
+      "name": "Falcon Advance 350 2020",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A62",
+        "Window Templates!A62"
+      ]
+    },
+    {
+      "id": "1adc2b642443bd9f1e31",
+      "name": "Falcon Advance 450 Ambulance 2020",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Back 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A63",
+        "Window Templates!A63"
+      ]
+    },
+    {
+      "id": "3701d7fdc6500441958d",
+      "name": "Falcon Advance 600 Pumper 1956",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A64",
+        "Window Templates!A64"
+      ]
+    },
+    {
+      "id": "85784aa038cc6d341309",
+      "name": "Falcon Global 450 Ambulance 2018",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Back 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A65",
+        "Window Templates!A65"
+      ]
+    },
+    {
+      "id": "5e32e0fc61c20318865d",
+      "name": "Falcon Interceptor Utility 2019",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Top 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A66",
+        "Window Templates!A66"
+      ]
+    },
+    {
+      "id": "32bdf54ef62cc9994615",
+      "name": "Heavy Rescue",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": "Not in Drive",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 3",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 4",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Not in Drive",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Not in Drive",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A67",
+        "Window Templates!A67"
+      ]
+    },
+    {
+      "id": "04e2dd7856221c54a7f7",
+      "name": "Medical Bus",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": "Not in Drive",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Not in Drive",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A68",
+        "Window Templates!A68"
+      ]
+    },
+    {
+      "id": "240f4f713cf3f42b5375",
+      "name": "Mobile Command Center",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "In Progress",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A69",
+        "Window Templates!A69"
+      ]
+    },
+    {
+      "id": "50977c41c5440dffbaa4",
+      "name": "Redline Fire Engine",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 7",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 7",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Front 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Front 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 3",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 3",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A70",
+        "Window Templates!A70"
+      ]
+    },
+    {
+      "id": "b4c515e71b8cc7221321",
+      "name": "Redline Heavy Tanker 2014",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A71",
+        "Window Templates!A71"
+      ]
+    },
+    {
+      "id": "6fdfb243548183e7d293",
+      "name": "Redline Midmount Ladder",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 7",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 8",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 9",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 10",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 7",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 8",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 9",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 10",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Front 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A72",
+        "Window Templates!A72"
+      ]
+    },
+    {
+      "id": "b82b7f3513d23fc3fb8d",
+      "name": "Redline Rearmount Ladder",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 7",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 8",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 9",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 10",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 7",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 8",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 9",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 10",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Front 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A73",
+        "Window Templates!A73"
+      ]
+    },
+    {
+      "id": "a71a31973d5a6ff9d028",
+      "name": "Redline Tanker 2014",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A74",
+        "Window Templates!A74"
+      ]
+    },
+    {
+      "id": "b74f9719d7b22ba26b6e",
+      "name": "Redline Type 3 Brush Truck 2014",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A75",
+        "Window Templates!A75"
+      ]
+    },
+    {
+      "id": "310455a876589aaf8e18",
+      "name": "Rescue Boat",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Window Front 1",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A76",
+        "Window Templates!A76"
+      ]
+    },
+    {
+      "id": "e6d48ea1e2a2c4a55eee",
+      "name": "Special Operations Unit",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "In Progress",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A77",
+        "Window Templates!A77"
+      ]
+    },
+    {
+      "id": "ce8b3cb8c85be4beb071",
+      "name": "Squad Falcon Advance+ 2020",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "In Progress",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "In Progress",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "In Progress",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A78",
+        "Window Templates!A78"
+      ]
+    },
+    {
+      "id": "392eea04ad41ec4ef72c",
+      "name": "Extended Utility Trailer",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A79",
+        "Window Templates!A79"
+      ]
+    },
+    {
+      "id": "70690fc755f9138a9427",
+      "name": "Flood Light Trailer",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A80",
+        "Window Templates!A80"
+      ]
+    },
+    {
+      "id": "13149cfedc67faea3ff6",
+      "name": "Utility Trailer",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A81",
+        "Window Templates!A81"
+      ]
+    },
+    {
+      "id": "01d2c801170ec1ce72e2",
+      "name": "Aikawa Street Sweeper 2010",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A83",
+        "Window Templates!A83"
+      ]
+    },
+    {
+      "id": "e6bf05cfc7abbcafc332",
+      "name": "Chevlon L/35 Flatbed Tow Truck 1981",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A84",
+        "Window Templates!A84"
+      ]
+    },
+    {
+      "id": "32d3fb3221960fe2d709",
+      "name": "Explorer Dump Truck 2015",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A85",
+        "Window Templates!A85"
+      ]
+    },
+    {
+      "id": "5758d1e310df0553a7ef",
+      "name": "Explorer Flatbed Tow Truck 2015",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A86",
+        "Window Templates!A86"
+      ]
+    },
+    {
+      "id": "b53a001ecefdfa6eb905",
+      "name": "Explorer Salt Truck 2015",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A87",
+        "Window Templates!A87"
+      ]
+    },
+    {
+      "id": "b0b3f5adc0fabf193c73",
+      "name": "Explorer Transport Truck 2015",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A88",
+        "Window Templates!A88"
+      ]
+    },
+    {
+      "id": "945031f82356ee2007a0",
+      "name": "Falcon Advance 350 2020",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A89",
+        "Window Templates!A89"
+      ]
+    },
+    {
+      "id": "5c6e5c25cea42e2abe83",
+      "name": "Falcon Advance 450 2020",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A90",
+        "Window Templates!A90"
+      ]
+    },
+    {
+      "id": "86e5a3b159e04ccb123b",
+      "name": "Falcon Advance 450 Bucket Truck 2020",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A91",
+        "Window Templates!A91"
+      ]
+    },
+    {
+      "id": "047d1d1e0b8569be20b5",
+      "name": "Falcon Advance 450 Roadside Assist 2020",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A92",
+        "Window Templates!A92"
+      ]
+    },
+    {
+      "id": "1359dea180d5aa5d0615",
+      "name": "Falcon Advance 450 Tow Truck 2020",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A93",
+        "Window Templates!A93"
+      ]
+    },
+    {
+      "id": "7137981a7f759943c75c",
+      "name": "Falcon Global 450 Utility 2018",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 5",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 6",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A94",
+        "Window Templates!A94"
+      ]
+    },
+    {
+      "id": "376810d05504c24a763b",
+      "name": "Forklift",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A95",
+        "Window Templates!A95"
+      ]
+    },
+    {
+      "id": "fe224c272148664bd162",
+      "name": "Front Loader Tractor",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A96",
+        "Window Templates!A96"
+      ]
+    },
+    {
+      "id": "9ddd981283e0d5808df9",
+      "name": "Vellfire Evertt Crew Cab 1995",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A97",
+        "Window Templates!A97"
+      ]
+    },
+    {
+      "id": "51af1c504b757e15a617",
+      "name": "Vinnimade Heavy Rotator 2013",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": "Not in Drive",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Not in Drive",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Not in Drive",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A98",
+        "Window Templates!A98"
+      ]
+    },
+    {
+      "id": "8f2839a03d8e6e62ef42",
+      "name": "Vinnimade Heavy Wrecker 2013",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A99",
+        "Window Templates!A99"
+      ]
+    },
+    {
+      "id": "8855465d5d451140ac67",
+      "name": "Asphalt Trailer",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A100",
+        "Window Templates!A100"
+      ]
+    },
+    {
+      "id": "018b95d120c4d721a63f",
+      "name": "Extended Utility Trailer",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A101",
+        "Window Templates!A101"
+      ]
+    },
+    {
+      "id": "f9241bc7bc9a010b71a7",
+      "name": "Flood Light Trailer",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A102",
+        "Window Templates!A102"
+      ]
+    },
+    {
+      "id": "a1e0570b5433f190a596",
+      "name": "LED Message Board Trailer",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A103",
+        "Window Templates!A103"
+      ]
+    },
+    {
+      "id": "74547c19e751fb998a01",
+      "name": "Traffic Arrow Trailer",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A104",
+        "Window Templates!A104"
+      ]
+    },
+    {
+      "id": "1936c94ba4fa2387266b",
+      "name": "Traffic Light Trailer",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A105",
+        "Window Templates!A105"
+      ]
+    },
+    {
+      "id": "445fa1e88d7695af2922",
+      "name": "Utility Trailer",
+      "team": "Department of Transportation Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A106",
+        "Window Templates!A106"
+      ]
+    },
+    {
+      "id": "ec32bc27265a53cac784",
+      "name": "Bank Truck",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A108",
+        "Window Templates!A108"
+      ]
+    },
+    {
+      "id": "1896d2777f3ff310e9db",
+      "name": "Chevlon News Van 2006",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A109",
+        "Window Templates!A109"
+      ]
+    },
+    {
+      "id": "dbd56647149fa6ce5ac3",
+      "name": "Falcon Prime Eques Taxi 2003",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A110",
+        "Window Templates!A110"
+      ]
+    },
+    {
+      "id": "c374baf5135f53236483",
+      "name": "Falcon Scavenger Security 2013",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A111",
+        "Window Templates!A111"
+      ]
+    },
+    {
+      "id": "8bd3f77d19465d509b14",
+      "name": "Falcon Scavenger Taxi 2024",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A112",
+        "Window Templates!A112"
+      ]
+    },
+    {
+      "id": "ac46800a9e73e81d7fda",
+      "name": "Farm Tractor 5100M",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A113",
+        "Window Templates!A113"
+      ]
+    },
+    {
+      "id": "289969ab63d814daa831",
+      "name": "Front Loader Garbage Truck",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 4",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A114",
+        "Window Templates!A114"
+      ]
+    },
+    {
+      "id": "5040b38aa606aa9f7ac3",
+      "name": "Fuel Tanker",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A115",
+        "Window Templates!A115"
+      ]
+    },
+    {
+      "id": "55b20cf880ef8c90dc54",
+      "name": "Garbage Truck",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 4",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 3",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 3",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A116",
+        "Window Templates!A116"
+      ]
+    },
+    {
+      "id": "ff9d934fdfdac669de11",
+      "name": "La Mesa Food Truck",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A117",
+        "Window Templates!A117"
+      ]
+    },
+    {
+      "id": "10db9ed44a32231a13b3",
+      "name": "Leland Limo 2018",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A118",
+        "Window Templates!A118"
+      ]
+    },
+    {
+      "id": "7551d7bb5073c1741b64",
+      "name": "Mail Truck",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A119",
+        "Window Templates!A119"
+      ]
+    },
+    {
+      "id": "719c4490ebfb8cd43f48",
+      "name": "Mail Van",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A120",
+        "Window Templates!A120"
+      ]
+    },
+    {
+      "id": "2e87b9c66b602d5ecf45",
+      "name": "Metro Transit Bus",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A121",
+        "Window Templates!A121"
+      ]
+    },
+    {
+      "id": "db284fbd34f334f83b5a",
+      "name": "Shuttle Bus",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A122",
+        "Window Templates!A122"
+      ]
+    },
+    {
+      "id": "c81e8bddc0101b06e417",
+      "name": "Three Guys Food Truck",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "supported",
+      "bodyStatus": "Completed",
+      "windowStatus": "N/A",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Back 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Back 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Front 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Left 2",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Right 1",
+          "status": "Completed",
+          "kind": "body"
+        },
+        {
+          "key": "Top 1",
+          "status": "Completed",
+          "kind": "body"
+        }
+      ],
+      "sourceRows": [
+        "Vehicle Templates!A123",
+        "Window Templates!A123"
+      ]
+    },
+    {
+      "id": "73c8fcb37c0b13a38a27",
+      "name": "Ghoul-1 1959",
+      "team": "Civilian Job Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": null,
+      "notes": [],
+      "slots": [],
+      "sourceRows": [
+        "Vehicle Templates!A124",
+        "Window Templates!A124"
+      ]
+    },
+    {
+      "id": "f941d8a508128e8a2f40",
+      "name": "Chevlon Camion PPV 2018",
+      "team": "Fire Department Vehicles",
+      "source": "Livery Templates Status.xlsx",
+      "liverySupport": "unknown",
+      "bodyStatus": null,
+      "windowStatus": "Completed",
+      "notes": [],
+      "slots": [
+        {
+          "key": "Window Back 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Left 2",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 1",
+          "status": "Completed",
+          "kind": "window"
+        },
+        {
+          "key": "Window Right 2",
+          "status": "Completed",
+          "kind": "window"
+        }
+      ],
+      "sourceRows": [
+        "Window Templates!A60"
+      ]
+    }
+  ]
+}

@@ -1,43 +1,50 @@
-# Phase 04 – Lokale PNG-Pipeline, Dateinamen und Hashes
+# Phase 4 — organised assets and livery imports
 
-## Status
+Implemented 2026-10-22 after user authorisation. Scope follows docs/planning/PHASE-04-PLAN.md and the confirmed filename/folder/version decisions.
 
-**Teilweise umgesetzt; vollständige Phase-4-Abnahme offen.** Der lokale Rust-Kern und ein CLI-Einstieg sind vorhanden. Die bestehende Desktop-Oberfläche besitzt noch keinen Importdialog oder Batch-Workflow. Phasenberichte 2 und 3 bleiben in ihrem bisherigen Status.
+## Features
 
-## Implementiert
+- Nested project folders with breadcrumbs, scoped search, create, rename and explicit move controls. Moves affect logical organisation only. Cycle and cross-project checks protect hierarchy/ownership. No permanent deletion was added.
+- Special Livery folders hold one official catalogue vehicle/team variant, a user-defined name, cover and slot assignments. Multiple liveries for the same vehicle are supported. A livery cannot contain another folder/livery.
+- Import livery selects up to 100 PNG files through a native picker, copies them into a temporary snapshot, then shows a review screen before committing. Review includes vehicle search, body/window status, source notes, per-file slot correction, duplicate/unsupported-slot feedback and optional cover selection. Cancelling leaves no project/folder/asset records.
+- Filename parsing is case-insensitive, uses token boundaries and accepts joined side-number forms and aliases. Left/Lft/Lf, Right/Rgt/Rght/Rt, Front/Frt/Frnt, Back/Rear/Bk and Top/Roof are supported. Window/Windows/Win/Wnd prefixes select window slots. The first following number is used; numbers before the side and later suffix numbers are not substituted. Ambiguous or unnumbered names remain unassigned.
+- Updating an existing livery explicitly replaces matching assigned slots while retaining old texture versions. The inspector lists versions and can restore previous bytes. Unassigned incoming files are new entries; matching filenames alone do not overwrite assets.
+- PNG covers can be chosen from reviewed textures or separately through Set cover. Covers are metadata, not automatically added to a texture slot. Regular folders also support covers.
+- Managed file copies preserve original bytes and sources. Plain file imports accept all regular file types. Livery imports validate PNG decoding with local import limits of 20 MiB and 8000×8000; these are local limits, not claims about current provider upload requirements.
+- Global asset links navigate to the owning project folder and open file details.
 
-- `apex-images` enthält einen versionierten Aliasparser für kanonische Slots, CamelCase/Unicode-Token, Fenster-/Kennzeichen-Aliase, sichtbare Indexannahmen und Konflikte. Er liest nur den Dateibasisnamen, liefert Bytebereiche im Originalnamen und unterscheidet `high`, `inferred` und `ambiguous`.
-- `find_duplicate_slots` gruppiert nur innerhalb des vom Aufrufer gesetzten Design-/Vehicle-Variantschlüssels. Variantenerkennung selbst bleibt Sache des Projektmodells.
-- PNG wird mit `png` 0.18.1 real dekodiert. Grenzen: höchstens 20.000.000 Eingabebytes, jede Kante 1–8.000 Pixel. APNG und 16-Bit-PNG werden vor Pixelkonvertierung abgewiesen. Es gibt kein Resize oder Rekodieren. Der Decoder nutzt `EXPAND` nur für gepackte/palettierte Formate und tRNS; keine EXIF-Rotation oder Farbprofil-/Gamma-Transformation wird angefordert.
-- `file_sha256` hasht die exakten Quelldateibytes. `pixel_sha256_v1` hasht `APXSTD-PIXEL-v1\0`, Breite/Höhe als u32 BE und RGBA8 oben-nach-unten; bei Alpha 0 werden RGB-Bytes auf 0 gesetzt.
-- `phash_v1` ist eine feste Ganzzahlpipeline: Alpha auf Weiß mit `(channel*a + 255*(255-a) + 127)/255`, Luma `(299R+587G+114B+500)/1000`, 32×32 Center-nearest Rasterung mit `floor(((2*i+1)*source_dimension)/64)` und Clamping, zweidimensionaler DCT-II. Die Q20-Cosinuskoeffizienten sind als Konstanten abgelegt; DC wird vom Median ausgeschlossen, Median ist sortierter Eintrag 31 der übrigen 63 Koeffizienten. Bit 0 ist DC und bleibt 0; Bit `v*8+u` wird gesetzt, wenn der Koeffizient strikt größer als der Median ist. Das ist ein Ähnlichkeitssignal, kein Identitäts- oder Urheberschaftsnachweis.
-- `phash_hamming_distance` liefert die Bitdistanz nur als Ähnlichkeitsmaß. `suggested_roblox_display_name` liefert `APXSTD-` plus volle lowercase Datei-SHA-256; ein Providerlimit wird erst in Phase 5 geprüft.
-- `BlobStore` schreibt SHA-256-adressierte Rohbytes unter `blobs/<prefix>/<sha256>.png`, publiziert ohne Überschreiben per Hardlink, macht den finalen Blob schreibgeschützt und prüft Referenzpfad sowie Inhalte beim Lesen erneut. `import_path` verweigert Symlink-Quellpfade und nicht reguläre Dateien. Der Originaldateiname bleibt in der Blobreferenz erhalten.
-- CLI-Einstiege: `apex image inspect <path> [--json]` und `apex image import <path> [--json]`. Importablage ist `%LOCALAPPDATA%/Apex Studio/blobs` (über `dirs::data_local_dir`). Tauri bietet `suggest_image_slot(filename)` und überträgt keine Bilddaten als JSON.
+## Official catalogue
 
-## Versions- und API-Vertrag
+`catalogue/official-vehicles.json` is derived from the user-supplied Livery Templates Status.xlsx, last updated October 7, 2026. It contains 120 distinct team/name entries from the union of the body/window sheets. This is not a claim of 120 distinct vehicle models. Exact statuses, supported slot columns, vehicle comments and source-row coordinates are retained. Blank status is unspecified; In Progress is not automatically unsupported. The body/window Chevlon Camion naming discrepancy is kept separate rather than guessed.
 
-- Verwendete Toolchain: `rustc`/`cargo` 1.96.0, Node.js 24.19.0, pnpm 12.8.1. Neue direkte Bibliotheken: `png` 0.18.1 und `unicode-normalization` 0.1.26; SHA-256 nutzt das bereits vorhandene `sha2` 0.11.1. `cargo info` und die offiziellen API-Seiten wurden am 2026-10-20 geprüft: [png 0.18.1 Decoder](https://docs.rs/png/0.18.1/png/struct.Decoder.html), [png Transformations](https://docs.rs/png/0.18.1/png/struct.Transformations.html), [png Info](https://docs.rs/png/0.18.1/png/struct.Info.html), [Unicode Normalization](https://docs.rs/unicode-normalization/0.1.26/unicode_normalization/).
-- Parser-Version 1, Pixelhash-Version 1 und pHash-Version 1 sind getrennte Konstanten.
-- Golden-Vektor: 2×1 RGBA8 `[10,20,30,255, 40,50,60,0]` ergibt `pixel_sha256_v1=a1cbae2ab2650fb3b043ee38eb9b450f5d1cef7e6ada3990e0b0c9778f6c371a` und `phash_v1=0000000000000088`.
+`scripts/extract_catalogue.py` reads only Vehicle Templates and Window Templates and leaves the workbook unchanged. Source SHA-256 is recorded and verified. Community-report/user/contact data is not bundled. Confirm source distribution/attribution terms before public release. The old wiki names remain only for compatibility when editing/importing existing project metadata; UI suggestions use the official source.
 
-## Verifikation
+## Persistence and portability
 
-- `cargo test --workspace --locked` – bestanden, insgesamt 26 Tests, davon 8 Bildtests. Enthalten sind Aliasvarianten, `Bright`-Abweisung, Mehrdeutigkeit, Varianten-Dubletten, PNG-Signatur, APNG-/16-Bit-Ablehnung, Byte-Guard, Kanten 7.999/8.000/8.001, Null-/extreme Header, transparenter RGB-Vertrag, Größenbindung, Golden-Hashes, Blobpfadprüfung und gefrorener Blob nach Quelländerung.
-- `cargo clippy --workspace --all-targets --locked -- -D warnings` – bestanden. `pnpm typecheck` und `pnpm build` – bestanden. CLI-Smoke `apex image inspect apps/desktop/src-tauri/icons/StoreLogo.png --json` – PNG dekodiert und JSON mit Hashes und Slotkonflikt ausgegeben.
-- `cargo check --workspace --offline` – bestanden nach Einbindung in CLI/Tauri. Das Bildprüfen und -importieren selbst benötigt keine Netzwerkaktivität.
-- Frühere erfolgreiche Phase-3-Workspace-Tests sind in `PHASE-03.md` dokumentiert; ein erneuter vollständiger Workspace-Test, Clippy, Frontend-Build sowie Windows-GUI-E2E sind noch nicht gelaufen.
+- Schema 4 adds folders, placements and versions and removes the old project/name/hash uniqueness constraint so identical texture bytes can be represented in multiple liveries without collisions. Physical bytes remain deduplicated.
+- Existing workspaces receive a complete before-schema-4 backup before the asset migration. Existing records retain identities. The live workspace migration and safety archive were verified.
+- Project package version 2 includes folders, covers, assignments and all retained texture versions when files are included. Version-1 packages still import as flat assets. Metadata-only exports preserve folder/livery metadata but omit files, covers, placements, notes and versions. Imports use new IDs and reconstruct parent relationships transactionally.
+- Archive validation checks IDs, ownership references, hierarchy/cycles, cover/version blob references, duplicate slots and size limits as well as existing path/hash validation.
+- Backups retain consistent SQLite plus managed bytes. Schema-3 backups can be validated and migrated in staging before restore; schema-4 backups restore with folder/version state. Before-restore snapshots remain enabled. Newer schemas are refused.
 
-## Offene Kriterien und Risiken
+## Note-editor fixes
 
-- Keine Desktop-Dateiauswahl/-Importansicht, korrigierbare Slotliste, Fortschritt, Batchabbruch oder echte Uploadsperre in der UI. Der Parsercommand liefert nur einen Vorschlag; UI-Bestätigung muss vor späterer Uploadvorbereitung umgesetzt werden.
-- Kein begrenzter Workerpool/Jobqueue. CLI arbeitet synchron und einzeln. 100-Dateien-Fortschritt/Abbruch und 8.000×8.000-Pixel-UI-Reaktionsfähigkeit wurden nicht ausgeführt. Pixelverarbeitung hält einen dekodierten Puffer von bis zu 256 MB; Decoderinterne Limits sind best-effort und auf 32 MiB gesetzt.
-- SQLite-Asset-/Assetversion-Datensätze, relationale Blobreferenzen, Crash-Recovery für Importtransaktionen und Phase-5-Uploadjobbindung sind nicht implementiert. Der Blobspeicher ist derzeit ein eigenes Dateisystemmodul und kein Phase-2-Repositoryadapter.
-- Nicht alle Einzelwerte der 19.999.999/20.000.000-Bytegrenze wurden mit gültigen PNGs erzeugt; es wurde geprüft, dass 20.000.001 Bytes vor Decoderzugriff am Byte-Guard scheitern und 20.000.000 Bytes diesen Guard passieren. APNG, Quell-Symlink und tatsächliche Quelländerung während laufenden Imports haben noch keine eigenen ausführbaren Tests.
-- `BlobStore::import_path` vergleicht Größe und Änderungszeit vor/nach dem Lesen; exotische Dateisysteme mit gleichbleibendem Zeitstempel können parallele gleich große Quelländerungen nicht zuverlässig erkennen. Der importierte Blob selbst wird anschließend eingefroren und auf Hash-/Metadatenabweichung geprüft.
-- pHash-Golden-Vektor wurde auf der aktuellen Windows-Toolchain ausgeführt. Q20-Konstanten machen die DCT-Rechnung plattformstabil; zusätzliche Windows/Linux- und ARM-Goldenläufe fehlen.
-- Kein echter Upload, Roblox-Account, Netzwerkadapter oder Server wird in Phase 4 verwendet.
+- Contextual table controls now render directly below the formatting toolbar, before the editor content. The old position after the editor's minimum-height region caused the gap in the supplied screenshot. Controls preserve selection on mouse-down and use consistent sizing/spacing.
+- Enter in a heading splits into a paragraph using one ProseMirror transaction. Other block types retain their normal Enter behavior. An initial chained-command implementation exposed a position-mapping error in the regression test and was replaced before delivery.
 
-## Übergabe
+## Verification
 
-Phase 5 kann nach Abschluss eines Asset-Repository-/Importtransaktionsvertrags die geprüfte `BlobRef` samt Hashes übernehmen. Phase 6 kann Parser-Suggestion, Span, Regelbegründung und Konfliktstatus präsentieren. Die nächste notwendige Integrationsarbeit ist UI-Dateiauswahl und bestätigbarer Import mit begrenzter Workerqueue; die noch offenen Phase-2/3-Datenschichtpunkte bleiben eigenständig offen.
+- `cargo test --locked`: 18 tests passed. New tests exercise aliases/first-number parsing, folder cycles and cross-project rejection, two liveries for one vehicle, version recovery, atomic rejection of duplicate-slot batches, structured package round-trips with covers/history, schema-3 migration/safety backup and backup restore. Existing storage/note/archive tests also pass.
+- `npm test`: 12 tests passed. New cases cover duplicate-slot correction before commit, native-file assignment order, folder creation and real Enter-key dispatch producing a paragraph after a heading.
+- TypeScript/production bundle build passed. Clippy for workspace/all targets/custom-protocol with warnings denied passed. Rust formatting passed. Impeccable detector returned no findings.
+- Native Windows: saved the user's previously unsaved verification note/table before rebuilding; opened and migrated the real workspace; created a verification project and Liveries folder; imported LEFT 1 7 and RGT 1 9 images, selected an official vehicle and cover, and confirmed Left 1 / Right 1 assignments.
+- Native package export wrote `.tools/phase4-native.apexstd`. Independently inspected its version-2 manifest: two folders, two assets, two placements, two version records and a cover reference. Native import preview and confirmation created a separate project with remapped folders/assets. The two named Phase 4 verification projects are test evidence, not seeded app content.
+- Live SQLite quick_check returned ok; foreign_key_check returned no rows; every managed-file hash matched. The before-schema-4 archive exists.
+- Native note verification: the table controls appeared beside the toolbar; Add row increased the table from three to four rows; Enter after the heading showed Paragraph. Undid only the temporary test edits, saved, and compared the note document against the pre-migration snapshot: exact structural equality, preserving the user's table.
+- Final app is launched for local review. Native version restore and schema-3 backup restore are covered by automated tests; not every formatting combination, alias or failure/power-loss scenario has been manually exercised.
+
+## Boundaries
+
+No provider upload/post, extension, Windows file association/registry change, signed installer, CSV tools or permanent deletion. Current preview caching is bounded to PNGs up to 8 MiB and 16 million pixels; larger valid imported textures are retained but may show generic previews. Folder moves and imports are local; a cover is not automatically published. Version history is included with embedded project exports; selective version-history export is not yet exposed. Lists currently load whole collections. Automatic orphan-blob cleanup and simultaneous multi-process edit coordination remain future work.
+
+Screenshots: phase-04-table-controls.png documents the repaired note controls; phase-04-livery-folders.png shows the imported livery folder and cover after restart. Native project/livery and package flows were visually inspected directly. No staging or commit was performed; unrelated historical deletions remain untouched.

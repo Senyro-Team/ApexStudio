@@ -1,10 +1,9 @@
-/target/
-/node_modules/
-/apps/desktop/dist/
-/apps/desktop/src-tauri/target/
-*.log
-.env
-.env.*
-!.env.example
+node_modules/
+dist/
+target/
+.tools/
+*.tsbuildinfo
+apps/desktop/src-tauri/gen/
+*.sqlite3*
 .DS_Store
 Thumbs.db
