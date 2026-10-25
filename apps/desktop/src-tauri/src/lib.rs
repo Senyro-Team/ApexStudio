@@ -105,6 +105,7 @@ pub fn run() {
             assets::restore_asset_version,
             assets::set_folder_cover,
             assets::prepare_livery,
+            assets::prepare_livery_folders,
             assets::commit_livery,
             assets::cancel_livery
         ])

@@ -1,3 +1,4 @@
+import LiveryFolderImport from "./LiveryFolderImport";
 import RobloxUpload from "./RobloxUpload";
 import useAssetDrag from "./useAssetDrag";
 import { useEffect, useState, useRef, type DragEvent } from "react";
@@ -5,11 +6,14 @@ import {
   FolderOpen,
   File,
   ChevronRight,
+  ChevronDown,
   X,
   Layers,
   MoreHorizontal,
 } from "lucide-react";
 import {
+  prepareLiveryFolders,
+  type LiveryFolderDraft,
   assetBoard,
   assignAssetSlot,
   copyAssetItem,
@@ -48,6 +52,9 @@ export default function AssetBrowser({
   onChange: () => void;
 }) {
   const [uploadFolder, setUploadFolder] = useState<string | null>(null);
+  const [folderBatch, setFolderBatch] = useState<LiveryFolderDraft[] | null>(
+    null,
+  );
   const browserRef = useRef<HTMLElement>(null);
   const dragged = useRef<Item | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null | undefined>(
@@ -116,9 +123,9 @@ export default function AssetBrowser({
     browserRef.current?.focus({ preventScroll: true });
   }, [folderId]);
   useEffect(() => {
-    onBusy(busy || Boolean(draft) || Boolean(folderForm));
+    onBusy(busy || Boolean(draft) || Boolean(folderForm) || !!folderBatch);
     return () => onBusy(false);
-  }, [busy, draft, folderForm, onBusy]);
+  }, [busy, draft, folderForm, folderBatch, onBusy]);
   async function reload() {
     const next = await assetBoard(project.id);
     setBoard(next);
@@ -199,6 +206,18 @@ export default function AssetBrowser({
       if (result?.failed.length) throw Error(result.failed.join("\n"));
       return result;
     }, "Files imported.");
+  }
+  async function chooseLiveryFolders() {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await prepareLiveryFolders(project.id);
+      if (result) setFolderBatch(result);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   }
   async function chooseLivery() {
     setBusy(true);
@@ -380,6 +399,20 @@ export default function AssetBrowser({
       }
     }
   }
+  if (folderBatch)
+    return (
+      <LiveryFolderImport
+        projectId={project.id}
+        parentId={folderId}
+        folders={folderBatch}
+        catalogue={catalogue}
+        onClose={() => {
+          setFolderBatch(null);
+          void reload();
+          onChange();
+        }}
+      />
+    );
   return (
     <section
       className="asset-browser"
@@ -524,6 +557,30 @@ export default function AssetBrowser({
             >
               {folder?.kind === "livery" ? "Update livery" : "Import livery"}
             </button>
+            {folder?.kind !== "livery" && (
+              <details className="asset-import-menu">
+                <summary
+                  aria-label="More livery import options"
+                  title="More livery import options"
+                >
+                  <ChevronDown size={16} />
+                </summary>
+                <div className="asset-folder-menu-items">
+                  <button
+                    className="text-button"
+                    disabled={locked}
+                    onClick={(e) => {
+                      e.currentTarget
+                        .closest("details")
+                        ?.removeAttribute("open");
+                      void chooseLiveryFolders();
+                    }}
+                  >
+                    Import livery folders
+                  </button>
+                </div>
+              </details>
+            )}
             {folder?.kind !== "livery" && (
               <button
                 className="secondary"

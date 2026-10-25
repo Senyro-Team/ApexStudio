@@ -302,3 +302,12 @@ export const robloxLivery = (folderId: string) =>
   invoke<LiveryUploads>("roblox_livery", { folderId });
 export const uploadRobloxTexture = (folderId: string, hash: string) =>
   invoke<DecalUpload>("upload_roblox_texture", { folderId, hash });
+
+export interface LiveryFolderDraft {
+  name: string;
+  draft: LiveryDraft | null;
+  warning: string | null;
+  error: string | null;
+}
+export const prepareLiveryFolders = (projectId: string) =>
+  invoke<LiveryFolderDraft[] | null>("prepare_livery_folders", { projectId });

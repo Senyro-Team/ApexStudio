@@ -24,6 +24,162 @@ pub struct DraftInfo {
     token: String,
     files: Vec<Candidate>,
 }
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderDraftInfo {
+    name: String,
+    draft: Option<DraftInfo>,
+    warning: Option<String>,
+    error: Option<String>,
+}
+
+fn stage_livery_folder(
+    project: &str,
+    source: &std::path::Path,
+    remaining: &mut u64,
+) -> Result<(Draft, Vec<Candidate>, usize), Error> {
+    let metadata = std::fs::symlink_metadata(source).map_err(|e| Error::Storage(e.to_string()))?;
+    if !metadata.file_type().is_dir() {
+        return Err(Error::InvalidContent(
+            "Choose a regular folder, not a shortcut or link.".into(),
+        ));
+    }
+    let mut paths = Vec::new();
+    let mut skipped = 0;
+    for entry in std::fs::read_dir(source).map_err(|e| Error::Storage(e.to_string()))? {
+        let entry = entry.map_err(|e| Error::Storage(e.to_string()))?;
+        let kind = entry
+            .file_type()
+            .map_err(|e| Error::Storage(e.to_string()))?;
+        if kind.is_file()
+            && entry
+                .path()
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("png"))
+        {
+            paths.push(entry.path());
+        } else {
+            skipped += 1;
+        }
+        if paths.len() > 100 {
+            return Err(Error::InvalidContent(
+                "Use up to 100 PNG files per livery folder.".into(),
+            ));
+        }
+    }
+    paths.sort();
+    if paths.is_empty() {
+        return Err(Error::InvalidContent(
+            "No PNG files directly inside this folder. Nested folders are not imported.".into(),
+        ));
+    }
+    let dir = tempfile::tempdir().map_err(|e| Error::Storage(e.to_string()))?;
+    let mut files = Vec::new();
+    let mut candidates = Vec::new();
+    let mut used = 0;
+    for (index, path) in paths.into_iter().enumerate() {
+        let name = path
+            .file_name()
+            .ok_or(Error::NotFound)?
+            .to_string_lossy()
+            .into_owned();
+        let size = std::fs::metadata(&path)
+            .map_err(|e| Error::Storage(e.to_string()))?
+            .len();
+        if size > 20 * 1024 * 1024 || used + size > *remaining {
+            return Err(Error::InvalidContent(
+                "Use PNG files up to 20 MB each and up to 2 GB across this batch.".into(),
+            ));
+        }
+        let target = dir.path().join(format!("{index}.png"));
+        std::fs::copy(&path, &target).map_err(|e| Error::Storage(e.to_string()))?;
+        apex_storage::validate_texture(&target)?;
+        used += size;
+        candidates.push(Candidate {
+            index,
+            suggested_slot: apex_core::suggest_slot(&name),
+            name: name.clone(),
+        });
+        files.push((target, name));
+    }
+    *remaining -= used;
+    Ok((
+        Draft {
+            project: project.into(),
+            _dir: dir,
+            files,
+        },
+        candidates,
+        skipped,
+    ))
+}
+
+#[tauri::command]
+pub async fn prepare_livery_folders(
+    project_id: String,
+    app: tauri::AppHandle,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<Option<Vec<FolderDraftInfo>>, CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || {
+        ws.editable_project(&project_id)?;
+        let Some(selected) = app
+            .dialog()
+            .file()
+            .set_title("Select livery folders — one livery per folder")
+            .blocking_pick_folders()
+        else {
+            return Ok(None);
+        };
+        if selected.is_empty() || selected.len() > 50 {
+            return Err(Error::InvalidContent(
+                "Choose between 1 and 50 livery folders.".into(),
+            ));
+        }
+        let mut prepared = Vec::new();
+        let mut info = Vec::new();
+        let mut remaining = 2 * 1024 * 1024 * 1024;
+        for source in selected {
+            let path = source
+                .into_path()
+                .map_err(|e| Error::Storage(e.to_string()))?;
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            match stage_livery_folder(&project_id, &path, &mut remaining) {
+                Ok((draft, files, skipped)) => {
+                    let token = uuid::Uuid::now_v7().to_string();
+                    prepared.push((token.clone(), draft));
+                    info.push(FolderDraftInfo {
+                        name,
+                        draft: Some(DraftInfo { token, files }),
+                        warning: (skipped > 0).then(|| {
+                            format!("Skipped {skipped} non-PNG files, links or nested folders.")
+                        }),
+                        error: None,
+                    });
+                }
+                Err(e) => info.push(FolderDraftInfo {
+                    name,
+                    draft: None,
+                    warning: None,
+                    error: Some(e.to_string()),
+                }),
+            }
+        }
+        let state = app.state::<LiveryDrafts>();
+        let mut drafts = state
+            .0
+            .lock()
+            .map_err(|_| Error::Storage("Livery selection unavailable.".into()))?;
+        drafts.clear();
+        drafts.extend(prepared);
+        Ok(Some(info))
+    })
+    .await
+}
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Assignment {
@@ -268,6 +424,77 @@ pub async fn cancel_livery(
         })?
         .remove(&token);
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod folder_tests {
+    use super::*;
+    #[test]
+    fn folder_batches_keep_same_named_files_separate_and_preserve_originals() {
+        let root = tempfile::tempdir().unwrap();
+        let mut remaining = 2 * 1024 * 1024 * 1024;
+        let ws = Workspace::open(root.path().join("workspace")).unwrap();
+        let project = ws
+            .save_project(
+                None,
+                apex_core::ProjectInput {
+                    name: "Batch".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let vehicle = apex_core::vehicle_catalogue().unwrap().vehicles.remove(0);
+        for (i, name) in ["Patrol A", "Patrol B"].iter().enumerate() {
+            let folder = root.path().join(name);
+            std::fs::create_dir(&folder).unwrap();
+            let texture = folder.join("Patrol Lft 1 9.PNG");
+            // Reuse a valid bundled PNG without adding an image dependency to the adapter.
+            std::fs::write(
+                &texture,
+                include_bytes!("../../../erlcx-extension/icon32.png"),
+            )
+            .unwrap();
+            std::fs::write(folder.join("source.txt"), b"preserve me").unwrap();
+            std::fs::create_dir(folder.join("nested")).unwrap();
+            let (draft, candidates, skipped) =
+                stage_livery_folder(&project.id, &folder, &mut remaining).unwrap();
+            assert_eq!(skipped, 2);
+            assert_eq!(candidates.len(), 1);
+            assert_eq!(candidates[0].suggested_slot.as_deref(), Some("Left 1"));
+            let files: Vec<_> = draft
+                .files
+                .iter()
+                .map(|(path, name)| (path.clone(), name.clone(), Some("Left 1".into())))
+                .collect();
+            let id = ws
+                .import_livery(&project.id, None, None, name, &vehicle.id, &files, Some(0))
+                .unwrap();
+            assert_eq!(ws.folder(&id).unwrap().name, *name);
+            assert_eq!(ws.board(&project.id).unwrap().assets.len(), i + 1);
+            assert_eq!(
+                std::fs::read(&texture).unwrap(),
+                std::fs::read(&draft.files[0].0).unwrap()
+            );
+        }
+        assert_eq!(ws.folders(&project.id).unwrap().len(), 2);
+    }
+    #[test]
+    fn empty_invalid_and_oversized_batches_do_not_leave_staged_drafts() {
+        let root = tempfile::tempdir().unwrap();
+        let mut budget = 100;
+        assert!(stage_livery_folder("p", root.path(), &mut budget).is_err());
+        std::fs::write(root.path().join("bad.png"), b"not a PNG").unwrap();
+        assert!(stage_livery_folder("p", root.path(), &mut budget).is_err());
+        assert_eq!(budget, 100);
+        std::fs::write(
+            root.path().join("bad.png"),
+            include_bytes!("../../../erlcx-extension/icon32.png"),
+        )
+        .unwrap();
+        assert!(stage_livery_folder("p", root.path(), &mut budget).is_err());
+        assert_eq!(budget, 100);
+    }
 }
 
 #[tauri::command]

@@ -21,7 +21,7 @@ cargo build --locked -p apex-desktop --features custom-protocol
 .\target\debug\apex-desktop.exe
 ```
 
-The native Windows build, 29 Rust tests, 35 frontend/extension tests, and project/file persistence across restart have been verified. This is a debug executable, not a signed release installer.
+The native Windows build, 31 Rust tests, 39 frontend/extension tests, and project/file persistence across restart have been verified. This is a debug executable, not a signed release installer.
 
 ## Current behaviour
 
@@ -58,3 +58,5 @@ Current scope: `docs/planning/CURRENT-SCOPE.md`. Validation and limitations: [Ph
 Asset-manager follow-up: see [changes and verification](docs/phases/PHASE-04-FIXES.md). Phase 5 development build: [features, verification and limitations](docs/phases/PHASE-05.md).
 
 Roblox workflow: [setup, uploads, publishing handoff and verification](docs/phases/PHASE-05-ROBLOX.md).
+
+Multiple-folder livery imports: [workflow and limits](docs/phases/LIVERY-FOLDER-IMPORT.md).
