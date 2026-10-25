@@ -14,6 +14,9 @@ import {
 } from "./bridge";
 
 vi.mock("./bridge", () => ({
+  robloxSettings: vi
+    .fn()
+    .mockResolvedValue({ configured: false, accountId: null }),
   desktopAvailable: true,
   assetBoard: vi.fn(),
   readWorkspace: vi.fn(),

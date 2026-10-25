@@ -1,6 +1,11 @@
+import RobloxUpload, {
+  readyForPublishing,
+  publishingLivery,
+} from "./RobloxUpload";
 import { useEffect, useState } from "react";
 import SlotEditor from "./SlotEditor";
 import {
+  robloxLivery,
   publishingDraft,
   publishingPreviews,
   savePublishing,
@@ -16,7 +21,7 @@ import {
   type Catalogue,
   type Project,
 } from "./bridge";
-const steps = ["Details", "Previews", "Codes", "Review"] as const;
+const steps = ["Liveries", "Details", "Previews", "Review"] as const;
 export default function Publishing({
   project,
   catalogue,
@@ -26,9 +31,10 @@ export default function Publishing({
   catalogue: Catalogue | null;
   onEditingChange: (dirty: boolean) => void;
 }) {
+  const [pendingFolder, setPendingFolder] = useState<string | null>(null);
   const [saved, setSaved] = useState<PublishingDraft | null>(null),
     [data, setData] = useState<PublishingData | null>(null),
-    [step, setStep] = useState<(typeof steps)[number]>("Details"),
+    [step, setStep] = useState<(typeof steps)[number]>("Liveries"),
     [busy, setBusy] = useState(false),
     [dirty, setDirty] = useState(false),
     [error, setError] = useState(""),
@@ -60,9 +66,9 @@ export default function Publishing({
     };
   }, [project.id]);
   useEffect(() => {
-    onEditingChange(dirty || busy);
+    onEditingChange(dirty || busy || !!pendingFolder);
     return () => onEditingChange(false);
-  }, [dirty, busy, onEditingChange]);
+  }, [dirty, busy, pendingFolder, onEditingChange]);
   useEffect(() => {
     let active = true;
     if (!data?.media.length) {
@@ -93,7 +99,13 @@ export default function Publishing({
     if (!data) return;
     edit({
       liveries: data.liveries.map((l, i) =>
-        i === activeLivery ? { ...l, ...patch } : l,
+        i === activeLivery
+          ? {
+              ...l,
+              ...patch,
+              ...(patch.sides || patch.vehicle ? { source: undefined } : {}),
+            }
+          : l,
       ),
     });
   }
@@ -147,28 +159,46 @@ export default function Publishing({
       setBusy(false);
     }
   }
-  function addLivery() {
-    const f = board.folders.find((f) => f.id === source);
-    const vehicle = catalogue?.vehicles.find((v) => v.id === f?.vehicleId);
-    const sides = f
-      ? board.placements
-          .filter((p) => p.folderId === f.id && p.slot)
-          .map((p) => ({ side: p.slot!, decalId: "" }))
-      : [];
+  function includeLivery(next: PublishingLivery) {
     if (!data) return;
-    edit({
-      liveries: [
-        ...data.liveries,
-        {
-          vehicle: vehicle?.name ?? "",
-          primaryColor: "#FFFFFF",
-          secondaryColor: null,
-          opacity: 100,
-          sides: sides.length ? sides : [{ side: "Left 1", decalId: "" }],
-        },
-      ],
-    });
-    setActiveLivery(data.liveries.length);
+    const existing = next.source
+      ? data.liveries.findIndex(
+          (l) => l.source?.folderId === next.source!.folderId,
+        )
+      : -1;
+    if (existing >= 0) {
+      edit({
+        liveries: data.liveries.map((l, i) =>
+          i === existing
+            ? {
+                ...next,
+                primaryColor: l.primaryColor,
+                secondaryColor: l.secondaryColor,
+                opacity: l.opacity,
+              }
+            : l,
+        ),
+      });
+      setActiveLivery(existing);
+    } else {
+      edit({ liveries: [...data.liveries, next] });
+      setActiveLivery(data.liveries.length);
+    }
+    setPendingFolder(null);
+  }
+  async function addLivery() {
+    if (!source || !data) return;
+    setBusy(true);
+    setError("");
+    try {
+      const l = await robloxLivery(source);
+      if (readyForPublishing(l)) includeLivery(publishingLivery(l));
+      else setPendingFolder(source);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   }
   if (error && !data)
     return (
@@ -193,6 +223,15 @@ export default function Publishing({
   ];
   return (
     <section className="publishing-editor" aria-label="Publishing draft">
+      {pendingFolder && (
+        <RobloxUpload
+          folderId={pendingFolder}
+          include
+          onBusy={setBusy}
+          onClose={() => setPendingFolder(null)}
+          onDone={(l) => includeLivery(publishingLivery(l))}
+        />
+      )}
       {error && (
         <p className="error" role="alert">
           {error}
@@ -371,10 +410,10 @@ export default function Publishing({
           </ol>
         </section>
       )}
-      {step === "Codes" && (
+      {step === "Liveries" && (
         <section>
           <div className="publishing-section-actions">
-            <h2>Livery codes</h2>
+            <h2>Liveries for ERLCX</h2>
             <div className="publishing-add-livery">
               <select
                 aria-label="Livery source"
@@ -382,7 +421,7 @@ export default function Publishing({
                 disabled={locked}
                 onChange={(e) => setSource(e.target.value)}
               >
-                <option value="">Blank livery</option>
+                <option value="">Choose a project livery</option>
                 {board.folders
                   .filter((f) => f.kind === "livery")
                   .map((f) => (
@@ -393,13 +432,39 @@ export default function Publishing({
               </select>
               <button
                 className="secondary"
-                disabled={locked || data.liveries.length >= 20}
-                onClick={addLivery}
+                disabled={locked || !source || data.liveries.length >= 20}
+                onClick={() => void addLivery()}
               >
-                Add livery
+                Include livery
               </button>
             </div>
           </div>
+          <p className="field-hint">
+            Upload livery textures to Roblox, then include their decal IDs here.
+            Preview images for ERLCX are selected separately.
+          </p>
+          {!data.liveries.length && <p>No liveries selected.</p>}
+          <details className="publishing-manual">
+            <summary>Use existing decal IDs manually</summary>
+            <p className="field-hint">
+              For textures already uploaded outside Apex Studio.
+            </p>
+            <button
+              className="secondary"
+              disabled={locked || data.liveries.length >= 20}
+              onClick={() => {
+                includeLivery({
+                  vehicle: "",
+                  primaryColor: "#FFFFFF",
+                  secondaryColor: null,
+                  opacity: 100,
+                  sides: [{ side: "Left 1", decalId: "" }],
+                });
+              }}
+            >
+              Add manual livery
+            </button>
+          </details>
           {data.liveries.length > 0 && (
             <div className="publishing-code-layout">
               <div className="publishing-livery-list">
@@ -416,10 +481,40 @@ export default function Publishing({
               </div>
               {current && (
                 <div className="publishing-fields">
+                  {current.source && (
+                    <div className="publishing-source">
+                      <span>Roblox decal IDs linked to this livery.</span>
+                      <button
+                        className="secondary"
+                        disabled={locked}
+                        onClick={() => {
+                          setSource(current.source!.folderId);
+                          void (async () => {
+                            setBusy(true);
+                            try {
+                              const l = await robloxLivery(
+                                current.source!.folderId,
+                              );
+                              if (readyForPublishing(l))
+                                includeLivery(publishingLivery(l));
+                              else setPendingFolder(current.source!.folderId);
+                            } catch (e) {
+                              setError(errorMessage(e));
+                            } finally {
+                              setBusy(false);
+                            }
+                          })();
+                        }}
+                      >
+                        Refresh Roblox IDs
+                      </button>
+                    </div>
+                  )}
                   <label>
                     Vehicle
                     <input
                       aria-label="Publishing vehicle"
+                      readOnly={!!current.source}
                       list="publishing-vehicle-options"
                       maxLength={120}
                       value={current.vehicle}
@@ -498,7 +593,7 @@ export default function Publishing({
                         <SlotEditor
                           label={`code row ${i + 1}`}
                           value={s.side || null}
-                          disabled={locked}
+                          disabled={locked || !!current.source}
                           onChange={(side) =>
                             changeLivery({
                               sides: current.sides.map((v, j) =>
@@ -513,7 +608,7 @@ export default function Publishing({
                           maxLength={20}
                           placeholder="Decal ID"
                           value={s.decalId}
-                          disabled={locked}
+                          disabled={locked || !!current.source}
                           onChange={(e) =>
                             changeLivery({
                               sides: current.sides.map((v, j) =>
@@ -525,7 +620,7 @@ export default function Publishing({
                         <button
                           className="text-button"
                           aria-label={`Remove code row ${i + 1}`}
-                          disabled={locked}
+                          disabled={locked || !!current.source}
                           onClick={() =>
                             changeLivery({
                               sides: current.sides.filter((_, j) => i !== j),
@@ -540,7 +635,11 @@ export default function Publishing({
                   <div className="publishing-section-actions">
                     <button
                       className="secondary"
-                      disabled={locked || current.sides.length >= 100}
+                      disabled={
+                        locked ||
+                        !!current.source ||
+                        current.sides.length >= 100
+                      }
                       onClick={() =>
                         changeLivery({
                           sides: [...current.sides, { side: "", decalId: "" }],
@@ -572,6 +671,11 @@ export default function Publishing({
       )}
       {step === "Review" && (
         <section className="publishing-review">
+          <p className="field-hint">
+            Export this post, import it in the Apex Chrome extension, then use
+            Fill current step on each ERLCX upload page. Review every page and
+            continue yourself.
+          </p>
           <h2>{data.title || "Untitled post"}</h2>
           <p className="pre-wrap">{data.description}</p>
           <p>{data.tags.filter(Boolean).join(" · ")}</p>
@@ -601,7 +705,7 @@ export default function Publishing({
             disabled={busy || dirty || requirements.length > 0}
             onClick={() => void exportBundle()}
           >
-            Export publishing bundle
+            Export for ERLCX extension
           </button>
           {dirty && (
             <p className="field-hint">Save changes before exporting.</p>

@@ -108,3 +108,7 @@ Phase 5 remains planned in PHASE-05-PLAN.md. Asset-manager follow-up and explore
 ## Phase 5 development implementation — 2026-10-22
 
 Project publishing drafts, ordered PNG previews, manual existing decal IDs and public-only `.apexpublish` export are implemented. Complete backups and embedded project packages preserve drafts and selected media. An unpacked Chrome assistant is built for manual installation and per-step filling. It never advances or publishes. Full live Media/Codes autofill remains a manual verification item; see ../phases/PHASE-05.md. Roblox account upload is not part of this implementation.
+
+## Roblox upload follow-up — 2026-10-25
+
+Personal-account Open Cloud decal uploads are implemented per livery, with verified settings stored in Windows Credential Manager. Only the Decal asset ID is used for ER:LC/ERLCX; image IDs are rejected. Publishing begins with livery selection, imports current texture-version IDs, and prompts Upload and include / Skip this livery when IDs are missing. Exact 8000 × 8000 PNGs are accepted; either dimension above 8000 is rejected. This supersedes earlier statements that Roblox uploads are unimplemented. Standalone uploads and group ownership remain outside this follow-up. See ../phases/PHASE-05-ROBLOX.md.

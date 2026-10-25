@@ -941,15 +941,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::open(dir.path().join("old")).unwrap();
         ws.rename("Old studio").unwrap();
-        ws.connection().unwrap().execute_batch("DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;PRAGMA user_version=3;").unwrap();
+        ws.connection().unwrap().execute_batch("DROP TABLE roblox_uploads;DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;PRAGMA user_version=3;").unwrap();
         let path = dir.path().join("old.apexbackup");
         ws.backup(&path).unwrap();
         let restored = Workspace::open(dir.path().join("new")).unwrap();
         restored.restore_backup(&path).unwrap();
-        assert_eq!(restored.info().unwrap().schema_version, 5);
+        assert_eq!(restored.info().unwrap().schema_version, 6);
         assert_eq!(restored.info().unwrap().name, "Old studio");
         let migrated = Workspace::open(dir.path().join("old")).unwrap();
-        assert_eq!(migrated.info().unwrap().schema_version, 5);
+        assert_eq!(migrated.info().unwrap().schema_version, 6);
         assert!(std::fs::read_dir(migrated.root.join("backups"))
             .unwrap()
             .next()

@@ -289,6 +289,7 @@ fn checked(path: &Path) -> Result<Checked, Error> {
             "asset_versions",
             "publishing_drafts",
             "publishing_media",
+            "roblox_uploads",
         ]);
         let mut stmt=db.prepare("SELECT name,type FROM sqlite_master WHERE type IN ('table','view','trigger') AND name NOT LIKE 'sqlite_%'").map_err(storage)?;
         let schema = stmt
@@ -466,7 +467,13 @@ impl Workspace {
         let publishing = if embedded {
             let draft = self.publishing(id)?;
             if draft.revision > 0 {
-                Some(draft.data)
+                Some({
+                    let mut data = draft.data;
+                    for l in &mut data.liveries {
+                        l.source = None;
+                    }
+                    data
+                })
             } else {
                 None
             }

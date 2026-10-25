@@ -1,3 +1,4 @@
+import RobloxUpload from "./RobloxUpload";
 import useAssetDrag from "./useAssetDrag";
 import { useEffect, useState, useRef, type DragEvent } from "react";
 import {
@@ -46,6 +47,7 @@ export default function AssetBrowser({
   onBusy: (value: boolean) => void;
   onChange: () => void;
 }) {
+  const [uploadFolder, setUploadFolder] = useState<string | null>(null);
   const browserRef = useRef<HTMLElement>(null);
   const dragged = useRef<Item | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null | undefined>(
@@ -411,6 +413,14 @@ export default function AssetBrowser({
         }
       }}
     >
+      {uploadFolder && (
+        <RobloxUpload
+          folderId={uploadFolder}
+          onBusy={setBusy}
+          onClose={() => setUploadFolder(null)}
+          onDone={() => setUploadFolder(null)}
+        />
+      )}
       {error && (
         <p className="error pre-wrap" role="alert">
           {error}
@@ -477,6 +487,20 @@ export default function AssetBrowser({
           </details>
         )}
       </div>
+      {folder?.kind === "livery" && (
+        <div className="livery-upload-actions">
+          <button
+            className="primary"
+            disabled={locked}
+            onClick={() => setUploadFolder(folder.id)}
+          >
+            Upload to Roblox
+          </button>
+          <span className="field-hint">
+            Assigned textures → Roblox decal IDs
+          </span>
+        </div>
+      )}
       {!draft && !folderForm && (
         <div className="asset-command-bar">
           <input
@@ -811,6 +835,18 @@ export default function AssetBrowser({
                   : `${currentFolders.length} folders · ${currentFiles.length} files`}
               </span>
               <div className="explorer-toolbar button-row">
+                {explorerSelection?.folder &&
+                  board.folders.some(
+                    (f) => f.id === explorerSelection.id && f.kind === "livery",
+                  ) && (
+                    <button
+                      className="text-button"
+                      disabled={locked}
+                      onClick={() => setUploadFolder(explorerSelection.id)}
+                    >
+                      Upload to Roblox
+                    </button>
+                  )}
                 {explorerSelection?.folder && (
                   <button
                     className="text-button"

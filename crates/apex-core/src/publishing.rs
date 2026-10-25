@@ -19,11 +19,20 @@ pub struct PublishingImage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PublishingLivery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<PublishingSource>,
     pub vehicle: String,
     pub primary_color: String,
     pub secondary_color: Option<String>,
     pub opacity: u8,
     pub sides: Vec<PublishingSide>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PublishingSource {
+    pub folder_id: String,
+    pub account_id: String,
+    pub hashes: Vec<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -101,6 +110,15 @@ impl PublishingInput {
             }
         }
         for l in &self.liveries {
+            if let Some(source) = &l.source {
+                if source.folder_id.len() > 100
+                    || source.account_id.len() > 20
+                    || source.hashes.len() > 100
+                    || source.hashes.iter().any(|h| !crate::valid_hash(h))
+                {
+                    return Err(invalid("Invalid linked livery source."));
+                }
+            }
             let color = |v: &str| {
                 v.len() == 7 && v.starts_with('#') && v[1..].bytes().all(|b| b.is_ascii_hexdigit())
             };

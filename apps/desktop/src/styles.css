@@ -1832,3 +1832,109 @@ button:disabled:hover {
 .publishing-review > .primary {
   margin-top: 24px;
 }
+
+.roblox-settings {
+  max-width: 760px;
+}
+.roblox-settings > p {
+  margin: 16px 0 24px;
+  line-height: 1.6;
+}
+.roblox-settings form > label {
+  display: block;
+  margin: 24px 0 10px;
+  font-weight: 600;
+}
+.roblox-settings form > input {
+  width: min(100%, 440px);
+}
+.roblox-settings .button-row {
+  justify-content: flex-start;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+.roblox-dialog {
+  width: min(800px, calc(100vw - 48px));
+  max-height: 85vh;
+  overflow: auto;
+  padding: 32px;
+  background: var(--surface, #202127);
+  color: var(--text, #f2f2f5);
+  border: 1px solid var(--border, #3d3f49);
+  border-radius: 12px;
+}
+.roblox-dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+.roblox-dialog > p {
+  margin-top: 16px;
+  line-height: 1.6;
+}
+.roblox-dialog .button-row {
+  margin-top: 32px;
+  flex-wrap: wrap;
+}
+.roblox-upload-name {
+  font-weight: 600;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.roblox-textures {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0;
+}
+.roblox-textures li {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border, #3d3f49);
+}
+.roblox-textures li span,
+.roblox-textures small {
+  display: block;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+.roblox-textures small {
+  color: var(--muted);
+}
+.livery-upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin: 24px 0;
+}
+.publishing-manual {
+  margin: 24px 0 32px;
+}
+.publishing-manual summary {
+  cursor: pointer;
+  color: var(--muted);
+  width: fit-content;
+}
+.publishing-manual p {
+  margin: 16px 0;
+}
+.publishing-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+@media (max-width: 700px) {
+  .roblox-textures li {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .livery-upload-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .roblox-dialog {
+    padding: 24px;
+  }
+}

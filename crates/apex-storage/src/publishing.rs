@@ -137,6 +137,29 @@ impl Workspace {
     pub fn export_publishing(&self, project: &str, destination: &Path) -> Result<(), Error> {
         let draft = self.publishing(project)?;
         draft.data.validate(true)?;
+        for livery in &draft.data.liveries {
+            if let Some(source) = &livery.source {
+                let current = self.livery_uploads(&source.folder_id, &source.account_id)?;
+                if current.textures.len() != source.hashes.len()
+                    || current
+                        .textures
+                        .iter()
+                        .zip(&source.hashes)
+                        .zip(&livery.sides)
+                        .any(|((t, h), s)| {
+                            &t.hash != h
+                                || t.side != s.side
+                                || t.upload.as_ref().is_none_or(|u| {
+                                    u.asset_id.as_deref() != Some(&s.decal_id)
+                                        || u.moderation == "rejected"
+                                })
+                        })
+                    || current.textures.len() != livery.sides.len()
+                {
+                    return Err(Error::InvalidContent("A selected livery changed or its upload is unavailable. Refresh its Roblox IDs before exporting.".into()));
+                }
+            }
+        }
         let mut media = Vec::new();
         let mut blobs = Vec::new();
         for m in &draft.data.media {
@@ -160,7 +183,8 @@ impl Workspace {
                 r.get(0)
             })
             .map_err(storage)?;
-        let manifest = serde_json::json!({"version":1,"kind":"apex-publish","targetOrigin":"https://erlcx.com","exportId":uuid::Uuid::now_v7().to_string(),"generatedAt":generated_at,"title":draft.data.title,"description":draft.data.description,"tags":draft.data.tags,"youtubeUrl":draft.data.youtube_url,"liveries":draft.data.liveries,"media":media});
+        let liveries: Vec<_> = draft.data.liveries.iter().map(|l| serde_json::json!({"vehicle":l.vehicle,"primaryColor":l.primary_color,"secondaryColor":l.secondary_color,"opacity":l.opacity,"sides":l.sides})).collect();
+        let manifest = serde_json::json!({"version":1,"kind":"apex-publish","targetOrigin":"https://erlcx.com","exportId":uuid::Uuid::now_v7().to_string(),"generatedAt":generated_at,"title":draft.data.title,"description":draft.data.description,"tags":draft.data.tags,"youtubeUrl":draft.data.youtube_url,"liveries":liveries,"media":media});
         let parent = destination.parent().ok_or(Error::NotFound)?;
         let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(storage)?;
         {
@@ -215,6 +239,7 @@ mod tests {
         d.data.title = "Public title".into();
         d.data.description = "Public description".into();
         d.data.liveries.push(PublishingLivery {
+            source: None,
             vehicle: "Vehicle".into(),
             primary_color: "#FFFFFF".into(),
             secondary_color: None,

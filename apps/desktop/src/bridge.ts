@@ -229,6 +229,7 @@ export interface PublishingImage {
   name: string;
 }
 export interface PublishingLivery {
+  source?: { folderId: string; accountId: string; hashes: string[] };
   vehicle: string;
   primaryColor: string;
   secondaryColor: string | null;
@@ -264,3 +265,40 @@ export const pickPublishingImages = (projectId: string) =>
   invoke<PublishingPreview[] | null>("pick_publishing_images", { projectId });
 export const exportPublishing = (projectId: string) =>
   invoke<boolean>("export_publishing", { projectId });
+
+export interface RobloxSettings {
+  configured: boolean;
+  accountId: string | null;
+}
+export interface DecalUpload {
+  accountId: string;
+  hash: string;
+  state: string;
+  operation: string | null;
+  assetId: string | null;
+  moderation: string;
+  message: string;
+}
+export interface LiveryUploads {
+  folderId: string;
+  name: string;
+  vehicle: string;
+  accountId: string;
+  textures: {
+    assetId: string;
+    name: string;
+    hash: string;
+    side: string;
+    upload: DecalUpload | null;
+  }[];
+}
+export const robloxSettings = () => invoke<RobloxSettings>("roblox_settings");
+export const saveRobloxSettings = (accountId: string, apiKey: string) =>
+  invoke<void>("save_roblox_settings", { accountId, apiKey });
+export const testRobloxConnection = () =>
+  invoke<void>("test_roblox_connection");
+export const clearRobloxSettings = () => invoke<void>("clear_roblox_settings");
+export const robloxLivery = (folderId: string) =>
+  invoke<LiveryUploads>("roblox_livery", { folderId });
+export const uploadRobloxTexture = (folderId: string, hash: string) =>
+  invoke<DecalUpload>("upload_roblox_texture", { folderId, hash });

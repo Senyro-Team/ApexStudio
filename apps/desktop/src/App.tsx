@@ -1,3 +1,4 @@
+import RobloxSettings from "./RobloxSettings";
 import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
 import ProjectsArea from "./Projects";
 const Notes = lazy(() => import("./Notes"));
@@ -192,6 +193,7 @@ export default function App() {
           )}
           {section === "Settings" && (
             <div className="settings-content">
+              <RobloxSettings onBusy={setNavigationLocked} />
               <BackupTools
                 onBusy={setNavigationLocked}
                 onRestore={() => {

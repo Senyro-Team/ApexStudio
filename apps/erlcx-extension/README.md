@@ -8,7 +8,7 @@ Installation is manual; the build does not install an extension or change browse
 
 ## Use
 
-In a project's Publishing tab, fill Details, choose 2-10 PNG previews, enter livery codes, review and save the draft, then export an `.apexpublish` bundle. Open ERLCX's upload wizard and import the bundle in this extension. Review its public-content preview. Invoke Fill current step for each wizard page, inspect the report and click Continue yourself.
+Upload assigned livery textures using Apex Studio’s Upload to Roblox action after configuring Settings → Roblox. In the project’s Publishing tab, select the liveries to import their saved decal IDs, fill Details, choose 2-10 separate PNG previews, review and save the draft, then Export for ERLCX extension. Manual existing decal IDs remain available. Open ERLCX's upload wizard and import the bundle in this extension. Review its public-content preview. Invoke Fill current step for each wizard page, inspect the report and click Continue yourself.
 
 Existing text is preserved unless Replace existing text fields is explicitly checked. Existing images are never removed automatically. Category assistance supports the livery-only wizard. The extension does not change Post as, paid settings, agreements, scheduling, Save Draft, Continue or Publish. Unknown layouts stop with a review message. Dynamic Codes controls and portalled colour pickers are fixture-tested and checked against the current public upload-page script. Fresh live browser filling of Codes/Media is still pending because the research connector cannot attach images. Check every field before continuing.
 

@@ -5,6 +5,7 @@ mod assets;
 mod notes;
 mod projects;
 mod publishing;
+mod roblox;
 
 #[derive(serde::Serialize)]
 struct CommandError {
@@ -56,6 +57,7 @@ async fn rename_workspace(
 pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(roblox::RobloxState::default())
         .manage(notes::PendingArchives::default())
         .manage(assets::LiveryDrafts::default())
         .setup(|app| {
@@ -64,6 +66,12 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            roblox::roblox_settings,
+            roblox::save_roblox_settings,
+            roblox::test_roblox_connection,
+            roblox::clear_roblox_settings,
+            roblox::roblox_livery,
+            roblox::upload_roblox_texture,
             publishing::publishing_draft,
             publishing::publishing_previews,
             publishing::save_publishing,

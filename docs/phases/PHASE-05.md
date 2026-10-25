@@ -2,7 +2,11 @@
 
 Development implementation, 2026-10-22. Full live Media/Codes autofill is still pending manual Chrome verification.
 
-## Delivered
+## Follow-up — 2026-10-25
+
+Roblox decal uploads and the livery-first publishing workflow are now implemented. See [setup, verification and limitations](PHASE-05-ROBLOX.md). The following section records the original Phase 5 delivery; statements about manual-only Roblox codes and schema 5 are superseded by the follow-up.
+
+## Original delivery
 
 - Project Publishing tab with separate Details, Previews, Codes and Review sections, explicit save/discard and revision conflict protection.
 - User-written title, description, tags and optional YouTube URL. Two to ten ordered PNG previews, from project assets or managed copies of selected files. First preview is the cover.

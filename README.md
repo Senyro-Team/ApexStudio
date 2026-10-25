@@ -1,6 +1,6 @@
 # Apex Studio
 
-Local-first desktop workspace for ER:LC creators. Manage projects, notes, assets and livery publishing drafts in a spacious desktop interface. No account, telemetry or provider access is required.
+Local-first desktop workspace for ER:LC creators. Manage projects, notes, assets and livery publishing drafts in a spacious desktop interface. Core workspace features work offline; Roblox uploads require configured credentials. No telemetry is collected.
 
 ## Run
 
@@ -21,7 +21,7 @@ cargo build --locked -p apex-desktop --features custom-protocol
 .\target\debug\apex-desktop.exe
 ```
 
-The native Windows build, 23 Rust tests, 30 frontend/extension tests, and project/file persistence across restart have been verified. This is a debug executable, not a signed release installer.
+The native Windows build, 29 Rust tests, 35 frontend/extension tests, and project/file persistence across restart have been verified. This is a debug executable, not a signed release installer.
 
 ## Current behaviour
 
@@ -31,7 +31,7 @@ The native Windows build, 23 Rust tests, 30 frontend/extension tests, and projec
 - Native multi-file import accepts any file type, copies into managed storage and preserves originals. Repeated imports with the same project/name/bytes are skipped; shared bytes are deduplicated.
 - Workspace asset library links files back to their owning projects.
 - One workspace created under the OS local app-data directory for `studio.apexdesigns.apexstudio`, in `workspace/`.
-- Transactional SQLite migration from earlier versions to version 5, WAL, foreign keys, bounded busy timeout and durable writes.
+- Transactional SQLite migration from earlier versions to version 6, WAL, foreign keys, bounded busy timeout and durable writes.
 - Rename the workspace in Settings; it persists across desktop restarts.
 - Shared Rust core and SQLite adapter; narrow Tauri commands, no frontend filesystem/SQL/network permissions.
 - Official supplied template catalogue with team variants, body/window statuses and slot information. Snapshot dated October 7, 2026; unspecified statuses stay unspecified.
@@ -41,7 +41,7 @@ The native Windows build, 23 Rust tests, 30 frontend/extension tests, and projec
 - Whole-workspace .apexbackup export and validated restore with an automatic before-restore backup.
 - Local brand/font assets, concise English copy, keyboard focus and responsive shell.
 
-Prepare project publishing drafts, select and order PNG previews, enter existing decal IDs, and export a public-only `.apexpublish` bundle. The Chrome assistant fills the current ERLCX livery step on request. Build it with `npm run build:extension`; see [manual installation and privacy](apps/erlcx-extension/README.md). Live Media/Codes autofill still needs manual Chrome verification. Roblox account uploads remain a later integration. No signed installer is produced.
+Prepare project publishing drafts, select and order PNG previews, use saved Roblox decal IDs or enter existing IDs manually, and export a public-only `.apexpublish` bundle. The Chrome assistant fills the current ERLCX livery step on request. Build it with `npm run build:extension`; see [manual installation and privacy](apps/erlcx-extension/README.md). Live Media/Codes autofill still needs manual Chrome verification. Personal-account Roblox decal uploads are available from livery folders after configuring a key in Settings. No signed installer is produced.
 
 ## Architecture
 
@@ -56,3 +56,5 @@ Application licence is still being finalised; no MIT/open-source grant is implie
 Current scope: `docs/planning/CURRENT-SCOPE.md`. Validation and limitations: [Phase 4](docs/phases/PHASE-04.md), [Phase 3](docs/phases/PHASE-03.md), [Phase 2](docs/phases/PHASE-02.md), [Phase 1](docs/phases/PHASE-01.md).
 
 Asset-manager follow-up: see [changes and verification](docs/phases/PHASE-04-FIXES.md). Phase 5 development build: [features, verification and limitations](docs/phases/PHASE-05.md).
+
+Roblox workflow: [setup, uploads, publishing handoff and verification](docs/phases/PHASE-05-ROBLOX.md).
