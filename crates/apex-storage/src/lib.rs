@@ -18,7 +18,11 @@ pub use packages::PackagePreview;
 mod publishing;
 mod roblox;
 pub use roblox::{DecalUpload, LiveryUploads, UploadTexture};
-const SCHEMA_VERSION: u32 = 6;
+mod pipeline;
+pub use pipeline::{png_dimensions, PreparationProgress, PreparedTexture};
+mod queue;
+pub use queue::*;
+const SCHEMA_VERSION: u32 = 7;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
@@ -120,6 +124,17 @@ impl Workspace {
                 )))?;
             }
             connection.execute_batch("BEGIN IMMEDIATE; CREATE TABLE roblox_uploads(account_id TEXT NOT NULL,hash TEXT NOT NULL REFERENCES managed_files(hash),state TEXT NOT NULL,operation TEXT,asset_id TEXT,moderation TEXT NOT NULL DEFAULT 'unknown',message TEXT NOT NULL DEFAULT '',PRIMARY KEY(account_id,hash)); PRAGMA user_version=6; COMMIT;").map_err(storage)?;
+        }
+        if version < 7 {
+            if version > 0 {
+                workspace.backup(&workspace.root.join("backups").join(format!(
+                    "before-schema-7-{}.apexbackup",
+                    uuid::Uuid::now_v7()
+                )))?;
+            }
+            connection
+                .execute_batch(include_str!("schema7.sql"))
+                .map_err(storage)?;
         }
         Ok(workspace)
     }

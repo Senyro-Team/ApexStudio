@@ -1,7 +1,4 @@
-import RobloxUpload, {
-  readyForPublishing,
-  publishingLivery,
-} from "./RobloxUpload";
+import { readyForPublishing, publishingLivery } from "./RobloxUpload";
 import { useEffect, useState } from "react";
 import SlotEditor from "./SlotEditor";
 import {
@@ -26,7 +23,9 @@ export default function Publishing({
   project,
   catalogue,
   onEditingChange,
+  onOpenRoblox,
 }: {
+  onOpenRoblox?: (folderId: string) => void;
   project: Project;
   catalogue: Catalogue | null;
   onEditingChange: (dirty: boolean) => void;
@@ -66,7 +65,7 @@ export default function Publishing({
     };
   }, [project.id]);
   useEffect(() => {
-    onEditingChange(dirty || busy || !!pendingFolder);
+    onEditingChange(dirty || busy);
     return () => onEditingChange(false);
   }, [dirty, busy, pendingFolder, onEditingChange]);
   useEffect(() => {
@@ -224,13 +223,17 @@ export default function Publishing({
   return (
     <section className="publishing-editor" aria-label="Publishing draft">
       {pendingFolder && (
-        <RobloxUpload
-          folderId={pendingFolder}
-          include
-          onBusy={setBusy}
-          onClose={() => setPendingFolder(null)}
-          onDone={(l) => includeLivery(publishingLivery(l))}
-        />
+        <div className="queue-prompt">
+          <p>This livery needs Roblox decal IDs.</p>
+          <button
+            disabled={dirty || busy}
+            onClick={() => onOpenRoblox?.(pendingFolder)}
+          >
+            Open Roblox uploads
+          </button>
+          <button onClick={() => setPendingFolder(null)}>Skip livery</button>
+          {dirty && <p>Save your draft before opening uploads.</p>}
+        </div>
       )}
       {error && (
         <p className="error" role="alert">

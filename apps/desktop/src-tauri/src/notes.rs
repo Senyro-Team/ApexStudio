@@ -211,6 +211,16 @@ pub async fn apply_archive(
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<String, CommandError> {
     let ws = workspace.inner().clone();
+    use tauri::Manager;
+    let queue = app
+        .state::<std::sync::Arc<super::upload_queue::UploadRuntime>>()
+        .inner()
+        .clone();
+    let _change = if restore {
+        Some(queue.stop_for_credentials(&ws).await)
+    } else {
+        None
+    };
     work(move || {
         use tauri::Manager;
         let state = app.state::<PendingArchives>();

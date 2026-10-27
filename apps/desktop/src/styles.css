@@ -2082,3 +2082,182 @@ button:disabled:hover {
     flex-wrap: wrap;
   }
 }
+.asset-preview {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.asset-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.roblox-page {
+  max-width: 1100px;
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+}
+.roblox-account,
+.roblox-selection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.roblox-tabs,
+.roblox-start-actions,
+.roblox-filters {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.roblox-filters {
+  margin: 24px 0;
+}
+.roblox-filters label {
+  flex: 1;
+  min-width: 220px;
+  display: grid;
+  gap: 8px;
+}
+.roblox-selection {
+  padding: 12px 0;
+  color: var(--muted);
+}
+.roblox-selection label,
+.roblox-livery-choice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.roblox-page input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #665eeb;
+  flex-shrink: 0;
+}
+.roblox-livery-rows,
+.roblox-job-list,
+.roblox-texture-details {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 24px;
+}
+.roblox-livery-rows > li,
+.roblox-job-list > li {
+  border-bottom: 1px solid #303139;
+  padding: 20px 0;
+}
+.roblox-livery-rows > li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.roblox-livery-choice span {
+  display: grid;
+  gap: 7px;
+}
+.roblox-livery-choice small,
+.roblox-texture-details span {
+  color: #a9aab4;
+}
+.roblox-livery-rows details {
+  max-width: 60%;
+}
+.roblox-page summary {
+  cursor: pointer;
+  line-height: 1.6;
+}
+.roblox-texture-details li {
+  display: grid;
+  gap: 5px;
+  padding: 12px 0;
+  overflow-wrap: anywhere;
+}
+.roblox-queue {
+  border-top: 1px solid #303139;
+  padding-top: 28px;
+}
+.roblox-queue h2 {
+  margin-top: 0;
+}
+.roblox-batch {
+  margin-top: 24px;
+  border-bottom: 1px solid #303139;
+  padding-bottom: 20px;
+}
+.roblox-batch > .button-row {
+  margin-top: 18px;
+}
+.roblox-job-list > li > span {
+  display: block;
+  margin-top: 8px;
+  color: #b7b8c3;
+}
+.roblox-job-list details {
+  margin-top: 14px;
+}
+.roblox-job-list dl {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.roblox-job-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.queue-prompt {
+  padding: 20px;
+  background: #202127;
+  margin-bottom: 24px;
+}
+.queue-prompt button {
+  margin-right: 12px;
+}
+@media (max-width: 760px) {
+  .roblox-livery-rows > li {
+    display: block;
+  }
+  .roblox-livery-rows details {
+    max-width: 100%;
+    margin-top: 16px;
+  }
+  .roblox-account {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+.roblox-filters select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  min-height: 44px;
+}
+.roblox-start-actions {
+  margin: 12px 0 20px;
+}
+.performance-diagnostics {
+  margin-bottom: 28px;
+}
+.performance-diagnostics summary {
+  cursor: pointer;
+}
+.performance-diagnostics dl {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  margin-top: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.performance-diagnostics dd {
+  margin: 0;
+}

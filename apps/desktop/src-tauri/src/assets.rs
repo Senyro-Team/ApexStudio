@@ -6,7 +6,200 @@ use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 #[derive(Default)]
 pub struct LiveryDrafts(Mutex<HashMap<String, Draft>>);
+#[derive(Clone)]
+enum Entry {
+    Pending,
+    Ready(apex_storage::PreparedTexture),
+    Failed(String),
+}
+struct Preparation {
+    entries: Mutex<Vec<Entry>>,
+    wake: std::sync::Condvar,
+    cancelled: std::sync::atomic::AtomicBool,
+    last_event: std::sync::atomic::AtomicU64,
+}
+fn candidates(files: &[(PathBuf, String)]) -> Vec<Candidate> {
+    files
+        .iter()
+        .enumerate()
+        .map(|(index, (_, name))| Candidate {
+            index,
+            name: name.clone(),
+            suggested_slot: apex_core::suggest_slot(name),
+        })
+        .collect()
+}
+fn preparation_executor() -> &'static std::sync::mpsc::Sender<Box<dyn FnOnce() + Send>> {
+    static EXEC: std::sync::OnceLock<std::sync::mpsc::Sender<Box<dyn FnOnce() + Send>>> =
+        std::sync::OnceLock::new();
+    EXEC.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Box<dyn FnOnce() + Send>>();
+        let rx = std::sync::Arc::new(Mutex::new(rx));
+        for _ in 0..4 {
+            let rx = rx.clone();
+            std::thread::spawn(move || loop {
+                let task = match rx.lock() {
+                    Ok(r) => r.recv(),
+                    Err(_) => return,
+                };
+                match task {
+                    Ok(task) => task(),
+                    Err(_) => return,
+                }
+            });
+        }
+        tx
+    })
+}
+impl Preparation {
+    fn new() -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            entries: Mutex::new(Vec::new()),
+            wake: std::sync::Condvar::new(),
+            cancelled: std::sync::atomic::AtomicBool::new(false),
+            last_event: std::sync::atomic::AtomicU64::new(0),
+        })
+    }
+    fn cancel(&self) {
+        self.cancelled
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.wake.notify_all();
+    }
+    fn status(&self) -> apex_storage::PreparationProgress {
+        let Ok(e) = self.entries.lock() else {
+            return Default::default();
+        };
+        apex_storage::PreparationProgress {
+            total: e.len(),
+            ready: e.iter().filter(|e| matches!(e, Entry::Ready(_))).count(),
+            errors: e
+                .iter()
+                .filter_map(|e| {
+                    if let Entry::Failed(s) = e {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+        }
+    }
+    fn add(
+        self: &std::sync::Arc<Self>,
+        ws: &Workspace,
+        app: &tauri::AppHandle,
+        token: &str,
+        files: &[(PathBuf, String)],
+    ) {
+        use tauri::Emitter;
+        let start = if let Ok(mut e) = self.entries.lock() {
+            let start = e.len();
+            e.extend(files.iter().map(|_| Entry::Pending));
+            start
+        } else {
+            return;
+        };
+        for (i, (path, name)) in files.iter().enumerate() {
+            let state = self.clone();
+            let ws = ws.clone();
+            let app = app.clone();
+            let path = path.clone();
+            let name = name.clone();
+            let token = token.to_string();
+            let _ = preparation_executor().send(Box::new(move || {
+                if state.cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                let result = ws.prepare_texture(&path);
+                if let Ok(mut e) = state.entries.lock() {
+                    e[start + i] = match result {
+                        Ok(p) => Entry::Ready(p),
+                        Err(e) => Entry::Failed(format!("{name}: {e}")),
+                    };
+                }
+                state.wake.notify_all();
+                let progress = state.status();
+                let now = apex_storage::queue_now() as u64;
+                let last = state.last_event.load(std::sync::atomic::Ordering::Relaxed);
+                if (now.saturating_sub(last) >= 100
+                    || progress.ready + progress.errors.len() == progress.total)
+                    && state
+                        .last_event
+                        .compare_exchange(
+                            last,
+                            now,
+                            std::sync::atomic::Ordering::Relaxed,
+                            std::sync::atomic::Ordering::Relaxed,
+                        )
+                        .is_ok()
+                {
+                    let _ = app.emit(
+                        "livery-preparation",
+                        serde_json::json!({"token":token,"progress":progress}),
+                    );
+                }
+            }));
+        }
+    }
+    fn wait(&self) -> Result<Vec<apex_storage::PreparedTexture>, Error> {
+        let mut e = self
+            .entries
+            .lock()
+            .map_err(|_| Error::Storage("Preparation unavailable.".into()))?;
+        while e.iter().any(|e| matches!(e, Entry::Pending)) {
+            if self.cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(Error::InvalidContent("Preparation cancelled.".into()));
+            }
+            e = self
+                .wake
+                .wait(e)
+                .map_err(|_| Error::Storage("Preparation unavailable.".into()))?;
+        }
+        if self.cancelled.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(Error::InvalidContent("Preparation cancelled.".into()));
+        }
+        e.iter()
+            .map(|e| match e {
+                Entry::Ready(p) => Ok(p.clone()),
+                Entry::Failed(s) => Err(Error::InvalidContent(s.clone())),
+                Entry::Pending => Err(Error::NotFound),
+            })
+            .collect()
+    }
+}
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreparationInfo {
+    token: String,
+    progress: apex_storage::PreparationProgress,
+}
+#[tauri::command]
+pub async fn livery_preparations(
+    tokens: Vec<String>,
+    state: tauri::State<'_, LiveryDrafts>,
+) -> Result<Vec<PreparationInfo>, CommandError> {
+    if tokens.len() > 50 {
+        return Err(Error::InvalidContent("Too many preparation tokens.".into()).into());
+    }
+    let drafts = state.0.lock().map_err(|_| CommandError {
+        code: "unavailable".into(),
+        message: "Preparation unavailable.".into(),
+    })?;
+    Ok(tokens
+        .into_iter()
+        .filter_map(|token| {
+            drafts
+                .get(&token)
+                .and_then(|d| d.preparation.as_ref())
+                .map(|p| PreparationInfo {
+                    token,
+                    progress: p.status(),
+                })
+        })
+        .collect())
+}
 struct Draft {
+    preparation: Option<std::sync::Arc<Preparation>>,
     project: String,
     _dir: tempfile::TempDir,
     files: Vec<(PathBuf, String)>,
@@ -33,6 +226,7 @@ pub struct FolderDraftInfo {
     error: Option<String>,
 }
 
+#[cfg(test)]
 fn stage_livery_folder(
     project: &str,
     source: &std::path::Path,
@@ -105,6 +299,7 @@ fn stage_livery_folder(
     *remaining -= used;
     Ok((
         Draft {
+            preparation: None,
             project: project.into(),
             _dir: dir,
             files,
@@ -148,13 +343,72 @@ pub async fn prepare_livery_folders(
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into_owned();
-            match stage_livery_folder(&project_id, &path, &mut remaining) {
-                Ok((draft, files, skipped)) => {
+            let scanned = (|| -> Result<(Vec<(PathBuf, String)>, usize), Error> {
+                if !std::fs::symlink_metadata(&path)
+                    .map_err(|e| Error::Storage(e.to_string()))?
+                    .file_type()
+                    .is_dir()
+                {
+                    return Err(Error::InvalidContent("Choose a regular folder.".into()));
+                }
+                let mut files = Vec::new();
+                let mut skipped = 0;
+                for entry in std::fs::read_dir(path).map_err(|e| Error::Storage(e.to_string()))? {
+                    let entry = entry.map_err(|e| Error::Storage(e.to_string()))?;
+                    if entry
+                        .file_type()
+                        .map_err(|e| Error::Storage(e.to_string()))?
+                        .is_file()
+                        && entry
+                            .path()
+                            .extension()
+                            .is_some_and(|e| e.eq_ignore_ascii_case("png"))
+                    {
+                        let size = entry
+                            .metadata()
+                            .map_err(|e| Error::Storage(e.to_string()))?
+                            .len();
+                        if size > remaining {
+                            return Err(Error::InvalidContent("Batch exceeds 2 GB.".into()));
+                        }
+                        remaining -= size;
+                        files.push((
+                            entry.path(),
+                            entry.file_name().to_string_lossy().into_owned(),
+                        ));
+                    } else {
+                        skipped += 1;
+                    }
+                }
+                files.sort_by(|a, b| a.1.cmp(&b.1));
+                if files.is_empty() || files.len() > 100 {
+                    return Err(Error::InvalidContent(
+                        "Use 1–100 PNGs directly inside each folder.".into(),
+                    ));
+                }
+                Ok((files, skipped))
+            })();
+            match scanned {
+                Ok((files, skipped)) => {
                     let token = uuid::Uuid::now_v7().to_string();
-                    prepared.push((token.clone(), draft));
+                    let preparation = Preparation::new();
+                    preparation.add(&ws, &app, &token, &files);
+                    let candidates = candidates(&files);
+                    prepared.push((
+                        token.clone(),
+                        Draft {
+                            preparation: Some(preparation),
+                            project: project_id.clone(),
+                            _dir: tempfile::tempdir().map_err(|e| Error::Storage(e.to_string()))?,
+                            files,
+                        },
+                    ));
                     info.push(FolderDraftInfo {
                         name,
-                        draft: Some(DraftInfo { token, files }),
+                        draft: Some(DraftInfo {
+                            token,
+                            files: candidates,
+                        }),
                         warning: (skipped > 0).then(|| {
                             format!("Skipped {skipped} non-PNG files, links or nested folders.")
                         }),
@@ -174,6 +428,11 @@ pub async fn prepare_livery_folders(
             .0
             .lock()
             .map_err(|_| Error::Storage("Livery selection unavailable.".into()))?;
+        for d in drafts.values() {
+            if let Some(p) = &d.preparation {
+                p.cancel();
+            }
+        }
         drafts.clear();
         drafts.extend(prepared);
         Ok(Some(info))
@@ -282,34 +541,17 @@ pub async fn prepare_livery(
                 "Choose up to 100 PNG textures.".into(),
             ));
         }
-        let dir = tempfile::tempdir().map_err(|e| Error::Storage(e.to_string()))?;
         let mut files = Vec::new();
-        let mut info = Vec::new();
-        for (i, source) in selected.into_iter().enumerate() {
-            let source = source
+        for source in selected {
+            let path = source
                 .into_path()
                 .map_err(|e| Error::Storage(e.to_string()))?;
-            let name = source
+            let name = path
                 .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .ok_or(Error::NotFound)?;
-            let target = dir.path().join(format!("{i}.png"));
-            let size = std::fs::metadata(&source)
-                .map_err(|e| Error::Storage(e.to_string()))?
-                .len();
-            if size > 20 * 1024 * 1024 {
-                return Err(Error::InvalidContent(format!(
-                    "{name}: choose a PNG smaller than 20 MB."
-                )));
-            }
-            std::fs::copy(&source, &target).map_err(|e| Error::Storage(e.to_string()))?;
-            apex_storage::validate_texture(&target)?;
-            info.push(Candidate {
-                index: i,
-                suggested_slot: apex_core::suggest_slot(&name),
-                name: name.clone(),
-            });
-            files.push((target, name));
+                .ok_or(Error::NotFound)?
+                .to_string_lossy()
+                .into_owned();
+            files.push((path, name));
         }
         let state = app.state::<LiveryDrafts>();
         let mut drafts = state
@@ -319,37 +561,33 @@ pub async fn prepare_livery(
         if let Some(token) = token {
             let draft = drafts.get_mut(&token).ok_or(Error::NotFound)?;
             if draft.project != project_id || draft.files.len() + files.len() > 100 {
-                return Err(Error::InvalidContent(
-                    "Choose up to 100 PNG images in this project.".into(),
-                ));
+                return Err(Error::InvalidContent("Use up to 100 PNGs.".into()));
             }
-            let start = draft.files.len();
-            let mut appended = Vec::new();
-            for (i, (path, name)) in files.into_iter().enumerate() {
-                let destination = draft._dir.path().join(format!("{}.png", start + i));
-                std::fs::copy(path, &destination).map_err(|e| Error::Storage(e.to_string()))?;
-                appended.push((destination, name));
+            if let Some(p) = &draft.preparation {
+                p.add(&ws, &app, &token, &files);
             }
-            draft.files.extend(appended);
-            let files = draft
-                .files
-                .iter()
-                .enumerate()
-                .map(|(index, (_, name))| Candidate {
-                    index,
-                    name: name.clone(),
-                    suggested_slot: apex_core::suggest_slot(name),
-                })
-                .collect();
-            return Ok(Some(DraftInfo { token, files }));
+            draft.files.extend(files);
+            return Ok(Some(DraftInfo {
+                token,
+                files: candidates(&draft.files),
+            }));
         }
         let token = uuid::Uuid::now_v7().to_string();
+        let info = candidates(&files);
+        let preparation = Preparation::new();
+        preparation.add(&ws, &app, &token, &files);
+        for draft in drafts.values() {
+            if let Some(p) = &draft.preparation {
+                p.cancel();
+            }
+        }
         drafts.clear();
         drafts.insert(
             token.clone(),
             Draft {
+                preparation: Some(preparation),
                 project: project_id,
-                _dir: dir,
+                _dir: tempfile::tempdir().map_err(|e| Error::Storage(e.to_string()))?,
                 files,
             },
         );
@@ -376,12 +614,16 @@ pub async fn commit_livery(
     let ws = workspace.inner().clone();
     work(move || {
         let state = app.state::<LiveryDrafts>();
-        let mut drafts = state
+        let drafts = state
             .0
             .lock()
             .map_err(|_| Error::Storage("Livery selection unavailable.".into()))?;
         let draft = drafts.get(&token).ok_or(Error::NotFound)?;
-        if assignments.len() != draft.files.len() {
+        let project = draft.project.clone();
+        let preparation = draft.preparation.clone();
+        let draft_files = draft.files.clone();
+        drop(drafts);
+        if assignments.len() != draft_files.len() {
             return Err(Error::InvalidContent(
                 "Review every selected texture.".into(),
             ));
@@ -393,19 +635,41 @@ pub async fn commit_livery(
             if a.index != i {
                 return Err(Error::InvalidContent("Invalid file assignments.".into()));
             }
-            let (path, name) = &draft.files[i];
+            let (path, name) = &draft_files[i];
             files.push((path.clone(), name.clone(), a.slot));
         }
-        let id = ws.import_livery(
-            &draft.project,
-            parent_id.as_deref(),
-            existing_id.as_deref(),
-            &name,
-            &vehicle_id,
-            &files,
-            cover_index,
-        )?;
-        drafts.remove(&token);
+        let id = if let Some(p) = &preparation {
+            let prepared = p.wait()?;
+            let files = files
+                .iter()
+                .enumerate()
+                .map(|(i, (_, name, slot))| (prepared[i].clone(), name.clone(), slot.clone()))
+                .collect::<Vec<_>>();
+            ws.import_prepared_livery(
+                &project,
+                parent_id.as_deref(),
+                existing_id.as_deref(),
+                &name,
+                &vehicle_id,
+                &files,
+                cover_index,
+            )?
+        } else {
+            ws.import_livery(
+                &project,
+                parent_id.as_deref(),
+                existing_id.as_deref(),
+                &name,
+                &vehicle_id,
+                &files,
+                cover_index,
+            )?
+        };
+        state
+            .0
+            .lock()
+            .map_err(|_| Error::Storage("Livery selection unavailable.".into()))?
+            .remove(&token);
         Ok(id)
     })
     .await
@@ -415,14 +679,19 @@ pub async fn cancel_livery(
     token: String,
     state: tauri::State<'_, LiveryDrafts>,
 ) -> Result<(), CommandError> {
-    state
+    if let Some(d) = state
         .0
         .lock()
         .map_err(|_| CommandError {
             code: "draft_unavailable".into(),
             message: "Livery selection unavailable.".into(),
         })?
-        .remove(&token);
+        .remove(&token)
+    {
+        if let Some(p) = d.preparation {
+            p.cancel();
+        }
+    }
     Ok(())
 }
 

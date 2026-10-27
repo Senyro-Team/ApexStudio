@@ -1,12 +1,7 @@
 use super::{storage, Workspace};
 use apex_core::{Asset, Error, ImportReport, Project, ProjectInput};
-use base64::Engine;
 use rusqlite::{params, OptionalExtension};
-use std::{
-    fs,
-    io::{Read, Write},
-    path::Path,
-};
+use std::{fs, path::Path};
 
 impl Workspace {
     pub fn projects(&self) -> Result<Vec<Project>, Error> {
@@ -39,10 +34,8 @@ impl Workspace {
         .collect()
     }
     pub fn project(&self, id: &str) -> Result<Project, Error> {
-        self.projects()?
-            .into_iter()
-            .find(|project| project.id == id)
-            .ok_or(Error::NotFound)
+        let db = self.connection()?;
+        db.query_row("SELECT metadata,created_at,updated_at,archived,(SELECT count(*) FROM assets WHERE project_id=?1) FROM projects WHERE id=?1",[id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,bool>(3)?,r.get::<_,i64>(4)?))).optional().map_err(storage)?.map(|(metadata,created_at,updated_at,archived,count)|Ok(Project{id:id.into(),fields:serde_json::from_str(&metadata).map_err(storage)?,created_at,updated_at,archived,asset_count:u32::try_from(count).map_err(storage)?})).unwrap_or(Err(Error::NotFound))
     }
     pub fn save_project(&self, id: Option<&str>, fields: ProjectInput) -> Result<Project, Error> {
         let fields = apex_core::validate_project(fields)?;
@@ -104,73 +97,7 @@ impl Workspace {
         .collect()
     }
     pub(super) fn thumbnail(&self, hash: &str) -> Option<String> {
-        if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return None;
-        }
-        let path = self.root.join("thumbnails").join(format!("{hash}.png"));
-        if !path.exists() {
-            self.prepare_thumbnail(hash);
-        }
-        if fs::metadata(&path).ok()?.len() > 512 * 1024 {
-            return None;
-        }
-        fs::read(path).ok().map(|bytes| {
-            format!(
-                "data:image/png;base64,{}",
-                base64::engine::general_purpose::STANDARD.encode(bytes)
-            )
-        })
-    }
-    pub(super) fn prepare_thumbnail(&self, hash: &str) {
-        // Decode only bounded PNGs. Unsupported/malformed files remain ordinary assets.
-        if self
-            .root
-            .join("thumbnails")
-            .join(format!("{hash}.png"))
-            .exists()
-        {
-            return;
-        }
-        let result = (|| -> Option<()> {
-            let path = self.root.join("files").join(hash);
-            if fs::metadata(&path).ok()?.len() > 20 * 1024 * 1024 {
-                return None;
-            }
-            let mut header = [0u8; 24];
-            fs::File::open(&path).ok()?.read_exact(&mut header).ok()?;
-            if &header[..8] != b"\x89PNG\r\n\x1a\n" || &header[12..16] != b"IHDR" {
-                return None;
-            }
-            let width = u32::from_be_bytes(header[16..20].try_into().ok()?);
-            let height = u32::from_be_bytes(header[20..24].try_into().ok()?);
-            if width == 0 || height == 0 || width > 8000 || height > 8000 {
-                return None;
-            }
-            let mut reader = image::ImageReader::with_format(
-                std::io::BufReader::new(fs::File::open(&path).ok()?),
-                image::ImageFormat::Png,
-            );
-            let mut limits = image::Limits::default();
-            limits.max_image_width = Some(8000);
-            limits.max_image_height = Some(8000);
-            limits.max_alloc = Some(256 * 1024 * 1024);
-            reader.limits(limits);
-            let image = reader.decode().ok()?;
-            let mut bytes = std::io::Cursor::new(Vec::new());
-            image
-                .thumbnail(320, 200)
-                .write_to(&mut bytes, image::ImageFormat::Png)
-                .ok()?;
-            let target = self.root.join("thumbnails").join(format!("{hash}.png"));
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(target)
-                .ok()?;
-            file.write_all(bytes.get_ref()).ok()?;
-            Some(())
-        })();
-        let _ = result;
+        apex_core::valid_hash(hash).then(|| format!("http://apex-thumb.localhost/{hash}"))
     }
     pub fn import_project_files(
         &self,

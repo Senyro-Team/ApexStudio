@@ -1,3 +1,4 @@
+import usePreparation from "./usePreparation";
 import { useEffect, useRef, useState } from "react";
 import SlotEditor from "./SlotEditor";
 import {
@@ -54,6 +55,9 @@ export default function LiveryFolderImport({
         void cancelLivery(token).catch(() => {});
     },
     [],
+  );
+  const preparation = usePreparation(
+    rows.flatMap((r) => (r.draft ? [r.draft.token] : [])),
   );
   const row = rows[active];
   function update(patch: Partial<Row>) {
@@ -237,6 +241,19 @@ export default function LiveryFolderImport({
                   />
                   Skip this folder
                 </label>
+                {row.draft && preparation[row.draft.token] && (
+                  <div role="status">
+                    <p>
+                      Prepared {preparation[row.draft.token].ready} of{" "}
+                      {preparation[row.draft.token].total} images
+                    </p>
+                    {preparation[row.draft.token].errors.map((e) => (
+                      <p className="error" key={e}>
+                        {e}
+                      </p>
+                    ))}
+                  </div>
+                )}
                 {row.warning && <p className="field-hint">{row.warning}</p>}
                 {row.error && (
                   <p role="alert" className="error">

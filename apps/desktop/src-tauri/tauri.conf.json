@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'",
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data: http://apex-thumb.localhost https://apex-thumb.localhost apex-thumb:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'",
       "capabilities": ["default"]
     }
   },

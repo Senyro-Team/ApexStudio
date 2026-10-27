@@ -14,9 +14,9 @@ use zeroize::{Zeroize, Zeroizing};
 pub struct RobloxState(pub tokio::sync::Mutex<()>);
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Credentials {
-    account_id: String,
-    api_key: String,
+pub(super) struct Credentials {
+    pub(super) account_id: String,
+    pub(super) api_key: String,
 }
 impl Drop for Credentials {
     fn drop(&mut self) {
@@ -42,7 +42,7 @@ fn vault() -> Result<keyring::Entry, Error> {
     keyring::Entry::new("studio.apexdesigns.apexstudio", "roblox-personal")
         .map_err(|_| bad("Windows Credential Manager is unavailable."))
 }
-fn load() -> Result<Option<Credentials>, Error> {
+pub(super) fn load() -> Result<Option<Credentials>, Error> {
     match vault()?.get_secret() {
         Ok(bytes) => {
             let bytes = Zeroizing::new(bytes);
@@ -54,13 +54,13 @@ fn load() -> Result<Option<Credentials>, Error> {
         Err(_) => Err(bad("Windows could not unlock Roblox credentials.")),
     }
 }
-fn required() -> Result<Credentials, Error> {
+pub(super) fn required() -> Result<Credentials, Error> {
     load()?.ok_or_else(|| bad("Configure Roblox in Settings before uploading."))
 }
 fn numeric(s: &str) -> bool {
     !s.is_empty() && s.len() <= 20 && !s.starts_with('0') && s.bytes().all(|b| b.is_ascii_digit())
 }
-fn client() -> Result<Client, Error> {
+pub(super) fn client() -> Result<Client, Error> {
     Client::builder()
         .https_only(true)
         .redirect(reqwest::redirect::Policy::none())
@@ -69,7 +69,7 @@ fn client() -> Result<Client, Error> {
         .build()
         .map_err(|_| bad("Could not start the Roblox connection."))
 }
-fn headers(c: &Credentials) -> Result<HeaderMap, Error> {
+pub(super) fn headers(c: &Credentials) -> Result<HeaderMap, Error> {
     let mut value = HeaderValue::from_str(&c.api_key)
         .map_err(|_| bad("The API key contains invalid characters."))?;
     value.set_sensitive(true);
@@ -80,7 +80,7 @@ fn headers(c: &Credentials) -> Result<HeaderMap, Error> {
 fn http_error(status: u16) -> Error {
     bad(match status {401|403=>"Roblox rejected the key or its permissions. Check Settings, account access and IP restrictions.",429=>"Roblox rate limit reached. Wait before retrying.",400=>"Roblox rejected the upload. Check the texture and account upload requirements.",_=>"Roblox could not complete the request. Check your connection and try again."})
 }
-async fn body(mut r: Response) -> Result<Value, Error> {
+pub(super) async fn body(mut r: Response) -> Result<Value, Error> {
     if !r.status().is_success() {
         return Err(http_error(r.status().as_u16()));
     }
@@ -164,8 +164,11 @@ pub async fn roblox_settings(
 pub async fn save_roblox_settings(
     account_id: String,
     api_key: String,
+    workspace: tauri::State<'_, Workspace>,
+    runtime: tauri::State<'_, std::sync::Arc<super::upload_queue::UploadRuntime>>,
     state: tauri::State<'_, RobloxState>,
 ) -> Result<(), CommandError> {
+    let _change = runtime.stop_for_credentials(workspace.inner()).await;
     let _guard = state.0.lock().await;
     let c = Credentials {
         account_id: account_id.trim().into(),
@@ -197,8 +200,11 @@ pub async fn test_roblox_connection(
 }
 #[tauri::command]
 pub async fn clear_roblox_settings(
+    workspace: tauri::State<'_, Workspace>,
+    runtime: tauri::State<'_, std::sync::Arc<super::upload_queue::UploadRuntime>>,
     state: tauri::State<'_, RobloxState>,
 ) -> Result<(), CommandError> {
+    let _change = runtime.stop_for_credentials(workspace.inner()).await;
     let _guard = state.0.lock().await;
     work(|| match vault()?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
@@ -220,7 +226,7 @@ pub async fn roblox_livery(
     })
     .await
 }
-fn apply_operation(upload: &mut DecalUpload, v: &Value) -> Result<(), Error> {
+pub(super) fn apply_operation(upload: &mut DecalUpload, v: &Value) -> Result<(), Error> {
     if v.get("error").is_some_and(|e| !e.is_null()) {
         upload.state = "failed".into();
         upload.operation = None;
@@ -262,7 +268,7 @@ fn apply_operation(upload: &mut DecalUpload, v: &Value) -> Result<(), Error> {
     upload.message.clear();
     Ok(())
 }
-fn operation_path(v: &Value) -> Result<String, Error> {
+pub(super) fn operation_path(v: &Value) -> Result<String, Error> {
     let path = v["path"].as_str().unwrap_or("");
     let id = path
         .strip_prefix("operations/")
@@ -277,7 +283,7 @@ fn operation_path(v: &Value) -> Result<String, Error> {
     }
     Ok(path.into())
 }
-async fn create_decal(
+pub(super) async fn create_decal(
     http: &Client,
     url: &str,
     c: &Credentials,
@@ -302,143 +308,6 @@ async fn create_decal(
         .map_err(|_| {
             bad("Upload response was lost. Check Creator Dashboard before creating another decal.")
         })
-}
-#[tauri::command]
-pub async fn upload_roblox_texture(
-    folder_id: String,
-    hash: String,
-    workspace: tauri::State<'_, Workspace>,
-    state: tauri::State<'_, RobloxState>,
-) -> Result<DecalUpload, CommandError> {
-    let _guard = state.0.lock().await;
-    let c = work(required).await?;
-    let ws = workspace.inner().clone();
-    let ws2 = ws.clone();
-    let account = c.account_id.clone();
-    let h = hash.clone();
-    let f = folder_id.clone();
-    let (claimed, texture, bytes) = work(move || {
-        let livery = ws2.livery_uploads(&f, &account)?;
-        let texture = livery
-            .textures
-            .into_iter()
-            .find(|t| t.hash == h)
-            .ok_or(Error::NotFound)?;
-        let bytes = ws2.decal_bytes(&h)?;
-        let claimed = ws2.claim_decal(&f, &account, &h)?;
-        Ok((claimed, texture, bytes))
-    })
-    .await?;
-    let mut upload = ws
-        .decal_upload(&c.account_id, &hash)?
-        .ok_or(Error::NotFound)?;
-    let http = client()?;
-    if claimed {
-        let display_name = format!("{} — {}", ws.folder(&folder_id)?.name, texture.side)
-            .chars()
-            .take(50)
-            .collect::<String>();
-        let sent = create_decal(
-            &http,
-            "https://apis.roblox.com/assets/v1/assets",
-            &c,
-            &display_name,
-            bytes,
-        )
-        .await;
-        let result = match sent {
-            Ok(response) => {
-                let status = response.status();
-                if !status.is_success() {
-                    upload.state = if status.is_client_error() && status.as_u16() != 408 {
-                        "failed"
-                    } else {
-                        "uncertain"
-                    }
-                    .into();
-                    Err(http_error(status.as_u16()))
-                } else {
-                    match body(response).await {
-                        Ok(v) => operation_path(&v).map(|p| {
-                            upload.operation = Some(p);
-                            upload.state = "processing".into();
-                        }),
-                        Err(e) => Err(e),
-                    }
-                }
-            }
-            Err(e) => Err(e),
-        };
-        if let Err(e) = result {
-            if upload.state == "uploading" {
-                upload.state = "uncertain".into();
-            }
-            upload.message = e.to_string();
-            ws.save_decal_upload(&upload)?;
-            return Ok(upload);
-        }
-        ws.save_decal_upload(&upload)?;
-    }
-    if let Some(id) = upload.asset_id.clone() {
-        if !numeric(&id) {
-            return Err(bad("Invalid saved decal asset ID.").into());
-        }
-        let response = http
-            .get(format!("https://apis.roblox.com/assets/v1/assets/{id}"))
-            .headers(headers(&c)?)
-            .send()
-            .await;
-        match response {
-            Ok(r) => match body(r).await {
-                Ok(asset) => {
-                    if let Err(e) =
-                        apply_operation(&mut upload, &json!({"done":true,"response":asset}))
-                    {
-                        upload.message = e.to_string();
-                    }
-                }
-                Err(e) => upload.message = e.to_string(),
-            },
-            Err(_) => {
-                upload.message = "Cannot refresh moderation. The saved decal ID is retained.".into()
-            }
-        }
-        ws.save_decal_upload(&upload)?;
-        return Ok(upload);
-    }
-    if let Some(path) = upload.operation.clone() {
-        operation_path(&json!({"path":path}))?;
-        for attempt in 0..5 {
-            if attempt > 0 {
-                tokio::time::sleep(Duration::from_secs(2)).await;
-            }
-            let result = async {
-                let r = http
-                    .get(format!("https://apis.roblox.com/assets/v1/{path}"))
-                    .headers(headers(&c)?)
-                    .send()
-                    .await
-                    .map_err(|_| {
-                        bad("Cannot check Roblox yet. Use Check status to resume this operation.")
-                    })?;
-                apply_operation(&mut upload, &body(r).await?)
-            }
-            .await;
-            if let Err(e) = result {
-                upload.message = e.to_string();
-                break;
-            }
-            if upload.state != "processing" {
-                break;
-            }
-        }
-        ws.save_decal_upload(&upload)?;
-    } else if !claimed && upload.state == "uploading" {
-        upload.state = "uncertain".into();
-        upload.message="An earlier upload was interrupted. Check Creator Dashboard and enter its decal ID manually.".into();
-        ws.save_decal_upload(&upload)?;
-    }
-    Ok(upload)
 }
 
 #[cfg(test)]

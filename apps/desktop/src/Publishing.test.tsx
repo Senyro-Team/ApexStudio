@@ -255,8 +255,8 @@ it("asks before uploading a missing livery and lets the user skip just that live
   );
   await user.selectOptions(await screen.findByLabelText("Livery source"), "f");
   await user.click(screen.getByRole("button", { name: "Include livery" }));
-  await screen.findByRole("dialog");
-  await user.click(screen.getByRole("button", { name: "Skip this livery" }));
+  await screen.findByText("This livery needs Roblox decal IDs.");
+  await user.click(screen.getByRole("button", { name: "Skip livery" }));
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.getByText("No liveries selected.")).toBeTruthy();
   expect(savePublishing).not.toHaveBeenCalled();

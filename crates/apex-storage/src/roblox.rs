@@ -181,27 +181,32 @@ impl Workspace {
         if f.kind != "livery" {
             return Err(Error::InvalidContent("Choose a livery folder.".into()));
         }
-        let board = self.board(&f.project_id)?;
-        let mut textures = Vec::new();
-        for p in board
-            .placements
-            .iter()
-            .filter(|p| p.folder_id.as_deref() == Some(folder))
-        {
-            let Some(side) = &p.slot else { continue };
-            let a = board
-                .assets
-                .iter()
-                .find(|a| a.id == p.asset_id)
-                .ok_or(Error::NotFound)?;
-            textures.push(UploadTexture {
-                asset_id: a.id.clone(),
-                name: a.name.clone(),
-                hash: a.hash.clone(),
-                side: side.clone(),
-                upload: self.decal_upload(account, &a.hash)?,
-            });
-        }
+        let db = self.connection()?;
+        let mut statement=db.prepare("SELECT a.id,a.name,a.hash,p.slot,u.state,u.operation,u.asset_id,u.moderation,u.message FROM assets a JOIN asset_placements p ON p.asset_id=a.id LEFT JOIN roblox_uploads u ON u.account_id=?2 AND u.hash=a.hash WHERE p.folder_id=?1 AND p.slot IS NOT NULL ORDER BY p.slot").map_err(storage)?;
+        let textures = statement
+            .query_map(params![folder, account], |r| {
+                let hash: String = r.get(2)?;
+                let state: Option<String> = r.get(4)?;
+                Ok(UploadTexture {
+                    asset_id: r.get(0)?,
+                    name: r.get(1)?,
+                    hash: hash.clone(),
+                    side: r.get(3)?,
+                    upload: state.map(|state| DecalUpload {
+                        account_id: account.into(),
+                        hash,
+                        state,
+                        operation: r.get(5).unwrap_or(None),
+                        asset_id: r.get(6).unwrap_or(None),
+                        moderation: r.get(7).unwrap_or_default(),
+                        message: r.get(8).unwrap_or_default(),
+                    }),
+                })
+            })
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)?;
+        let mut textures = textures;
         textures.sort_by(|a, b| a.side.cmp(&b.side));
         let vehicle = apex_core::vehicle_catalogue()?
             .vehicles
@@ -241,7 +246,7 @@ impl Workspace {
             return Err(Error::NotFound);
         }
         let path = self.root.join("files").join(hash);
-        super::validate_texture(&path)?;
+        self.validated_texture(hash)?;
         let bytes = std::fs::read(path).map_err(storage)?;
         if format!("{:x}", Sha256::digest(&bytes)) != hash {
             return Err(Error::InvalidContent(

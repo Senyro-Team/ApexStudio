@@ -1,0 +1,137 @@
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import Roblox from "./Roblox";
+import {
+  robloxLiveries,
+  robloxSettings,
+  uploadSnapshot,
+  previewUploadBatch,
+  startUploadBatch,
+  controlUploadBatch,
+  type UploadSnapshot,
+} from "./bridge";
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
+vi.mock("./bridge", () => ({
+  robloxLiveries: vi.fn(),
+  robloxSettings: vi.fn(),
+  robloxLivery: vi.fn(),
+  uploadSnapshot: vi.fn(),
+  previewUploadBatch: vi.fn(),
+  startUploadBatch: vi.fn(),
+  controlUploadBatch: vi.fn(),
+  errorMessage: (e: unknown) => String(e),
+}));
+const empty: UploadSnapshot = {
+  revision: 0,
+  queue: { jobs: [], items: [], batches: [] },
+  concurrency: 5,
+  activeTransfers: 0,
+  nextAllowedAt: 0,
+};
+beforeEach(() => {
+  vi.clearAllMocks();
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  vi.mocked(robloxLiveries).mockResolvedValue([
+    {
+      id: "a",
+      name: "EMS",
+      projectId: "p",
+      projectName: "FDNY",
+      vehicleId: "v",
+      textures: 3,
+      uploaded: 1,
+    },
+    {
+      id: "b",
+      name: "Patrol",
+      projectId: "q",
+      projectName: "Police",
+      vehicleId: "v",
+      textures: 2,
+      uploaded: 0,
+    },
+  ]);
+  vi.mocked(robloxSettings).mockResolvedValue({
+    configured: true,
+    accountId: "123",
+  });
+  vi.mocked(uploadSnapshot).mockResolvedValue(structuredClone(empty));
+  vi.mocked(previewUploadBatch).mockResolvedValue({
+    accountId: "123",
+    liveries: 1,
+    textures: 3,
+    uniqueTextures: 3,
+    reused: 1,
+    queued: 0,
+    creates: 4,
+  });
+  vi.mocked(startUploadBatch).mockResolvedValue("batch");
+  vi.mocked(controlUploadBatch).mockResolvedValue();
+});
+afterEach(cleanup);
+it("preselects project shortcuts and requires review before starting", async () => {
+  const user = userEvent.setup();
+  render(
+    <Roblox
+      focus={{ projectId: "p", folderIds: ["a"] }}
+      onSettings={() => {}}
+    />,
+  );
+  await screen.findByText("EMS");
+  expect(screen.queryByText("Patrol")).toBeNull();
+  expect(startUploadBatch).not.toHaveBeenCalled();
+  await user.click(
+    screen.getByRole("button", { name: "Upload missing/changed" }),
+  );
+  const dialog = await screen.findByRole("dialog");
+  expect(previewUploadBatch).toHaveBeenCalledWith(["a"], false);
+  expect(within(dialog).getByText(/4 new Roblox decals/)).toBeTruthy();
+  await user.click(within(dialog).getByRole("button", { name: "Start batch" }));
+  await vi.waitFor(() =>
+    expect(startUploadBatch).toHaveBeenCalledWith(
+      expect.any(String),
+      ["a"],
+      false,
+    ),
+  );
+});
+it("selects only filtered liveries and supports explicit re-upload", async () => {
+  const user = userEvent.setup();
+  render(<Roblox focus={{}} onSettings={() => {}} />);
+  await screen.findByText("EMS");
+  await user.type(screen.getByRole("searchbox"), "Patrol");
+  await user.click(
+    screen.getByRole("checkbox", { name: "Select all filtered liveries" }),
+  );
+  await user.click(screen.getByRole("button", { name: "Re-upload selected" }));
+  await screen.findByRole("dialog");
+  expect(previewUploadBatch).toHaveBeenCalledWith(["b"], true);
+  expect(startUploadBatch).not.toHaveBeenCalled();
+});
+it("resumes paused native queues without changing their account", async () => {
+  const user = userEvent.setup();
+  vi.mocked(uploadSnapshot).mockResolvedValue({
+    ...empty,
+    queue: {
+      ...empty.queue,
+      batches: [
+        {
+          id: "batch",
+          accountId: "123",
+          state: "paused",
+          createdAt: "2026-10-27T12:00:00Z",
+        },
+      ],
+    },
+  });
+  render(<Roblox focus={{}} onSettings={() => {}} />);
+  await screen.findByText("EMS");
+  await user.click(screen.getByRole("button", { name: "Resume all" }));
+  expect(controlUploadBatch).toHaveBeenCalledWith(null, "resume");
+  expect(startUploadBatch).not.toHaveBeenCalled();
+});

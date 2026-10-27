@@ -300,8 +300,6 @@ export const testRobloxConnection = () =>
 export const clearRobloxSettings = () => invoke<void>("clear_roblox_settings");
 export const robloxLivery = (folderId: string) =>
   invoke<LiveryUploads>("roblox_livery", { folderId });
-export const uploadRobloxTexture = (folderId: string, hash: string) =>
-  invoke<DecalUpload>("upload_roblox_texture", { folderId, hash });
 
 export interface LiveryFolderDraft {
   name: string;
@@ -311,3 +309,86 @@ export interface LiveryFolderDraft {
 }
 export const prepareLiveryFolders = (projectId: string) =>
   invoke<LiveryFolderDraft[] | null>("prepare_livery_folders", { projectId });
+
+export interface RobloxFocus {
+  projectId?: string;
+  folderIds?: string[];
+}
+export interface RobloxLiverySummary {
+  id: string;
+  projectId: string;
+  projectName: string;
+  name: string;
+  vehicleId: string | null;
+  textures: number;
+  uploaded: number;
+}
+export interface UploadBatch {
+  id: string;
+  accountId: string;
+  state: string;
+  createdAt: string;
+}
+export interface UploadJob {
+  id: string;
+  accountId: string;
+  hash: string;
+  name: string;
+  state: string;
+  pass: number;
+  nextAt: number;
+  message: string;
+  operation: string | null;
+  firstId: string | null;
+  secondId: string | null;
+  moderation: string;
+  generation: number;
+}
+export interface UploadItem {
+  batchId: string;
+  jobId: string;
+  folderId: string;
+  side: string;
+}
+export interface UploadSnapshot {
+  revision: number;
+  queue: { batches: UploadBatch[]; jobs: UploadJob[]; items: UploadItem[] };
+  concurrency: number;
+  activeTransfers: number;
+  nextAllowedAt: number;
+}
+export interface UploadReview {
+  accountId: string;
+  liveries: number;
+  textures: number;
+  uniqueTextures: number;
+  reused: number;
+  queued: number;
+  creates: number;
+}
+export const robloxLiveries = () =>
+  invoke<RobloxLiverySummary[]>("roblox_liveries");
+export const uploadSnapshot = () => invoke<UploadSnapshot>("upload_snapshot");
+export const previewUploadBatch = (folderIds: string[], force: boolean) =>
+  invoke<UploadReview>("preview_upload_batch", { folderIds, force });
+export const startUploadBatch = (
+  requestId: string,
+  folderIds: string[],
+  force: boolean,
+) => invoke<string>("start_upload_batch", { requestId, folderIds, force });
+export const controlUploadBatch = (
+  batchId: string | null,
+  action: "pause" | "resume" | "cancel" | "retry",
+) => invoke<void>("control_upload_batch", { batchId, action });
+export const setEditLock = (locked: boolean) =>
+  invoke<void>("set_edit_lock", { locked });
+export interface PreparationProgress {
+  total: number;
+  ready: number;
+  errors: string[];
+}
+export const liveryPreparations = (tokens: string[]) =>
+  invoke<{ token: string; progress: PreparationProgress }[]>(
+    "livery_preparations",
+    { tokens },
+  );

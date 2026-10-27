@@ -24,10 +24,19 @@ pub fn validate_folder_name(name: &str) -> Result<(), Error> {
 }
 impl Workspace {
     pub fn editable_project(&self, id: &str) -> Result<(), Error> {
-        if self.project(id)?.archived {
-            return Err(Error::Archived);
+        let archived = self
+            .connection()?
+            .query_row("SELECT archived FROM projects WHERE id=?1", [id], |r| {
+                r.get::<_, bool>(0)
+            })
+            .optional()
+            .map_err(storage)?
+            .ok_or(Error::NotFound)?;
+        if archived {
+            Err(Error::Archived)
+        } else {
+            Ok(())
         }
-        Ok(())
     }
     pub fn folders(&self, project: &str) -> Result<Vec<AssetFolder>, Error> {
         let db = self.connection()?;
@@ -55,19 +64,9 @@ impl Workspace {
         result
     }
     pub fn folder(&self, id: &str) -> Result<AssetFolder, Error> {
-        let db = self.connection()?;
-        let project: Option<String> = db
-            .query_row(
-                "SELECT project_id FROM asset_folders WHERE id=?1",
-                [id],
-                |r| r.get(0),
-            )
-            .optional()
-            .map_err(storage)?;
-        self.folders(&project.ok_or(Error::NotFound)?)?
-            .into_iter()
-            .find(|f| f.id == id)
-            .ok_or(Error::NotFound)
+        let mut f=self.connection()?.query_row("SELECT id,project_id,parent_id,name,kind,vehicle_id,cover_hash FROM asset_folders WHERE id=?1",[id],|r|Ok(AssetFolder{id:r.get(0)?,project_id:r.get(1)?,parent_id:r.get(2)?,name:r.get(3)?,kind:r.get(4)?,vehicle_id:r.get(5)?,cover_hash:r.get(6)?,preview:None})).optional().map_err(storage)?.ok_or(Error::NotFound)?;
+        f.preview = f.cover_hash.as_deref().and_then(|h| self.thumbnail(h));
+        Ok(f)
     }
     pub fn board(&self, project: &str) -> Result<AssetBoard, Error> {
         let db = self.connection()?;
@@ -388,7 +387,7 @@ impl Workspace {
                 .map_err(storage)?;
                 tx.execute("UPDATE projects SET updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1",[project]).map_err(storage)?;
                 tx.commit().map_err(storage)?;
-                self.prepare_thumbnail(&hash);
+
                 Ok(true)
             })();
             match result {
@@ -405,7 +404,7 @@ impl Workspace {
         self.editable_project(&f.project_id)?;
         validate_png(path)?;
         let hash = self.import_file(path)?;
-        self.prepare_thumbnail(&hash);
+
         self.connection()?
             .execute(
                 "UPDATE asset_folders SET cover_hash=?1 WHERE id=?2",
@@ -473,35 +472,49 @@ impl Workspace {
         files: &[(PathBuf, String, Option<String>)],
         cover: Option<usize>,
     ) -> Result<String, Error> {
+        let prepared = files
+            .iter()
+            .map(|(path, name, slot)| Ok((self.prepare_texture(path)?, name.clone(), slot.clone())))
+            .collect::<Result<Vec<_>, Error>>()?;
+        self.import_prepared_livery(project, parent, existing, name, vehicle, &prepared, cover)
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "One atomic reviewed livery import."
+    )]
+    pub fn import_prepared_livery(
+        &self,
+        project: &str,
+        parent: Option<&str>,
+        existing: Option<&str>,
+        name: &str,
+        vehicle: &str,
+        files: &[(crate::PreparedTexture, String, Option<String>)],
+        cover: Option<usize>,
+    ) -> Result<String, Error> {
         self.editable_project(project)?;
         validate_folder_name(name)?;
         self.validate_parent(project, parent)?;
-        let catalogue = apex_core::vehicle_catalogue()?;
-        let _vehicle = catalogue
+        if !apex_core::vehicle_catalogue()?
             .vehicles
             .iter()
-            .find(|v| v.id == vehicle)
-            .ok_or_else(|| bad("Choose a vehicle from the catalogue."))?;
-        if files.is_empty() || files.len() > 100 {
-            return Err(bad("Choose between 1 and 100 PNG textures."));
+            .any(|v| v.id == vehicle)
+        {
+            return Err(bad("Choose a vehicle from the catalogue."));
         }
-        if cover.is_some_and(|c| c >= files.len()) {
-            return Err(bad("Invalid cover selection."));
+        if files.is_empty() || files.len() > 100 || cover.is_some_and(|i| i >= files.len()) {
+            return Err(bad("Choose 1–100 PNGs and a valid cover."));
         }
         let mut seen = HashSet::new();
         let mut prepared = Vec::new();
-        for (path, filename, slot) in files {
-            validate_png(path)?;
+        for (texture, filename, slot) in files {
             if let Some(slot) = slot {
-                if !valid_slot(slot) || !seen.insert(slot.clone()) {
-                    return Err(bad(
-                        "Resolve duplicate or unsupported slots before importing.",
-                    ));
+                if !valid_slot(slot) || !seen.insert(slot) {
+                    return Err(bad("Resolve duplicate or invalid slots."));
                 }
             }
-            let hash = self.import_file(path)?;
-            self.prepare_thumbnail(&hash);
-            prepared.push((filename, hash, slot));
+            self.promote_texture(texture)?;
+            prepared.push((filename, texture.hash(), slot));
         }
         let id = if let Some(id) = existing {
             let f = self.folder(id)?;
@@ -517,6 +530,9 @@ impl Workspace {
         };
         let mut db = self.connection()?;
         let tx = db.transaction().map_err(storage)?;
+        for (texture, _, _) in files {
+            Self::register_texture(&tx, texture)?;
+        }
         let archived: bool = tx
             .query_row(
                 "SELECT archived FROM projects WHERE id=?1",
@@ -928,6 +944,7 @@ mod tests {
         ws.import_files_into(&p.id, None, &[path]).unwrap();
         let asset = ws.assets(Some(&p.id)).unwrap().remove(0);
         assert!(asset.preview.is_some());
+        assert!(!ws.thumbnail_bytes(&asset.hash).unwrap().is_empty());
         fs::remove_file(
             ws.root
                 .join("thumbnails")
@@ -935,21 +952,22 @@ mod tests {
         )
         .unwrap();
         assert!(ws.assets(Some(&p.id)).unwrap()[0].preview.is_some());
+        assert!(!ws.thumbnail_bytes(&asset.hash).unwrap().is_empty());
     }
     #[test]
     fn schema_three_backup_restores_and_migrates_with_safety_snapshot() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::open(dir.path().join("old")).unwrap();
         ws.rename("Old studio").unwrap();
-        ws.connection().unwrap().execute_batch("DROP TABLE roblox_uploads;DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;PRAGMA user_version=3;").unwrap();
+        ws.connection().unwrap().execute_batch("DROP TABLE upload_attempts;DROP TABLE upload_batch_items;DROP TABLE upload_passes;DROP TABLE upload_jobs;DROP TABLE upload_batches;DROP TABLE image_validation;DROP TABLE roblox_uploads;DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;PRAGMA user_version=3;").unwrap();
         let path = dir.path().join("old.apexbackup");
         ws.backup(&path).unwrap();
         let restored = Workspace::open(dir.path().join("new")).unwrap();
         restored.restore_backup(&path).unwrap();
-        assert_eq!(restored.info().unwrap().schema_version, 6);
+        assert_eq!(restored.info().unwrap().schema_version, 7);
         assert_eq!(restored.info().unwrap().name, "Old studio");
         let migrated = Workspace::open(dir.path().join("old")).unwrap();
-        assert_eq!(migrated.info().unwrap().schema_version, 6);
+        assert_eq!(migrated.info().unwrap().schema_version, 7);
         assert!(std::fs::read_dir(migrated.root.join("backups"))
             .unwrap()
             .next()

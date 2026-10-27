@@ -41,3 +41,7 @@ The native Rust adapter alone contacts the fixed HTTPS Roblox endpoints; redirec
 ![Roblox settings](phase-05-roblox-settings.jpg)
 
 Native final review confirmed the per-selection Upload to Roblox action, assigned side filenames, inclusive size hint, and the separate Upload and include / Skip this livery prompt. The test livery was skipped; no upload or publishing-draft mutation was performed during this review.
+
+## Superseding queue workflow, 2026-10-27
+
+The global Roblox tab now owns persistent multi-livery upload batches; project shortcuts open it with a livery selected. The project Publishing tab is labelled ERLCX and links to Roblox when IDs are missing. New uploads use two sequential Decal passes; existing selected IDs remain until pass two succeeds. The upload mutex and stop-after-current-file UI described above have been replaced. See [current implementation and measured import performance](ROBLOX-QUEUE-PERFORMANCE.md).

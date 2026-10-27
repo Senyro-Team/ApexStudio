@@ -18,3 +18,12 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 unwrap_used = "warn"
 expect_used = "warn"
+
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.release]
+debug = 1

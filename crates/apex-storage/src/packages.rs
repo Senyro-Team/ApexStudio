@@ -290,6 +290,12 @@ fn checked(path: &Path) -> Result<Checked, Error> {
             "publishing_drafts",
             "publishing_media",
             "roblox_uploads",
+            "image_validation",
+            "upload_batches",
+            "upload_attempts",
+            "upload_jobs",
+            "upload_passes",
+            "upload_batch_items",
         ]);
         let mut stmt=db.prepare("SELECT name,type FROM sqlite_master WHERE type IN ('table','view','trigger') AND name NOT LIKE 'sqlite_%'").map_err(storage)?;
         let schema = stmt
@@ -517,7 +523,6 @@ impl Workspace {
         // Immutable blobs may remain unreferenced after interruption; visible records commit together.
         for blob in &c.manifest.blobs {
             self.import_file(&c.dir.path().join("files").join(&blob.hash))?;
-            self.prepare_thumbnail(&blob.hash);
         }
         let mut db = self.connection()?;
         let tx = db.transaction().map_err(storage)?;
@@ -671,7 +676,6 @@ impl Workspace {
         self.backup(&safety)?;
         for blob in &c.manifest.blobs {
             self.import_file(&c.dir.path().join("files").join(&blob.hash))?;
-            self.prepare_thumbnail(&blob.hash);
         }
         let staged = Workspace::open(c.dir.path())?;
         drop(staged);
@@ -681,6 +685,10 @@ impl Workspace {
         rusqlite::backup::Backup::new(&source, &mut target)
             .map_err(storage)?
             .run_to_completion(128, Duration::from_millis(5), None)
+            .map_err(storage)?;
+        self.recover_queue()?;
+        self.connection()?
+            .execute("DELETE FROM image_validation", [])
             .map_err(storage)?;
         let _ = self.info()?;
         Ok(safety)

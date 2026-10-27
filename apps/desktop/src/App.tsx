@@ -1,6 +1,8 @@
+import PerformanceDiagnostics from "./PerformanceDiagnostics";
 import RobloxSettings from "./RobloxSettings";
 import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
 import ProjectsArea from "./Projects";
+const Roblox = lazy(() => import("./Roblox"));
 const Notes = lazy(() => import("./Notes"));
 import { BackupTools } from "./Packages";
 import {
@@ -17,6 +19,8 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import {
+  setEditLock,
+  type RobloxFocus,
   desktopAvailable,
   errorMessage,
   readWorkspace,
@@ -29,12 +33,18 @@ const sections = [
   { name: "Projects", icon: FolderOpen },
   { name: "Notes", icon: NotebookPen },
   { name: "Assets", icon: Images },
+  { name: "Roblox", icon: Upload },
   { name: "Settings", icon: Settings },
 ] as const;
 type Section = (typeof sections)[number]["name"];
 
 export default function App() {
   const [section, setSection] = useState<Section>("Dashboard");
+  const [robloxFocus, setRobloxFocus] = useState<RobloxFocus>({});
+  const openRoblox = (focus: RobloxFocus) => {
+    setRobloxFocus(focus);
+    setSection("Roblox");
+  };
   const [collapsed, setCollapsed] = useState(false);
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
   const [loading, setLoading] = useState(desktopAvailable);
@@ -43,6 +53,9 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [navigationLocked, setNavigationLocked] = useState(false);
+  useEffect(() => {
+    if (desktopAvailable) void setEditLock(navigationLocked).catch(() => {});
+  }, [navigationLocked]);
   const [workspaceGeneration, setWorkspaceGeneration] = useState(0);
   async function load() {
     setLoading(true);
@@ -86,6 +99,26 @@ export default function App() {
       stop?.();
     };
   }, [navigationLocked]);
+  useEffect(() => {
+    if (!desktopAvailable) return;
+    let stop: (() => void) | undefined,
+      active = true;
+    void import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen("close-blocked", () =>
+          setError("Save or discard your changes before closing Apex Studio."),
+        ),
+      )
+      .then((fn) => {
+        if (active) stop = fn;
+        else fn();
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+      stop?.();
+    };
+  }, []);
   async function save(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
@@ -174,6 +207,7 @@ export default function App() {
           )}
           <ProjectsArea
             key={workspaceGeneration}
+            onOpenRoblox={openRoblox}
             section={section}
             onNavigate={setSection}
             onEditingChange={setNavigationLocked}
@@ -182,6 +216,14 @@ export default function App() {
             <header className="page-heading">
               <h1>{section}</h1>
             </header>
+          )}
+          {section === "Roblox" && (
+            <Suspense fallback={<p role="status">Loading uploads…</p>}>
+              <Roblox
+                focus={robloxFocus}
+                onSettings={() => setSection("Settings")}
+              />
+            </Suspense>
           )}
           {section === "Notes" && (
             <Suspense fallback={<p role="status">Loading editor…</p>}>
@@ -193,6 +235,7 @@ export default function App() {
           )}
           {section === "Settings" && (
             <div className="settings-content">
+              <PerformanceDiagnostics />
               <RobloxSettings onBusy={setNavigationLocked} />
               <BackupTools
                 onBusy={setNavigationLocked}

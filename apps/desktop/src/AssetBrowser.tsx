@@ -1,7 +1,8 @@
+import AssetPreview from "./AssetPreview";
+import usePreparation from "./usePreparation";
 import LiveryFolderImport from "./LiveryFolderImport";
-import RobloxUpload from "./RobloxUpload";
 import useAssetDrag from "./useAssetDrag";
-import { useEffect, useState, useRef, type DragEvent } from "react";
+import { useEffect, useState, useRef, useMemo, type DragEvent } from "react";
 import {
   FolderOpen,
   File,
@@ -44,14 +45,15 @@ export default function AssetBrowser({
   catalogue,
   onBusy,
   onChange,
+  onOpenRoblox,
 }: {
+  onOpenRoblox?: (folderId: string) => void;
   project: Project;
   initialAssetId?: string | null;
   catalogue: Catalogue | null;
   onBusy: (value: boolean) => void;
   onChange: () => void;
 }) {
-  const [uploadFolder, setUploadFolder] = useState<string | null>(null);
   const [folderBatch, setFolderBatch] = useState<LiveryFolderDraft[] | null>(
     null,
   );
@@ -114,10 +116,25 @@ export default function AssetBrowser({
       void transfer({ ...item, cut: !copy }, target);
     },
   );
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [folderId, query]);
+  const preparation = usePreparation(draft ? [draft.token] : []);
+  const placements = useMemo(
+    () => new Map(board.placements.map((p) => [p.assetId, p])),
+    [board.placements],
+  );
+  const assets = useMemo(
+    () => new Map(board.assets.map((a) => [a.id, a])),
+    [board.assets],
+  );
+  const folders = useMemo(
+    () => new Map(board.folders.map((f) => [f.id, f])),
+    [board.folders],
+  );
   const locked = busy || project.archived || !!draft || !!folderForm;
-  const folder = board.folders.find((f) => f.id === folderId),
-    asset = board.assets.find((a) => a.id === selected),
-    placement = board.placements.find((p) => p.assetId === selected),
+  const folder = folders.get(folderId ?? ""),
+    asset = assets.get(selected ?? ""),
+    placement = placements.get(selected ?? ""),
     vehicle = catalogue?.vehicles.find((v) => v.id === vehicleId);
   useEffect(() => {
     browserRef.current?.focus({ preventScroll: true });
@@ -380,8 +397,8 @@ export default function AssetBrowser({
   }
   const currentFiles = board.assets.filter(
     (a) =>
-      (board.placements.find((p) => p.assetId === a.id)?.folderId ?? null) ===
-        folderId && a.name.toLowerCase().includes(query.toLowerCase()),
+      (placements.get(a.id)?.folderId ?? null) === folderId &&
+      a.name.toLowerCase().includes(query.toLowerCase()),
   );
   const currentFolders = board.folders.filter(
     (f) =>
@@ -446,14 +463,6 @@ export default function AssetBrowser({
         }
       }}
     >
-      {uploadFolder && (
-        <RobloxUpload
-          folderId={uploadFolder}
-          onBusy={setBusy}
-          onClose={() => setUploadFolder(null)}
-          onDone={() => setUploadFolder(null)}
-        />
-      )}
       {error && (
         <p className="error pre-wrap" role="alert">
           {error}
@@ -525,7 +534,7 @@ export default function AssetBrowser({
           <button
             className="primary"
             disabled={locked}
-            onClick={() => setUploadFolder(folder.id)}
+            onClick={() => onOpenRoblox?.(folder.id)}
           >
             Upload to Roblox
           </button>
@@ -803,6 +812,19 @@ export default function AssetBrowser({
             </div>
           )}
           <div className="assignment-list">
+            {preparation[draft.token] && (
+              <div role="status">
+                <p>
+                  Prepared {preparation[draft.token].ready} of{" "}
+                  {preparation[draft.token].total} images
+                </p>
+                {preparation[draft.token].errors.map((e) => (
+                  <p className="error" key={e}>
+                    {e}
+                  </p>
+                ))}
+              </div>
+            )}
             {draft.files.map((f, i) => (
               <div className="assignment-row" key={f.index}>
                 <span>{f.name}</span>
@@ -899,7 +921,7 @@ export default function AssetBrowser({
                     <button
                       className="text-button"
                       disabled={locked}
-                      onClick={() => setUploadFolder(explorerSelection.id)}
+                      onClick={() => onOpenRoblox?.(explorerSelection.id)}
                     >
                       Upload to Roblox
                     </button>
@@ -965,7 +987,7 @@ export default function AssetBrowser({
                 onDragOver={(e) => dragOver(e, folderId)}
                 onDrop={(e) => drop(e, folderId)}
               >
-                {currentFolders.map((f) => (
+                {currentFolders.slice(page * 60, (page + 1) * 60).map((f) => (
                   <button
                     key={f.id}
                     className={`asset-tile folder-tile ${explorerSelection?.id === f.id ? "selected" : ""} ${clipboard?.cut && clipboard.id === f.id ? "is-cut" : ""} ${dropTarget === f.id || pointerDrag.target === f.id ? "drop-target" : ""}`}
@@ -1004,7 +1026,7 @@ export default function AssetBrowser({
                   >
                     <div className="asset-thumbnail">
                       {f.preview ? (
-                        <img src={f.preview} alt="" draggable={false} />
+                        <AssetPreview src={f.preview} />
                       ) : f.kind === "livery" ? (
                         <Layers size={40} />
                       ) : (
@@ -1015,49 +1037,72 @@ export default function AssetBrowser({
                     <small>{f.kind === "livery" ? "Livery" : "Folder"}</small>
                   </button>
                 ))}
-                {currentFiles.map((a) => (
-                  <button
-                    key={a.id}
-                    className={`asset-tile ${explorerSelection?.id === a.id ? "selected" : ""} ${clipboard?.cut && clipboard.id === a.id ? "is-cut" : ""}`}
-                    disabled={busy}
-                    aria-pressed={explorerSelection?.id === a.id}
-                    onFocus={() =>
-                      setExplorerSelection({ id: a.id, folder: false })
-                    }
-                    data-draggable={!locked}
-                    onPointerDown={(e) =>
-                      pointerDrag.start(e, {
-                        id: a.id,
-                        folder: false,
-                        name: a.name,
-                      })
-                    }
-                    draggable={false}
-                    onDragStart={(e) => drag(e, { id: a.id, folder: false })}
-                    onClick={() => {
-                      setExplorerSelection({ id: a.id, folder: false });
-                      setSelected(a.id);
-                      setMoveTo(
-                        board.placements.find((p) => p.assetId === a.id)
-                          ?.folderId ?? null,
-                      );
-                    }}
-                  >
-                    <div className="asset-thumbnail">
-                      {a.preview ? (
-                        <img src={a.preview} alt="" draggable={false} />
-                      ) : (
-                        <File size={32} />
-                      )}
-                    </div>
-                    <strong>{a.name}</strong>
-                    <small>
-                      {board.placements.find((p) => p.assetId === a.id)?.slot ??
-                        "File"}{" "}
-                      · {(a.size / 1024).toFixed(1)} KB
-                    </small>
-                  </button>
-                ))}
+                {currentFiles
+                  .slice(
+                    Math.max(0, page * 60 - currentFolders.length),
+                    Math.max(0, (page + 1) * 60 - currentFolders.length),
+                  )
+                  .map((a) => (
+                    <button
+                      key={a.id}
+                      className={`asset-tile ${explorerSelection?.id === a.id ? "selected" : ""} ${clipboard?.cut && clipboard.id === a.id ? "is-cut" : ""}`}
+                      disabled={busy}
+                      aria-pressed={explorerSelection?.id === a.id}
+                      onFocus={() =>
+                        setExplorerSelection({ id: a.id, folder: false })
+                      }
+                      data-draggable={!locked}
+                      onPointerDown={(e) =>
+                        pointerDrag.start(e, {
+                          id: a.id,
+                          folder: false,
+                          name: a.name,
+                        })
+                      }
+                      draggable={false}
+                      onDragStart={(e) => drag(e, { id: a.id, folder: false })}
+                      onClick={() => {
+                        setExplorerSelection({ id: a.id, folder: false });
+                        setSelected(a.id);
+                        setMoveTo(placements.get(a.id)?.folderId ?? null);
+                      }}
+                    >
+                      <div className="asset-thumbnail">
+                        {a.preview ? (
+                          <AssetPreview src={a.preview} />
+                        ) : (
+                          <File size={32} />
+                        )}
+                      </div>
+                      <strong>{a.name}</strong>
+                      <small>
+                        {placements.get(a.id)?.slot ?? "File"} ·{" "}
+                        {(a.size / 1024).toFixed(1)} KB
+                      </small>
+                    </button>
+                  ))}
+              </div>
+            )}
+            {currentFolders.length + currentFiles.length > 60 && (
+              <div className="button-row">
+                <button disabled={!page} onClick={() => setPage((p) => p - 1)}>
+                  Previous
+                </button>
+                <span>
+                  Page {page + 1} of{" "}
+                  {Math.ceil(
+                    (currentFolders.length + currentFiles.length) / 60,
+                  )}
+                </span>
+                <button
+                  disabled={
+                    (page + 1) * 60 >=
+                    currentFolders.length + currentFiles.length
+                  }
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </button>
               </div>
             )}
             {!loading && !currentFolders.length && !currentFiles.length && (

@@ -1,0 +1,10 @@
+BEGIN IMMEDIATE;
+CREATE TABLE image_validation(hash TEXT PRIMARY KEY REFERENCES managed_files(hash),width INTEGER NOT NULL,height INTEGER NOT NULL,validator INTEGER NOT NULL);
+CREATE TABLE upload_batches(id TEXT PRIMARY KEY,account_id TEXT NOT NULL,state TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+CREATE TABLE upload_jobs(id TEXT PRIMARY KEY,account_id TEXT NOT NULL,hash TEXT NOT NULL REFERENCES managed_files(hash),name TEXT NOT NULL,state TEXT NOT NULL,pass INTEGER NOT NULL DEFAULT 1,next_at INTEGER NOT NULL DEFAULT 0,message TEXT NOT NULL DEFAULT '',generation INTEGER NOT NULL DEFAULT 1);
+CREATE UNIQUE INDEX upload_active ON upload_jobs(account_id,hash) WHERE state NOT IN ('complete','cancelled');
+CREATE TABLE upload_passes(job_id TEXT NOT NULL REFERENCES upload_jobs(id),pass INTEGER NOT NULL,operation TEXT,asset_id TEXT,moderation TEXT NOT NULL DEFAULT 'unknown',state TEXT NOT NULL DEFAULT 'queued',attempts INTEGER NOT NULL DEFAULT 0,polls INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(job_id,pass));
+CREATE TABLE upload_attempts(job_id TEXT NOT NULL REFERENCES upload_jobs(id),pass INTEGER NOT NULL,attempt INTEGER NOT NULL,state TEXT NOT NULL,operation TEXT,asset_id TEXT,created_at TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%fZ','now')),PRIMARY KEY(job_id,pass,attempt));
+CREATE TABLE upload_batch_items(batch_id TEXT NOT NULL REFERENCES upload_batches(id),job_id TEXT NOT NULL REFERENCES upload_jobs(id),folder_id TEXT NOT NULL REFERENCES asset_folders(id),side TEXT NOT NULL,PRIMARY KEY(batch_id,job_id,folder_id,side));
+PRAGMA user_version=7;
+COMMIT;
