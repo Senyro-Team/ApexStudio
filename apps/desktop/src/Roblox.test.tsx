@@ -3,6 +3,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Roblox from "./Roblox";
 import {
+  robloxLivery,
   robloxLiveries,
   robloxSettings,
   uploadSnapshot,
@@ -134,4 +135,69 @@ it("resumes paused native queues without changing their account", async () => {
   await user.click(screen.getByRole("button", { name: "Resume all" }));
   expect(controlUploadBatch).toHaveBeenCalledWith(null, "resume");
   expect(startUploadBatch).not.toHaveBeenCalled();
+});
+
+it("copies several selected liveries with fresh saved decal IDs without uploading", async () => {
+  const user = userEvent.setup();
+  const clipboard = vi
+    .spyOn(navigator.clipboard, "writeText")
+    .mockResolvedValue();
+  vi.mocked(robloxLivery).mockImplementation(async (id) => ({
+    folderId: id,
+    accountId: "123",
+    name: id === "a" ? "EMS" : "Patrol",
+    vehicle: "Vehicle",
+    textures: [
+      {
+        assetId: id,
+        hash: id,
+        name: "Left.png",
+        side: "Left 1",
+        upload: {
+          accountId: "123",
+          hash: id,
+          state: "uploaded",
+          assetId: id === "a" ? "222" : "444",
+          operation: null,
+          moderation: "reviewing",
+          message: "",
+        },
+      },
+    ],
+  }));
+  render(<Roblox focus={{}} onSettings={() => {}} />);
+  await screen.findByText("EMS");
+  await user.click(
+    screen.getByRole("checkbox", { name: "Select all filtered liveries" }),
+  );
+  await user.click(
+    screen.getByRole("button", { name: "Copy codes (Markdown)" }),
+  );
+  await vi.waitFor(() => expect(clipboard).toHaveBeenCalledOnce());
+  const copied = clipboard.mock.calls[0][0];
+  expect(copied).toContain("## FDNY — EMS");
+  expect(copied).toContain("## Police — Patrol");
+  expect(copied).toContain("`222`");
+  expect(copied).toContain("`444`");
+  expect(startUploadBatch).not.toHaveBeenCalled();
+});
+it("does not replace the clipboard when no usable saved IDs exist", async () => {
+  const user = userEvent.setup();
+  const clipboard = vi
+    .spyOn(navigator.clipboard, "writeText")
+    .mockResolvedValue();
+  vi.mocked(robloxLivery).mockResolvedValue({
+    folderId: "a",
+    accountId: "123",
+    name: "EMS",
+    vehicle: "Vehicle",
+    textures: [],
+  });
+  render(<Roblox focus={{ folderIds: ["a"] }} onSettings={() => {}} />);
+  await screen.findByText("EMS");
+  await user.click(
+    screen.getByRole("button", { name: "Copy codes (Markdown)" }),
+  );
+  await screen.findByRole("alert");
+  expect(clipboard).not.toHaveBeenCalled();
 });

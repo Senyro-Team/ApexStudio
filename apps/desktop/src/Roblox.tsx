@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { liveryCodesMarkdown } from "./liveryCodesMarkdown";
 import { listen } from "@tauri-apps/api/event";
 import {
   robloxLiveries,
@@ -180,6 +181,40 @@ export default function Roblox({
       return next;
     });
   }
+  async function copyCodes() {
+    const rows = liveries.filter((l) => selected.has(l.id));
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const entries: { projectName: string; livery: LiveryUploads }[] = [];
+      for (let start = 0; start < rows.length; start += 8) {
+        entries.push(
+          ...(await Promise.all(
+            rows
+              .slice(start, start + 8)
+              .map(async (row) => ({
+                projectName: row.projectName,
+                livery: await robloxLivery(row.id),
+              })),
+          )),
+        );
+      }
+      const result = liveryCodesMarkdown(entries);
+      if (!result.codes)
+        throw new Error(
+          "No usable saved decal IDs. Upload the selected textures to Roblox first.",
+        );
+      await navigator.clipboard.writeText(result.markdown);
+      setNotice(
+        `Copied ${result.codes} decal IDs from ${rows.length} ${rows.length === 1 ? "livery" : "liveries"} as Markdown.${result.missing ? ` ${result.missing} unavailable ${result.missing === 1 ? "texture is" : "textures are"} marked in the list.` : ""}`,
+      );
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function prepare(force: boolean) {
     setBusy(true);
     setError("");
@@ -334,6 +369,13 @@ export default function Roblox({
             onClick={() => void prepare(true)}
           >
             Re-upload selected
+          </button>
+          <button
+            className="secondary"
+            disabled={busy || !selected.size}
+            onClick={() => void copyCodes()}
+          >
+            Copy codes (Markdown)
           </button>
         </div>
         <ul className="roblox-livery-rows">

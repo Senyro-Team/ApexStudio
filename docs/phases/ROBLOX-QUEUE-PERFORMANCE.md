@@ -71,3 +71,11 @@ Final native review used the Explorer-launched optimized executable in **Tiki Wo
 Final required checks: 46 Rust tests across core/storage/native adapters; 41 desktop frontend tests; TypeScript/Vite production build; workspace Clippy with warnings denied; Rust formatting; optimized Windows native build. The existing lazy notes-editor chunk still produces Vite's size advisory.
 
 After all runs, SHA-256 comparisons confirmed that all 195 approved source PNGs still match the untouched isolated input copy.
+
+## Markdown code lists, 2026-10-27
+
+In the global Roblox tab, select one or more liveries and choose **Copy codes (Markdown)**. Selection can span projects and remains selected when filtering. The text contains a project/livery heading, vehicle name and a naturally sorted Markdown bullet list of side names with inline-code decal IDs. The copy action reads current selected results again rather than copying stale expanded texture details. Existing usable IDs are copied even while a replacement upload is pending; pass-one IDs are never exported as selected results.
+
+Missing and rejected textures are explicitly labelled. If no usable saved IDs exist, the clipboard is left unchanged and the app explains that uploads are needed. Markdown characters and line breaks in user-controlled names are escaped; processing, wrong-account and mismatched-hash records are not exported as codes. This action does not start uploads or alter an ERLCX draft. Frontend verification now passes 45 tests, including multi-livery copying and clipboard preservation when there are no usable results.
+
+Native Windows verification: selected all 16 existing liveries across two projects in Tiki Workspace, used Copy codes (Markdown), and verified the clipboard contains 16 Markdown headings and 199 side list entries: 17 saved decal IDs and 182 explicitly unavailable textures. No upload batch was created. The optimized app remains open with the selection ready for review.
