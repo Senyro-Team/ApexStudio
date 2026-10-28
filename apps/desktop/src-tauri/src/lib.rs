@@ -57,6 +57,37 @@ async fn rename_workspace(
         .map_err(Into::into)
 }
 
+#[tauri::command]
+fn set_app_theme_icon(app: tauri::AppHandle, color: &str) -> Result<(), String> {
+    let hex = color.strip_prefix('#').ok_or("Invalid theme color")?;
+    if hex.len() != 6 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("Invalid theme color".into());
+    }
+    let parse = |start| {
+        u8::from_str_radix(&hex[start..start + 2], 16)
+            .map_err(|_| "Invalid theme color".to_string())
+    };
+    let channels = [parse(0)?, parse(2)?, parse(4)?];
+    let base =
+        tauri::image::Image::from_bytes(include_bytes!("../../public/brand/themes/violet.png"))
+            .map_err(|error| error.to_string())?;
+    let mut rgba = base.rgba().to_vec();
+    for pixel in rgba.chunks_exact_mut(4) {
+        pixel[..3].copy_from_slice(&channels);
+    }
+    let icon = tauri::image::Image::new_owned(rgba, base.width(), base.height());
+    if let Some(window) = app.get_webview_window("main") {
+        window
+            .set_icon(icon.clone())
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(tray) = app.tray_by_id("apex-uploads") {
+        tray.set_icon(Some(icon))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
 /// Start the desktop adapter with one local workspace and a minimal command surface.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -140,6 +171,7 @@ pub fn run() {
             publishing::export_publishing,
             workspace_info,
             rename_workspace,
+            set_app_theme_icon,
             projects::list_projects,
             projects::save_project,
             projects::archive_project,
