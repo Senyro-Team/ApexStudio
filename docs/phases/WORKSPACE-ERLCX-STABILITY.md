@@ -6,3 +6,9 @@
 - ERLCX review groups livery codes behind expandable summaries. A failed initial draft or livery-list load can be retried without restarting or discarding edits.
 
 Reference: https://www.sqlite.org/wal.html and https://www.sqlite.org/rescode.html
+
+## Native review (2026-10-28)
+
+- Built the optimized Windows app and launched it through Explorer in Tiki Workspace. The existing 16-livery draft displayed 196 codes behind the collapsed review summary; expanding it revealed per-livery summaries.
+- After reloading the unpacked extension, tested a separate local demo draft with a fictional decal ID and the two authorized Apex banners. The assistant reached ERLCX Submit without a manual resume. The agreement remained unchecked and neither Save Draft nor Publish was selected. Apex Studio reported the final review after returning to its window.
+- The previous intermittent locking-protocol failure was not reproduced in this session; a single successful run cannot establish that every cause has been eliminated.
