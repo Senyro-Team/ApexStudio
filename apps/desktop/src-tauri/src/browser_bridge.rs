@@ -195,6 +195,16 @@ impl BrowserBridge {
     }
 }
 #[cfg(windows)]
+fn initial_pipe(name: &str) -> Result<tokio::net::windows::named_pipe::NamedPipeServer, Error> {
+    tauri::async_runtime::block_on(async {
+        tokio::net::windows::named_pipe::ServerOptions::new()
+            .first_pipe_instance(true)
+            .reject_remote_clients(true)
+            .create(name)
+            .map_err(|e| Error::Storage(e.to_string()))
+    })
+}
+#[cfg(windows)]
 pub fn setup(app: &tauri::AppHandle) -> Result<(), Error> {
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
@@ -213,11 +223,7 @@ pub fn setup(app: &tauri::AppHandle) -> Result<(), Error> {
     bridge.lock()?.config = config.clone();
     app.manage(bridge.clone());
     // Acquire the endpoint before exposing it. first_pipe_instance prevents accidental sharing.
-    let initial = ServerOptions::new()
-        .first_pipe_instance(true)
-        .reject_remote_clients(true)
-        .create(&config.pipe)
-        .map_err(|e| Error::Storage(e.to_string()))?;
+    let initial = initial_pipe(&config.pipe)?;
     tauri::async_runtime::spawn(async move {
         let mut next = Some(initial);
         loop {
@@ -477,6 +483,14 @@ pub fn control_browser(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    #[test]
+    fn synchronous_startup_creates_pipe_inside_the_io_runtime() {
+        let name = format!(r"\\.\pipe\ApexStudio-startup-{}", secret());
+        std::thread::spawn(move || initial_pipe(&name).unwrap())
+            .join()
+            .unwrap();
+    }
     fn fixture() -> BrowserBridge {
         let bridge = BrowserBridge::default();
         let mut s = bridge.lock().unwrap();
