@@ -3,6 +3,7 @@ const sides = [
   "Left",
   "Right",
   "Front",
+  "Frontplate",
   "Back",
   "Top",
   "Window Left",

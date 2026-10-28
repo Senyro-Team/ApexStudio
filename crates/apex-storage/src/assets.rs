@@ -600,6 +600,7 @@ fn valid_slot(slot: &str) -> bool {
         "Left",
         "Right",
         "Front",
+        "Frontplate",
         "Back",
         "Top",
         "Window Left",

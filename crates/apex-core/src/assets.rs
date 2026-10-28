@@ -57,6 +57,35 @@ pub fn suggest_slot(filename: &str) -> Option<String> {
     let tokens: Vec<_> = expanded.split_whitespace().collect();
     let mut found = Vec::new();
     for (i, token) in tokens.iter().enumerate() {
+        let plate_words = (1..=3).rev().find(|count| {
+            let end = (i + count).min(tokens.len());
+            end - i == *count
+                && [
+                    "frontplate",
+                    "frontlicenseplate",
+                    "frontnumberplate",
+                    "frontkennzeichen",
+                ]
+                .contains(&tokens[i..end].join("").as_str())
+        });
+        if let Some(words) = plate_words {
+            if i > 0 && ["window", "windows", "win", "wnd"].contains(&tokens[i - 1]) {
+                return None;
+            }
+            let number = tokens
+                .iter()
+                .skip(i + words)
+                .find(|v| v.chars().all(|c| c.is_ascii_digit()));
+            let n = match number {
+                Some(n) => n.parse::<u32>().ok()?,
+                None => 1,
+            };
+            if !(1..=100).contains(&n) {
+                return None;
+            }
+            found.push(format!("Frontplate {n}"));
+            continue;
+        }
         let mut word = *token;
         let mut window = i > 0 && ["window", "windows", "win", "wnd"].contains(&tokens[i - 1]);
         for prefix in ["windows", "window", "win", "wnd"] {
@@ -108,6 +137,39 @@ mod tests {
             assert_eq!(suggest_slot(name).as_deref(), Some(want));
         }
         for name in ["left.png", "left1right2.png", "bright1.png", "left0.png"] {
+            assert!(suggest_slot(name).is_none(), "{name}");
+        }
+    }
+    #[test]
+    fn frontplate_aliases_are_specific_and_default_to_one() {
+        for name in [
+            "Frontplate.png",
+            "Front Plate.png",
+            "FRONT_PLATE.png",
+            "front-plate.png",
+            "FrontLicensePlate.png",
+            "Front Number Plate.png",
+            "FrontKennzeichen.png",
+        ] {
+            assert_eq!(
+                suggest_slot(name).as_deref(),
+                Some("Frontplate 1"),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            suggest_slot("Unit2024 FrontPlate 2 99.png").as_deref(),
+            Some("Frontplate 2")
+        );
+        for name in [
+            "Plate1.png",
+            "LicensePlate1.png",
+            "Kennzeichen1.png",
+            "Frontplate0.png",
+            "Frontplate101.png",
+            "Frontplate Left1.png",
+            "Window Frontplate1.png",
+        ] {
             assert!(suggest_slot(name).is_none(), "{name}");
         }
     }
