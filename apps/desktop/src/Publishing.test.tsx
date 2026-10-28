@@ -123,6 +123,13 @@ it("exports a complete saved draft but blocks exporting unsaved edits", async ()
   await user.click(await screen.findByRole("button", { name: "Details" }));
   await screen.findByLabelText("Post title");
   await user.click(screen.getByRole("button", { name: "Review" }));
+  const codes = screen.getByText("View livery codes (1)");
+  expect(codes.closest("details")?.open).toBe(false);
+  await user.click(codes);
+  const vehicleCodes = screen.getByText("Vehicle · 1 texture");
+  expect(vehicleCodes.closest("details")?.open).toBe(false);
+  await user.click(vehicleCodes);
+  expect(screen.getByText("Left 1 — 12345")).toBeTruthy();
   await user.click(
     screen.getByRole("button", { name: "Export for ERLCX extension" }),
   );

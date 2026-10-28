@@ -201,3 +201,19 @@ export function permitsAdvance(step) {
     step,
   );
 }
+
+// Chrome can report a complete document before ERLCX has hydrated its wizard.
+// Only the unrecognised-layout state is retried; security and login stops remain immediate.
+export async function waitForWizard(read, wait, attempts = 40) {
+  for (let attempt = 0; ; attempt++) {
+    const state = await read();
+    if (
+      state.step ||
+      state.reason !==
+        "Unknown ERLCX layout. Review the page before resuming." ||
+      attempt >= attempts - 1
+    )
+      return state;
+    await wait(250);
+  }
+}

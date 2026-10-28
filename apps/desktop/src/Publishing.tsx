@@ -66,6 +66,7 @@ export default function Publishing({
     };
   }, [draftId]);
   const [mediaProject, setMediaProject] = useState(project?.id ?? "");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [sources, setSources] = useState<PostSourceStatus[]>([]),
     [reviewed, setReviewed] = useState(false);
   const [pendingFolder, setPendingFolder] = useState<string | null>(null);
@@ -87,6 +88,7 @@ export default function Publishing({
     [showAssets, setShowAssets] = useState(false);
   useEffect(() => {
     let active = true;
+    setError("");
     Promise.all([
       draftId ? postDraft(draftId) : publishingDraft(project!.id),
       project
@@ -106,7 +108,7 @@ export default function Publishing({
     return () => {
       active = false;
     };
-  }, [project?.id, draftId]);
+  }, [project?.id, draftId, loadAttempt]);
   useEffect(() => {
     if (!draftId) return;
     void postSources(draftId)
@@ -294,9 +296,16 @@ export default function Publishing({
   }
   if (error && !data)
     return (
-      <p role="alert" className="error">
-        {error}
-      </p>
+      <div role="alert" className="error">
+        <p>{error}</p>
+        <button
+          className="secondary"
+          type="button"
+          onClick={() => setLoadAttempt((n) => n + 1)}
+        >
+          Retry loading draft
+        </button>
+      </div>
     );
   if (!data || !saved) return <p role="status">Loading publishing draft…</p>;
   const current = data.liveries[activeLivery];
@@ -819,16 +828,25 @@ export default function Publishing({
             {data.media.length} preview images · {data.liveries.length}{" "}
             {data.liveries.length === 1 ? "livery" : "liveries"}
           </p>
-          {data.liveries.map((l, i) => (
-            <div key={i}>
-              <h3>{l.vehicle || `Livery ${i + 1}`}</h3>
-              {l.sides.map((s, j) => (
-                <p key={j}>
-                  {s.side || "Unassigned"} — {s.decalId || "No decal ID"}
-                </p>
-              ))}
-            </div>
-          ))}
+          <details>
+            <summary>
+              View livery codes (
+              {data.liveries.reduce((n, l) => n + l.sides.length, 0)})
+            </summary>
+            {data.liveries.map((l, i) => (
+              <details key={i}>
+                <summary>
+                  {l.vehicle || `Livery ${i + 1}`} · {l.sides.length}{" "}
+                  {l.sides.length === 1 ? "texture" : "textures"}
+                </summary>
+                {l.sides.map((s, j) => (
+                  <p key={j}>
+                    {s.side || "Unassigned"} — {s.decalId || "No decal ID"}
+                  </p>
+                ))}
+              </details>
+            ))}
+          </details>
           {draftId &&
             sources
               .filter((s) => s.state !== "current")

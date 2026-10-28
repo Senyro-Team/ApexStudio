@@ -2,6 +2,7 @@ import { beforeEach, afterEach, it, expect, vi } from "vitest";
 import {
   wizardState,
   permitsAdvance,
+  waitForWizard,
 } from "../../erlcx-extension/automation.js";
 const bundle = {
   title: "Test post",
@@ -22,6 +23,31 @@ const bundle = {
 beforeEach(() => {
   vi.stubGlobal("location", new URL("https://erlcx.com/upload"));
   document.body.innerHTML = "<main><button>Continue</button></main>";
+});
+it("waits for hydration but does not retry verification or an unknown layout indefinitely", async () => {
+  const unknown = {
+    step: "",
+    reason: "Unknown ERLCX layout. Review the page before resuming.",
+  };
+  const ready = { step: "Categories", ready: false };
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce(unknown)
+    .mockResolvedValueOnce(ready);
+  const wait = vi.fn().mockResolvedValue(undefined);
+  expect(await waitForWizard(read, wait, 3)).toEqual(ready);
+  expect(wait).toHaveBeenCalledOnce();
+  const blocked = {
+    step: "",
+    reason: "Complete the verification yourself before resuming.",
+  };
+  expect(
+    await waitForWizard(vi.fn().mockResolvedValue(blocked), wait, 3),
+  ).toEqual(blocked);
+  expect(wait).toHaveBeenCalledOnce();
+  const neverReady = vi.fn().mockResolvedValue(unknown);
+  expect(await waitForWizard(neverReady, wait, 3)).toEqual(unknown);
+  expect(neverReady).toHaveBeenCalledTimes(3);
 });
 afterEach(() => vi.unstubAllGlobals());
 function fixture(html) {

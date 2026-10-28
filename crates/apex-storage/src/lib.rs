@@ -6,6 +6,7 @@ use std::{
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -32,10 +33,17 @@ fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
 }
 
-/// One active workspace. Connections are short-lived and configured identically.
+fn is_locking_protocol(error: &rusqlite::Error) -> bool {
+    matches!(error, rusqlite::Error::SqliteFailure(code, _) if code.code == rusqlite::ErrorCode::FileLockingProtocolFailed)
+}
+
+/// One active workspace. Operations use short-lived, identically configured connections.
 #[derive(Clone)]
 pub struct Workspace {
     root: PathBuf,
+    // Keep the WAL open between operations, avoiding repeated last-connection
+    // cleanup and recovery while other threads are opening connections.
+    anchor: Arc<Mutex<Option<Connection>>>,
 }
 
 impl Workspace {
@@ -43,7 +51,10 @@ impl Workspace {
     pub fn open(root: impl AsRef<Path>) -> Result<Self, Error> {
         fs::create_dir_all(root.as_ref()).map_err(storage)?;
         let root = fs::canonicalize(root.as_ref()).map_err(storage)?;
-        let workspace = Self { root };
+        let workspace = Self {
+            root,
+            anchor: Arc::new(Mutex::new(None)),
+        };
         let mut connection = workspace.connection()?;
         let version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
@@ -150,19 +161,33 @@ impl Workspace {
             if version > 0 {workspace.backup(&workspace.root.join("backups").join(format!("before-schema-9-{}.apexbackup",uuid::Uuid::now_v7())))?;}
             connection.execute_batch(include_str!("schema9.sql")).map_err(storage)?;
         }
+        *workspace
+            .anchor
+            .lock()
+            .map_err(|_| storage("Workspace connection unavailable."))? = Some(connection);
         Ok(workspace)
     }
 
     fn connection(&self) -> Result<Connection, Error> {
-        let connection = Connection::open(self.root.join("workspace.sqlite3")).map_err(storage)?;
-        connection
-            .busy_timeout(Duration::from_secs(5))
-            .map_err(storage)?;
-        connection
-            .execute_batch(
-                "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;",
-            )
-            .map_err(storage)?;
+        let mut attempt = 0;
+        loop {
+            match self.open_connection() {
+                Ok(connection) => return Ok(connection),
+                Err(error) if is_locking_protocol(&error) && attempt < 3 => {
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_millis(100 * attempt));
+                }
+                Err(error) => return Err(storage(error)),
+            }
+        }
+    }
+
+    fn open_connection(&self) -> rusqlite::Result<Connection> {
+        let connection = Connection::open(self.root.join("workspace.sqlite3"))?;
+        connection.busy_timeout(Duration::from_secs(5))?;
+        connection.execute_batch(
+            "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;",
+        )?;
         Ok(connection)
     }
 
@@ -257,6 +282,39 @@ impl WorkspaceRepository for Workspace {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    #[test]
+    fn protocol_errors_are_distinguished_from_other_sqlite_failures() {
+        let protocol = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_PROTOCOL),
+            None,
+        );
+        let busy = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            None,
+        );
+        assert!(is_locking_protocol(&protocol));
+        assert!(!is_locking_protocol(&busy));
+        assert!(!is_locking_protocol(&rusqlite::Error::QueryReturnedNoRows));
+        assert!(rusqlite::version_number() >= 3_051_003);
+    }
+    #[test]
+    fn concurrent_workspace_reads_keep_the_wal_available() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = Workspace::open(directory.path()).unwrap();
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let workspace = workspace.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..30 {
+                        assert_eq!(workspace.info().unwrap().name, "My workspace");
+                    }
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+    }
     #[test]
     fn settings_survive_reopen_and_migration_is_idempotent() {
         let directory = tempfile::tempdir().unwrap();

@@ -26,12 +26,27 @@ export default function PostLiveryPicker({
     [search, setSearch] = useState(""),
     [page, setPage] = useState(0),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [loadFailed, setLoadFailed] = useState(false),
+    [loadAttempt, setLoadAttempt] = useState(0);
   useEffect(() => {
+    let active = true;
+    setError("");
+    setLoadFailed(false);
     void robloxLiveries()
-      .then(setRows)
-      .catch((e) => setError(errorMessage(e)));
-  }, []);
+      .then((items) => {
+        if (active) setRows(items);
+      })
+      .catch((e) => {
+        if (active) {
+          setError(errorMessage(e));
+          setLoadFailed(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [loadAttempt]);
   const vehicleNames = useMemo(
     () => new Map(catalogue?.vehicles.map((v) => [v.id, v.name]) ?? []),
     [catalogue],
@@ -80,9 +95,18 @@ export default function PostLiveryPicker({
   return (
     <section className="post-livery-picker" aria-label="Select liveries">
       {error && (
-        <p role="alert" className="error">
-          {error}
-        </p>
+        <div role="alert" className="error">
+          <p>{error}</p>
+          {loadFailed && (
+            <button
+              className="secondary"
+              type="button"
+              onClick={() => setLoadAttempt((n) => n + 1)}
+            >
+              Retry loading liveries
+            </button>
+          )}
+        </div>
       )}
       <div className="file-toolbar">
         <label>

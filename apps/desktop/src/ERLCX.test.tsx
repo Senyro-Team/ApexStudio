@@ -107,6 +107,23 @@ beforeEach(() => {
   }));
 });
 afterEach(cleanup);
+it("retries loading liveries after a workspace error without discarding the draft", async () => {
+  vi.mocked(bridge.robloxLiveries).mockRejectedValueOnce(
+    new Error("locking protocol"),
+  );
+  render(<ERLCX onBusy={() => {}} onOpenRoblox={() => {}} />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: /Test draft/ }),
+  );
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Retry loading liveries" }),
+  );
+  expect(await screen.findByText("Livery One")).toBeTruthy();
+  await userEvent.click(screen.getByRole("button", { name: "Details" }));
+  expect(
+    ((await screen.findByLabelText("Post title")) as HTMLInputElement).value,
+  ).toBe("Demo title");
+});
 it("selects liveries across projects, saves missing IDs and blocks browser/export", async () => {
   render(<ERLCX onBusy={() => {}} onOpenRoblox={() => {}} />);
   await userEvent.click(

@@ -5,7 +5,7 @@ import {
   stageImageChunk,
   clearStagedMedia,
 } from "./adapter.js";
-import { wizardState, permitsAdvance } from "./automation.js";
+import { wizardState, permitsAdvance, waitForWizard } from "./automation.js";
 let running = false,
   stop = false,
   resume = false,
@@ -95,10 +95,14 @@ async function execute() {
       }
       await report("running", current.step, "Checking ERLCX…");
       if (stop) break;
-      let info = await runScript(current.tabId, wizardState, [
-        bundle.manifest,
-        false,
-      ]);
+      let info = await waitForWizard(
+        () =>
+          stop
+            ? Promise.resolve({ step: "", reason: "Cancelled." })
+            : runScript(current.tabId, wizardState, [bundle.manifest, false]),
+        delay,
+      );
+      if (stop) break;
       if (info.step === "Submit") {
         await report("review", "Submit", info.reason);
         return;
