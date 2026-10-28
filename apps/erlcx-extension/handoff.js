@@ -40,8 +40,8 @@ async function init() {
     timer = setInterval(update, 1000);
     return;
   }
-  native = nativeConnection();
   try {
+    native = nativeConnection();
     if (params.has("check")) {
       await native.request({ kind: "check", token: params.get("check") });
       $("step").textContent = "Connected";

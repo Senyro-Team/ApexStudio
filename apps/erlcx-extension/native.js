@@ -1,4 +1,6 @@
 export function nativeConnection() {
+  if (typeof chrome.runtime.connectNative !== "function")
+    throw Error("Native messaging is unavailable. Reload the updated Apex Studio extension in Chrome and try again.");
   const port = chrome.runtime.connectNative("com.apexstudio.erlcx");
   let pending = null,
     closed = false,
