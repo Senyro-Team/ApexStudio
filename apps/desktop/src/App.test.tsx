@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
+import { invoke } from "@tauri-apps/api/core";
 import {
   assetBoard,
   readWorkspace,
@@ -32,6 +39,9 @@ vi.mock("./bridge", () => ({
   errorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Workspace error",
 }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn().mockResolvedValue(undefined),
+}));
 const info = {
   name: "My workspace",
   root: "C:/local/workspace",
@@ -40,6 +50,7 @@ const info = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   vi.mocked(assetBoard).mockResolvedValue({
     assets: [],
     folders: [],
@@ -111,6 +122,159 @@ it("edits only writable project fields and retains the creation metadata", async
 afterEach(cleanup);
 
 describe("workspace shell", () => {
+  it("saves the selected theme and updates the app logo and desktop icon", async () => {
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Ocean" }));
+    expect(document.documentElement.dataset.theme).toBe("ocean");
+    expect(localStorage.getItem("apex-studio-theme")).toBe("ocean");
+    expect(
+      screen
+        .getByRole("button", { name: "Ocean" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      (document.querySelector(".brand-mark") as HTMLElement).style
+        .backgroundColor,
+    ).toBe("rgb(99, 185, 255)");
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("set_app_theme_icon", {
+        color: "#63b9ff",
+      }),
+    );
+    view.unmount();
+    render(<App />);
+    expect(document.documentElement.dataset.theme).toBe("ocean");
+  });
+  it("previews separate colors and saves edits to the active preset", async () => {
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.change(screen.getByLabelText("Button color"), {
+      target: { value: "#2277cc" },
+    });
+    fireEvent.change(screen.getByLabelText("Line color"), {
+      target: { value: "#bb66dd" },
+    });
+    fireEvent.change(screen.getByLabelText("Text color"), {
+      target: { value: "#f0dc9a" },
+    });
+    fireEvent.change(screen.getByLabelText("Logo color"), {
+      target: { value: "#23ff98" },
+    });
+    expect(
+      document.documentElement.style.getPropertyValue("--accent-strong"),
+    ).toBe("#2277cc");
+    expect(document.documentElement.style.getPropertyValue("--line")).toBe(
+      "#bb66dd",
+    );
+    expect(document.documentElement.style.getPropertyValue("--text")).toBe(
+      "#f0dc9a",
+    );
+    expect(
+      (document.querySelector(".brand-mark") as HTMLElement).style
+        .backgroundColor,
+    ).toBe("rgb(35, 255, 152)");
+    expect(localStorage.getItem("apex-studio-theme-overrides")).toBeNull();
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("set_app_theme_icon", {
+        color: "#23ff98",
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(
+      JSON.parse(localStorage.getItem("apex-studio-theme-overrides") ?? "{}")
+        .violet.colors,
+    ).toEqual({
+      button: "#2277cc",
+      line: "#bb66dd",
+      text: "#f0dc9a",
+      logo: "#23ff98",
+    });
+    view.unmount();
+    render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(document.documentElement.style.getPropertyValue("--line")).toBe(
+      "#bb66dd",
+    );
+    fireEvent.change(screen.getByLabelText("Line color"), {
+      target: { value: "#444444" },
+    });
+    await user.click(screen.getByRole("button", { name: "Discard preview" }));
+    expect(document.documentElement.style.getPropertyValue("--line")).toBe(
+      "#bb66dd",
+    );
+    await user.click(screen.getByRole("button", { name: "Restore preset" }));
+    expect(document.documentElement.style.getPropertyValue("--line")).toBe(
+      "#2a2c33",
+    );
+    expect(
+      JSON.parse(localStorage.getItem("apex-studio-theme-overrides") ?? "{}"),
+    ).toEqual({});
+  });
+  it("creates and restores a black custom theme, then removes it", async () => {
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.type(
+      screen.getByLabelText("Name", { selector: "#custom-theme-name" }),
+      "My Crimson",
+    );
+    fireEvent.change(screen.getByLabelText("Accent color"), {
+      target: { value: "#dd4477" },
+    });
+    await user.click(screen.getByRole("button", { name: "Create theme" }));
+    expect(document.documentElement.dataset.themeMode).toBe("black");
+    expect(
+      (document.querySelector(".brand-mark") as HTMLElement).style
+        .backgroundColor,
+    ).toBe("rgb(221, 68, 119)");
+    expect(
+      screen
+        .getByRole("button", { name: "My Crimson" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      JSON.parse(localStorage.getItem("apex-studio-custom-themes") ?? "[]"),
+    ).toEqual([
+      expect.objectContaining({
+        name: "My Crimson",
+        color: "#dd4477",
+        mode: "black",
+      }),
+    ]);
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("set_app_theme_icon", {
+        color: "#dd4477",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Text color"), {
+      target: { value: "#efe4aa" },
+    });
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    view.unmount();
+    render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(
+      screen
+        .getByRole("button", { name: "My Crimson" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(document.documentElement.style.getPropertyValue("--text")).toBe(
+      "#efe4aa",
+    );
+    await user.click(screen.getByRole("button", { name: "Delete My Crimson" }));
+    expect(document.documentElement.dataset.theme).toBe("violet");
+    expect(
+      JSON.parse(localStorage.getItem("apex-studio-custom-themes") ?? "[]"),
+    ).toEqual([]);
+  });
   it("shows empty local records and no mockup projects", async () => {
     render(<App />);
     await screen.findByText("My workspace");
