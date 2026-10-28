@@ -7,3 +7,4 @@ apps/desktop/src-tauri/gen/
 *.sqlite3*
 .DS_Store
 Thumbs.db
+.impeccable/build
