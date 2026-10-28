@@ -413,3 +413,56 @@ export const listTrash = () => invoke<TrashItem[]>("list_trash");
 export const restoreTrash = (id: string) =>
   invoke<string>("restore_trash", { id });
 export const purgeTrash = (id: string) => invoke<void>("purge_trash", { id });
+export interface PostSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+  revision: number;
+  liveries: number;
+}
+export interface PostSourceStatus {
+  folderId: string;
+  vehicle: string;
+  state: "current" | "changed" | "missing";
+}
+export const listPosts = () => invoke<PostSummary[]>("list_posts");
+export const createPost = () => invoke<string>("create_post");
+export const postDraft = (id: string) =>
+  invoke<PublishingDraft>("post_draft", { id });
+export const savePost = (id: string, revision: number, data: PublishingData) =>
+  invoke<PublishingDraft>("save_post", { id, revision, data });
+export const postSources = (id: string) =>
+  invoke<PostSourceStatus[]>("post_sources", { id });
+export const pickPostImages = (id: string) =>
+  invoke<PublishingPreview[] | null>("pick_post_images", { id });
+export const pinPostImages = (id: string, hashes: string[]) =>
+  invoke<void>("pin_post_images", { id, hashes });
+export const releasePostImages = (id: string) =>
+  invoke<void>("release_post_images", { id });
+export const exportPost = (id: string, revision: number, reviewed: boolean) =>
+  invoke<boolean>("export_post", { id, revision, reviewed });
+export interface ChromeConfig {
+  chromePath: string;
+  profile: string;
+  extensionId: string;
+  pipe?: string;
+}
+export interface BrowserStatus {
+  connected: boolean;
+  state: string;
+  step: string;
+  message: string;
+  postId: string | null;
+}
+export const chromeSettings = () => invoke<ChromeConfig>("chrome_settings");
+export const saveChromeSettings = (config: ChromeConfig) =>
+  invoke<void>("save_chrome_settings", { config });
+export const browserStatus = () => invoke<BrowserStatus>("browser_status");
+export const checkBrowser = () => invoke<void>("check_browser");
+export const prepareBrowser = (
+  id: string,
+  revision: number,
+  reviewed: boolean,
+) => invoke<void>("prepare_browser", { id, revision, reviewed });
+export const controlBrowser = (action: "resume" | "cancel") =>
+  invoke<void>("control_browser", { action });

@@ -1,0 +1,18 @@
+body {
+  width: auto;
+  max-width: 760px;
+  margin: 48px auto;
+  padding: 24px;
+}
+#actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+}
+#actions[hidden] {
+  display: none;
+}
+#status {
+  line-height: 1.6;
+  white-space: pre-wrap;
+}

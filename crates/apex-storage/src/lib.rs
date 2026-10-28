@@ -23,8 +23,10 @@ pub use pipeline::{png_dimensions, PreparationProgress, PreparedTexture};
 mod queue;
 pub use queue::*;
 mod trash;
+mod posts;
+pub use posts::*;
 pub use trash::*;
-const SCHEMA_VERSION: u32 = 8;
+const SCHEMA_VERSION: u32 = 9;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
@@ -143,6 +145,10 @@ impl Workspace {
             connection.execute_batch(include_str!("schema8.sql")).map_err(storage)?;
             let issues:Option<String>=connection.query_row("PRAGMA foreign_key_check",[],|r|r.get(0)).optional().map_err(storage)?;
             if issues.is_some(){return Err(storage("Migration foreign-key check failed."));}
+        }
+        if version < 9 {
+            if version > 0 {workspace.backup(&workspace.root.join("backups").join(format!("before-schema-9-{}.apexbackup",uuid::Uuid::now_v7())))?;}
+            connection.execute_batch(include_str!("schema9.sql")).map_err(storage)?;
         }
         Ok(workspace)
     }

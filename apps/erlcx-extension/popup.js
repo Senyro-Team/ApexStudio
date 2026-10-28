@@ -1,3 +1,4 @@
+import { storage } from "./storage.js";
 import { readBundle } from "./bundle.js";
 import {
   fillCurrentStep,
@@ -5,43 +6,11 @@ import {
   clearStagedMedia,
 } from "./adapter.js";
 const $ = (id) => document.getElementById(id);
+$("assistant").addEventListener("click", () => {
+  void chrome.tabs.create({ url: chrome.runtime.getURL("handoff.html") });
+});
 let draft = null,
   urls = [];
-function database() {
-  return new Promise((resolve, reject) => {
-    const r = indexedDB.open("apex-publishing", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("draft");
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
-  });
-}
-async function storage(mode, value) {
-  const db = await database();
-  try {
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(
-          "draft",
-          mode === "read" ? "readonly" : "readwrite",
-        ),
-        store = tx.objectStore("draft");
-      let result;
-      const request =
-        mode === "read"
-          ? store.get("current")
-          : mode === "clear"
-            ? store.delete("current")
-            : store.put(value, "current");
-      request.onsuccess = () => {
-        result = request.result;
-      };
-      tx.oncomplete = () => resolve(result);
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
-  } finally {
-    db.close();
-  }
-}
 function report(message) {
   $("status").textContent = message;
 }
@@ -120,6 +89,9 @@ $("bundle").addEventListener("change", async (e) => {
   busy(true);
   report("Checking bundle…");
   try {
+    const automatic = await storage("read", undefined, "automatic");
+    if (automatic && ["running", "paused"].includes(automatic.state))
+      throw Error("Cancel the ERLCX assistant before importing another post.");
     if (file.size > 201 * 1024 * 1024) throw Error("Bundle exceeds 201 MB.");
     const checked = await readBundle(await file.arrayBuffer());
     await storage("write", checked);
@@ -138,6 +110,11 @@ $("fill").addEventListener("click", async () => {
   if (!draft) return;
   busy(true);
   try {
+    const automatic = await storage("read", undefined, "automatic");
+    if (automatic && ["running", "paused"].includes(automatic.state))
+      throw Error(
+        "Use the ERLCX assistant page, or cancel it before filling manually.",
+      );
     const tabId = await activeTab();
     report("Filling current step…");
     const result = await run(tabId, fillCurrentStep, [
@@ -184,6 +161,9 @@ $("undo").addEventListener("click", async () => {
   if (!draft) return;
   busy(true);
   try {
+    const automatic = await storage("read", undefined, "automatic");
+    if (automatic && ["running", "paused"].includes(automatic.state))
+      throw Error("Cancel the ERLCX assistant before changing this bundle.");
     showResult(
       await run(await activeTab(), fillCurrentStep, [
         draft.manifest,
@@ -199,6 +179,9 @@ $("undo").addEventListener("click", async () => {
 $("clear").addEventListener("click", async () => {
   busy(true);
   try {
+    const automatic = await storage("read", undefined, "automatic");
+    if (automatic && ["running", "paused"].includes(automatic.state))
+      throw Error("Cancel the ERLCX assistant before clearing this bundle.");
     await storage("clear");
     try {
       await run(await activeTab(), clearStagedMedia, [true]);

@@ -48,9 +48,7 @@ export default function AssetBrowser({
   catalogue,
   onBusy,
   onChange,
-  onOpenRoblox,
 }: {
-  onOpenRoblox?: (folderId: string) => void;
   project: Project;
   initialAssetId?: string | null;
   catalogue: Catalogue | null;
@@ -599,20 +597,6 @@ export default function AssetBrowser({
           </details>
         )}
       </div>
-      {folder?.kind === "livery" && (
-        <div className="livery-upload-actions">
-          <button
-            className="primary"
-            disabled={locked}
-            onClick={() => onOpenRoblox?.(folder.id)}
-          >
-            Upload to Roblox
-          </button>
-          <span className="field-hint">
-            Assigned textures → Roblox decal IDs
-          </span>
-        </div>
-      )}
       {!draft && !folderForm && (
         <div className="asset-command-bar">
           <input
@@ -984,18 +968,6 @@ export default function AssetBrowser({
                   : `${currentFolders.length} folders · ${currentFiles.length} files`}
               </span>
               <div className="explorer-toolbar button-row">
-                {explorerSelection?.folder &&
-                  board.folders.some(
-                    (f) => f.id === explorerSelection.id && f.kind === "livery",
-                  ) && (
-                    <button
-                      className="text-button"
-                      disabled={locked}
-                      onClick={() => onOpenRoblox?.(explorerSelection.id)}
-                    >
-                      Upload to Roblox
-                    </button>
-                  )}
                 {explorerSelection?.folder && (
                   <button
                     className="text-button"

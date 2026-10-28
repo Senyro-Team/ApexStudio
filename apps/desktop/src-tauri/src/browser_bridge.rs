@@ -1,0 +1,547 @@
+use super::{chrome_protocol as protocol, projects::work, CommandError};
+use apex_core::Error;
+use apex_storage::Workspace;
+use base64::{engine::general_purpose::STANDARD, Engine};
+use serde::Serialize;
+use serde_json::{json, Value};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
+use tauri::Manager;
+#[derive(Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserStatus {
+    pub connected: bool,
+    pub state: String,
+    pub step: String,
+    pub message: String,
+    pub post_id: Option<String>,
+}
+struct Transfer {
+    token: String,
+    session: Option<String>,
+    expires: Instant,
+    bundle: tempfile::NamedTempFile,
+    offset: usize,
+    size: usize,
+    post_id: String,
+    command: String,
+}
+#[derive(Default)]
+struct BridgeState {
+    config: protocol::ChromeConfig,
+    check: Option<(String, Instant)>,
+    checked: Option<Instant>,
+    transfer: Option<Transfer>,
+    pending: Option<String>,
+    status: BrowserStatus,
+}
+#[derive(Clone, Default)]
+pub struct BrowserBridge(Arc<Mutex<BridgeState>>);
+fn invalid(message: &str) -> Error {
+    Error::InvalidContent(message.into())
+}
+fn secret() -> String {
+    format!(
+        "{}{}",
+        uuid::Uuid::now_v7().simple(),
+        uuid::Uuid::now_v7().simple()
+    )
+}
+impl BrowserBridge {
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, BridgeState>, Error> {
+        self.0
+            .lock()
+            .map_err(|_| invalid("Browser connection is unavailable."))
+    }
+    pub(super) fn invalidate(&self) -> Result<(), Error> {
+        let mut s = self.lock()?;
+        s.transfer = None;
+        s.pending = None;
+        s.checked = None;
+        s.check = None;
+        s.status.state = "cancelled".into();
+        s.status.message = "Workspace changed. Start a new browser handoff.".into();
+        Ok(())
+    }
+    fn snapshot(&self) -> Result<BrowserStatus, Error> {
+        let mut state = self.lock()?;
+        if state
+            .transfer
+            .as_ref()
+            .is_some_and(|t| Instant::now() > t.expires)
+        {
+            state.transfer = None;
+            state.status.state = "expired".into();
+            state.status.message = "Browser handoff expired. Start it again.".into();
+        }
+        let mut out = state.status.clone();
+        out.connected = state
+            .checked
+            .is_some_and(|t| t.elapsed() < Duration::from_secs(300));
+        Ok(out)
+    }
+    fn respond(&self, request: Value) -> Value {
+        match self.process(request) {
+            Ok(v) => v,
+            Err(e) => {
+                json!({"error":e.to_string(),"cancelled":self.lock().is_ok_and(|s|s.status.state=="cancelled")})
+            }
+        }
+    }
+    fn process(&self, r: Value) -> Result<Value, Error> {
+        let mut s = self.lock()?;
+        if r["origin"].as_str()
+            != Some(format!("chrome-extension://{}/", s.config.extension_id).as_str())
+        {
+            return Err(invalid("Unapproved extension."));
+        }
+        let kind = r["kind"].as_str().unwrap_or("");
+        if kind == "check" {
+            let Some((token, deadline)) = s.check.take() else {
+                return Err(invalid("Connection check expired."));
+            };
+            if r["token"].as_str() != Some(&token) || Instant::now() > deadline {
+                return Err(invalid("Connection check expired."));
+            }
+            s.checked = Some(Instant::now());
+            s.status.message = "Chrome connection verified.".into();
+            return Ok(json!({"ok":true}));
+        }
+        let Some(t) = s.transfer.as_mut() else {
+            return Err(invalid("No approved handoff is active."));
+        };
+        if Instant::now() > t.expires {
+            return Err(invalid(
+                "Browser handoff expired. Start it again in Apex Studio.",
+            ));
+        }
+        if kind == "claim" {
+            if t.session.is_some() || r["token"].as_str() != Some(&t.token) {
+                return Err(invalid("Handoff token is invalid or already used."));
+            }
+            let session = secret();
+            t.session = Some(session.clone());
+            t.expires = Instant::now() + Duration::from_secs(2 * 60 * 60);
+            t.token.clear();
+            return Ok(json!({"session":session,"size":t.size}));
+        }
+        if r["session"].as_str() != t.session.as_deref() || t.session.is_none() {
+            return Err(invalid("Invalid handoff session."));
+        }
+        match kind {
+            "chunk" => {
+                use std::io::{Read, Seek, SeekFrom};
+                let offset = r["offset"]
+                    .as_u64()
+                    .ok_or_else(|| invalid("Invalid chunk offset."))?
+                    as usize;
+                if offset != t.offset || offset >= t.size {
+                    return Err(invalid("Unexpected chunk offset."));
+                }
+                let count = (t.size - offset).min(192 * 1024);
+                let mut bytes = vec![0; count];
+                let file = t.bundle.as_file_mut();
+                file.seek(SeekFrom::Start(offset as u64))
+                    .map_err(|e| Error::Storage(e.to_string()))?;
+                file.read_exact(&mut bytes)
+                    .map_err(|e| Error::Storage(e.to_string()))?;
+                t.offset += count;
+                Ok(json!({"data":STANDARD.encode(bytes),"offset":t.offset,"done":t.offset==t.size}))
+            }
+            "status" => {
+                let state = r["state"].as_str().unwrap_or("");
+                let step = r["step"].as_str().unwrap_or("");
+                if !["running", "paused", "review", "cancelled"].contains(&state)
+                    || ![
+                        "",
+                        "Categories",
+                        "Details",
+                        "Media",
+                        "Codes",
+                        "Monetization",
+                        "Submit",
+                    ]
+                    .contains(&step)
+                {
+                    return Err(invalid("Invalid browser status."));
+                }
+                let command = t.command.clone();
+                if command == "resume" {
+                    t.command = "run".into();
+                }
+                let post = t.post_id.clone();
+                s.status = BrowserStatus {
+                    connected: true,
+                    state: state.into(),
+                    step: step.into(),
+                    message: r["message"]
+                        .as_str()
+                        .unwrap_or("")
+                        .chars()
+                        .take(500)
+                        .collect(),
+                    post_id: Some(post),
+                };
+                if state == "review" || state == "cancelled" {
+                    s.transfer = None;
+                }
+                Ok(json!({"command":command}))
+            }
+            _ => Err(invalid("Unsupported bridge request.")),
+        }
+    }
+}
+#[cfg(windows)]
+pub fn setup(app: &tauri::AppHandle) -> Result<(), Error> {
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::windows::named_pipe::ServerOptions,
+    };
+    let bridge = BrowserBridge::default();
+    let mut config = protocol::config().unwrap_or_default();
+    config.pipe = format!(r"\\.\pipe\ApexStudio-{}", secret());
+    let dir = protocol::directory().map_err(|e| Error::Storage(e.to_string()))?;
+    std::fs::create_dir_all(&dir).map_err(|e| Error::Storage(e.to_string()))?;
+    std::fs::write(
+        dir.join("settings.json"),
+        serde_json::to_vec(&config).map_err(|e| Error::Storage(e.to_string()))?,
+    )
+    .map_err(|e| Error::Storage(e.to_string()))?;
+    bridge.lock()?.config = config.clone();
+    app.manage(bridge.clone());
+    // Acquire the endpoint before exposing it. first_pipe_instance prevents accidental sharing.
+    let initial = ServerOptions::new()
+        .first_pipe_instance(true)
+        .reject_remote_clients(true)
+        .create(&config.pipe)
+        .map_err(|e| Error::Storage(e.to_string()))?;
+    tauri::async_runtime::spawn(async move {
+        let mut next = Some(initial);
+        loop {
+            let Some(mut pipe) = next.take() else {
+                break;
+            };
+            if pipe.connect().await.is_err() {
+                break;
+            }
+            next = ServerOptions::new()
+                .reject_remote_clients(true)
+                .create(&config.pipe)
+                .ok();
+            let bridge = bridge.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = tokio::time::timeout(Duration::from_secs(10), async move {
+                    let length = pipe.read_u32_le().await? as usize;
+                    if length == 0 || length > 16 * 1024 {
+                        return Err(std::io::Error::other("Invalid request size."));
+                    }
+                    let mut data = vec![0; length];
+                    pipe.read_exact(&mut data).await?;
+                    let response = match serde_json::from_slice(&data) {
+                        Ok(r) => bridge.respond(r),
+                        Err(_) => json!({"error":"Invalid request."}),
+                    };
+                    let bytes = serde_json::to_vec(&response)?;
+                    pipe.write_u32_le(bytes.len() as u32).await?;
+                    pipe.write_all(&bytes).await?;
+                    pipe.flush().await?;
+                    Ok::<_, std::io::Error>(())
+                })
+                .await;
+            });
+        }
+    });
+    Ok(())
+}
+#[cfg(not(windows))]
+pub fn setup(app: &tauri::AppHandle) -> Result<(), Error> {
+    app.manage(BrowserBridge::default());
+    Ok(())
+}
+#[tauri::command]
+pub fn chrome_settings(
+    bridge: tauri::State<'_, BrowserBridge>,
+) -> Result<protocol::ChromeConfig, CommandError> {
+    let mut c = bridge.lock()?.config.clone();
+    c.pipe.clear();
+    Ok(c)
+}
+#[tauri::command]
+pub fn browser_status(
+    bridge: tauri::State<'_, BrowserBridge>,
+) -> Result<BrowserStatus, CommandError> {
+    Ok(bridge.snapshot()?)
+}
+fn launch(config: &protocol::ChromeConfig, fragment: &str) -> Result<(), Error> {
+    let mut cmd = std::process::Command::new(&config.chrome_path);
+    cmd.arg(format!("--profile-directory={}", config.profile))
+        .arg(format!(
+            "chrome-extension://{}/handoff.html#{fragment}",
+            config.extension_id
+        ));
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    cmd.spawn().map_err(|e| Error::Storage(e.to_string()))?;
+    Ok(())
+}
+#[tauri::command]
+pub fn save_chrome_settings(
+    mut config: protocol::ChromeConfig,
+    bridge: tauri::State<'_, BrowserBridge>,
+) -> Result<(), CommandError> {
+    if !protocol::valid_extension(&config.extension_id)
+        || !Path::new(&config.chrome_path).is_file()
+        || Path::new(&config.chrome_path)
+            .file_name()
+            .is_none_or(|n| !n.to_string_lossy().eq_ignore_ascii_case("chrome.exe"))
+        || config.profile.is_empty()
+        || config.profile.len() > 80
+        || config
+            .profile
+            .chars()
+            .any(|c| !c.is_ascii_alphanumeric() && c != ' ' && c != '-' && c != '_')
+    {
+        return Err(invalid(
+            "Choose chrome.exe, a Chrome profile directory and the installed extension ID.",
+        )
+        .into());
+    }
+    let mut state = bridge.lock()?;
+    if state.transfer.is_some() || state.pending.is_some() {
+        return Err(invalid("Finish or cancel the active browser handoff first.").into());
+    }
+    config.pipe = state.config.pipe.clone();
+    let dir = protocol::directory().map_err(|e| Error::Storage(e.to_string()))?;
+    let helper = std::env::current_exe()
+        .map_err(|e| Error::Storage(e.to_string()))?
+        .with_file_name("apex-chrome-bridge.exe");
+    if !helper.exists() {
+        return Err(invalid("The Chrome bridge executable is missing beside Apex Studio.").into());
+    }
+    let manifest = dir.join("com.apexstudio.erlcx.json");
+    let bytes=serde_json::to_vec_pretty(&json!({"name":protocol::HOST,"description":"Apex Studio ERLCX handoff","path":helper,"type":"stdio","allowed_origins":[format!("chrome-extension://{}/",config.extension_id)]})).map_err(|e|Error::Storage(e.to_string()))?;
+    std::fs::write(&manifest, bytes).map_err(|e| Error::Storage(e.to_string()))?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let status = std::process::Command::new("reg.exe")
+            .args([
+                "ADD",
+                r"HKCU\Software\Google\Chrome\NativeMessagingHosts\com.apexstudio.erlcx",
+                "/ve",
+                "/t",
+                "REG_SZ",
+                "/d",
+            ])
+            .arg(&manifest)
+            .arg("/f")
+            .creation_flags(0x08000000)
+            .output()
+            .map_err(|e| Error::Storage(e.to_string()))?;
+        if !status.status.success() {
+            return Err(invalid("Cannot register the Chrome bridge for this Windows user.").into());
+        }
+    }
+    std::fs::write(
+        dir.join("settings.json"),
+        serde_json::to_vec(&config).map_err(|e| Error::Storage(e.to_string()))?,
+    )
+    .map_err(|e| Error::Storage(e.to_string()))?;
+    state.config = config;
+    state.checked = None;
+    Ok(())
+}
+#[tauri::command]
+pub fn check_browser(bridge: tauri::State<'_, BrowserBridge>) -> Result<(), CommandError> {
+    let mut state = bridge.lock()?;
+    if !protocol::valid_extension(&state.config.extension_id) {
+        return Err(invalid("Set up the Chrome extension first.").into());
+    }
+    let token = secret();
+    state.check = Some((token.clone(), Instant::now() + Duration::from_secs(60)));
+    state.checked = None;
+    launch(&state.config, &format!("check={token}"))?;
+    Ok(())
+}
+#[tauri::command]
+pub async fn prepare_browser(
+    id: String,
+    revision: u64,
+    reviewed: bool,
+    workspace: tauri::State<'_, Workspace>,
+    bridge: tauri::State<'_, BrowserBridge>,
+) -> Result<(), CommandError> {
+    let ws = workspace.inner().clone();
+    let bridge = bridge.inner().clone();
+    work(move || {
+        let token = secret();
+        let config = {
+            let mut state = bridge.lock()?;
+            if !state
+                .checked
+                .is_some_and(|t| t.elapsed() < Duration::from_secs(300))
+            {
+                return Err(invalid("Verify the Chrome connection in Settings first."));
+            }
+            if state.pending.is_some()
+                || state
+                    .transfer
+                    .as_ref()
+                    .is_some_and(|t| Instant::now() < t.expires)
+            {
+                return Err(invalid("A browser handoff is already active."));
+            }
+            state.pending = Some(token.clone());
+            state.config.clone()
+        };
+        let prepared = (|| {
+            let temp = tempfile::tempdir().map_err(|e| Error::Storage(e.to_string()))?;
+            let path = temp.path().join("post.apexpublish");
+            ws.export_post(&id, revision, reviewed, &path)?;
+            let bundle =
+                tempfile::NamedTempFile::new().map_err(|e| Error::Storage(e.to_string()))?;
+            std::fs::copy(&path, bundle.path()).map_err(|e| Error::Storage(e.to_string()))?;
+            let size = bundle
+                .as_file()
+                .metadata()
+                .map_err(|e| Error::Storage(e.to_string()))?
+                .len() as usize;
+            Ok::<_, Error>((bundle, size))
+        })();
+        let mut state = bridge.lock()?;
+        if state.pending.as_deref() != Some(&token) {
+            return Err(invalid("Workspace changed. Start a new browser handoff."));
+        }
+        state.pending = None;
+        let (bundle, size) = prepared?;
+        state.transfer = Some(Transfer {
+            token: token.clone(),
+            session: None,
+            expires: Instant::now() + Duration::from_secs(120),
+            bundle,
+            offset: 0,
+            size,
+            post_id: id.clone(),
+            command: "run".into(),
+        });
+        state.status = BrowserStatus {
+            connected: true,
+            state: "running".into(),
+            step: "".into(),
+            message: "Opening Chrome…".into(),
+            post_id: Some(id),
+        };
+        drop(state);
+        if let Err(error) = launch(&config, &format!("token={token}")) {
+            let mut state = bridge.lock()?;
+            state.transfer = None;
+            state.status.state = "failed".into();
+            return Err(error);
+        }
+        Ok(())
+    })
+    .await
+}
+#[tauri::command]
+pub fn control_browser(
+    action: String,
+    bridge: tauri::State<'_, BrowserBridge>,
+) -> Result<(), CommandError> {
+    let mut s = bridge.lock()?;
+    if !["resume", "cancel"].contains(&action.as_str()) {
+        return Err(invalid("Invalid browser action.").into());
+    }
+    let t = s
+        .transfer
+        .as_mut()
+        .ok_or_else(|| invalid("No browser handoff is active."))?;
+    if action == "resume" {
+        t.expires = Instant::now() + Duration::from_secs(2 * 60 * 60);
+    }
+    t.command = action.clone();
+    if action == "cancel" {
+        s.status.state = "cancelled".into();
+        s.status.message = "Browser handoff cancelled.".into();
+        s.transfer = None;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    fn fixture() -> BrowserBridge {
+        let bridge = BrowserBridge::default();
+        let mut s = bridge.lock().unwrap();
+        s.config.extension_id = "a".repeat(32);
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), vec![42; 400_000]).unwrap();
+        s.transfer = Some(Transfer {
+            token: "approved".into(),
+            session: None,
+            expires: Instant::now() + Duration::from_secs(120),
+            bundle: file,
+            offset: 0,
+            size: 400_000,
+            post_id: "post".into(),
+            command: "run".into(),
+        });
+        drop(s);
+        bridge
+    }
+    fn request(kind: &str) -> Value {
+        json!({"kind":kind,"origin":format!("chrome-extension://{}/","a".repeat(32))})
+    }
+    #[test]
+    fn tokens_are_one_use_and_chunks_are_bounded_and_ordered() {
+        let b = fixture();
+        let mut r = request("claim");
+        r["token"] = "approved".into();
+        let session = b.process(r.clone()).unwrap()["session"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert!(b.process(r).is_err());
+        let mut chunk = request("chunk");
+        chunk["session"] = session.into();
+        chunk["offset"] = 0.into();
+        let part = b.process(chunk.clone()).unwrap();
+        assert!(part.to_string().len() < protocol::MAX_FRAME);
+        assert_eq!(part["offset"], 192 * 1024);
+        assert!(b.process(chunk.clone()).is_err());
+        chunk["offset"] = part["offset"].clone();
+        assert!(b.process(chunk).is_ok());
+    }
+    #[test]
+    fn origin_expiry_and_unknown_requests_never_expose_a_package() {
+        let b = fixture();
+        let mut r = request("claim");
+        r["token"] = "approved".into();
+        r["origin"] = "chrome-extension://wrong/".into();
+        assert!(b.process(r).is_err());
+        assert!(b.process(request("read_file")).is_err());
+        b.lock().unwrap().transfer.as_mut().unwrap().expires =
+            Instant::now() - Duration::from_secs(1);
+        let mut r = request("claim");
+        r["token"] = "approved".into();
+        assert!(b.process(r).is_err());
+        assert_eq!(b.snapshot().unwrap().state, "expired");
+    }
+    #[test]
+    fn check_is_bound_to_an_expiring_challenge() {
+        let b = fixture();
+        b.lock().unwrap().check = Some(("nonce".into(), Instant::now() + Duration::from_secs(60)));
+        let mut r = request("check");
+        r["token"] = "nonce".into();
+        assert!(b.process(r.clone()).is_ok());
+        assert!(b.snapshot().unwrap().connected);
+        assert!(b.process(r).is_err());
+    }
+}

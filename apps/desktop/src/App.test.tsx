@@ -14,6 +14,17 @@ import {
 } from "./bridge";
 
 vi.mock("./bridge", () => ({
+  listPosts: vi.fn().mockResolvedValue([]),
+  chromeSettings: vi
+    .fn()
+    .mockResolvedValue({ chromePath: "", profile: "Default", extensionId: "" }),
+  browserStatus: vi.fn().mockResolvedValue({
+    connected: false,
+    state: "",
+    step: "",
+    message: "",
+    postId: null,
+  }),
   robloxSettings: vi
     .fn()
     .mockResolvedValue({ configured: false, accountId: null }),
@@ -32,6 +43,15 @@ vi.mock("./bridge", () => ({
   errorMessage: (error: unknown) =>
     error instanceof Error ? error.message : "Workspace error",
 }));
+it("opens the global ERLCX area with one page heading", async () => {
+  render(<App />);
+  await screen.findByText("My workspace");
+  await userEvent.click(screen.getByRole("button", { name: "ERLCX" }));
+  await screen.findByRole("button", { name: "New draft" });
+  expect(
+    screen.getAllByRole("heading", { name: "ERLCX", level: 1 }),
+  ).toHaveLength(1);
+});
 const info = {
   name: "My workspace",
   root: "C:/local/workspace",

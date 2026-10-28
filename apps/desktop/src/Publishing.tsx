@@ -1,7 +1,20 @@
+import PostLiveryPicker from "./PostLiveryPicker";
 import { readyForPublishing, publishingLivery } from "./RobloxUpload";
 import { useEffect, useState } from "react";
 import SlotEditor from "./SlotEditor";
 import {
+  browserStatus,
+  prepareBrowser,
+  controlBrowser,
+  type BrowserStatus,
+  postDraft,
+  savePost,
+  postSources,
+  pickPostImages,
+  pinPostImages,
+  releasePostImages,
+  exportPost,
+  type PostSourceStatus,
   robloxLivery,
   publishingDraft,
   publishingPreviews,
@@ -21,15 +34,40 @@ import {
 const steps = ["Liveries", "Details", "Previews", "Review"] as const;
 export default function Publishing({
   project,
+  draftId,
+  projects = [],
   catalogue,
   onEditingChange,
   onOpenRoblox,
 }: {
   onOpenRoblox?: (folderId: string) => void;
-  project: Project;
+  project?: Project;
+  draftId?: string;
+  projects?: Project[];
   catalogue: Catalogue | null;
   onEditingChange: (dirty: boolean) => void;
 }) {
+  const [browser, setBrowser] = useState<BrowserStatus | null>(null);
+  useEffect(() => {
+    if (!draftId) return;
+    let active = true;
+    const poll = () => {
+      void browserStatus()
+        .then((s) => {
+          if (active) setBrowser(s);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const timer = setInterval(poll, 1500);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [draftId]);
+  const [mediaProject, setMediaProject] = useState(project?.id ?? "");
+  const [sources, setSources] = useState<PostSourceStatus[]>([]),
+    [reviewed, setReviewed] = useState(false);
   const [pendingFolder, setPendingFolder] = useState<string | null>(null);
   const [saved, setSaved] = useState<PublishingDraft | null>(null),
     [data, setData] = useState<PublishingData | null>(null),
@@ -49,7 +87,12 @@ export default function Publishing({
     [showAssets, setShowAssets] = useState(false);
   useEffect(() => {
     let active = true;
-    Promise.all([publishingDraft(project.id), assetBoard(project.id)])
+    Promise.all([
+      draftId ? postDraft(draftId) : publishingDraft(project!.id),
+      project
+        ? assetBoard(project.id)
+        : Promise.resolve({ assets: [], folders: [], placements: [] }),
+    ])
       .then(([d, b]) => {
         if (active) {
           setSaved(d);
@@ -63,7 +106,41 @@ export default function Publishing({
     return () => {
       active = false;
     };
-  }, [project.id]);
+  }, [project?.id, draftId]);
+  useEffect(() => {
+    if (!draftId) return;
+    void postSources(draftId)
+      .then(setSources)
+      .catch((e) => setError(errorMessage(e)));
+  }, [draftId, saved?.revision]);
+  useEffect(
+    () => () => {
+      if (draftId) void releasePostImages(draftId).catch(() => {});
+    },
+    [draftId],
+  );
+  useEffect(() => {
+    if (!draftId || !data?.media.length) return;
+    const renew = () => {
+      void pinPostImages(
+        draftId,
+        data.media.map((m) => m.hash),
+      ).catch((e) => setError(errorMessage(e)));
+    };
+    renew();
+    const timer = setInterval(renew, 300000);
+    return () => clearInterval(timer);
+  }, [draftId, data?.media]);
+  useEffect(() => {
+    if (!draftId) return;
+    if (!mediaProject) {
+      setBoard({ assets: [], folders: [], placements: [] });
+      return;
+    }
+    void assetBoard(mediaProject)
+      .then(setBoard)
+      .catch((e) => setError(errorMessage(e)));
+  }, [draftId, mediaProject]);
   useEffect(() => {
     onEditingChange(dirty || busy);
     return () => onEditingChange(false);
@@ -85,11 +162,12 @@ export default function Publishing({
       active = false;
     };
   }, [data?.media]);
-  const locked = busy || project.archived;
+  const locked = busy || !!project?.archived;
   function edit(patch: Partial<PublishingData>) {
     if (!data) return;
     const next = { ...data, ...patch };
     if (JSON.stringify(next) === JSON.stringify(data)) return;
+    setReviewed(false);
     setData(next);
     setDirty(JSON.stringify(next) !== JSON.stringify(saved?.data));
     setNotice("");
@@ -112,7 +190,9 @@ export default function Publishing({
     setBusy(true);
     setError("");
     try {
-      const selected = await pickPublishingImages(project.id);
+      const selected = await (draftId
+        ? pickPostImages(draftId)
+        : pickPublishingImages(project!.id));
       if (selected && data) {
         const merged = [...data.media];
         for (const image of selected)
@@ -135,11 +215,20 @@ export default function Publishing({
     setBusy(true);
     setError("");
     try {
-      const next = await savePublishing(project.id, saved.revision, data);
+      const next = await (draftId
+        ? savePost(draftId, saved.revision, data)
+        : savePublishing(project!.id, saved.revision, data));
       setSaved(next);
       setData(next.data);
       setDirty(false);
       setNotice("Publishing draft saved.");
+      if (draftId) {
+        try {
+          await releasePostImages(draftId);
+        } catch (e) {
+          setError(errorMessage(e));
+        }
+      }
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -150,7 +239,11 @@ export default function Publishing({
     setBusy(true);
     setError("");
     try {
-      if (await exportPublishing(project.id))
+      if (
+        await (draftId
+          ? exportPost(draftId, saved!.revision, reviewed)
+          : exportPublishing(project!.id))
+      )
         setNotice("Publishing bundle exported.");
     } catch (e) {
       setError(errorMessage(e));
@@ -334,6 +427,23 @@ export default function Publishing({
           <p className="field-hint">
             2–10 PNG images. The first image is the post cover.
           </p>
+          {draftId && (
+            <label>
+              Image project
+              <select
+                value={mediaProject}
+                disabled={locked}
+                onChange={(e) => setMediaProject(e.target.value)}
+              >
+                <option value="">Choose project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {showAssets && (
             <div className="publishing-asset-choices">
               {board.assets
@@ -347,11 +457,21 @@ export default function Publishing({
                       data.media.length >= 10 ||
                       data.media.some((m) => m.hash === a.hash)
                     }
-                    onClick={() =>
-                      edit({
-                        media: [...data.media, { hash: a.hash, name: a.name }],
-                      })
-                    }
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          if (draftId) await pinPostImages(draftId, [a.hash]);
+                          edit({
+                            media: [
+                              ...data.media,
+                              { hash: a.hash, name: a.name },
+                            ],
+                          });
+                        } catch (e) {
+                          setError(errorMessage(e));
+                        }
+                      })();
+                    }}
                   >
                     {a.name}
                   </button>
@@ -417,35 +537,49 @@ export default function Publishing({
         <section>
           <div className="publishing-section-actions">
             <h2>Liveries for ERLCX</h2>
-            <div className="publishing-add-livery">
-              <select
-                aria-label="Livery source"
-                value={source}
-                disabled={locked}
-                onChange={(e) => setSource(e.target.value)}
-              >
-                <option value="">Choose a project livery</option>
-                {board.folders
-                  .filter((f) => f.kind === "livery")
-                  .map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name}
-                    </option>
-                  ))}
-              </select>
-              <button
-                className="secondary"
-                disabled={locked || !source || data.liveries.length >= 20}
-                onClick={() => void addLivery()}
-              >
-                Include livery
-              </button>
-            </div>
+            {!draftId && (
+              <div className="publishing-add-livery">
+                <select
+                  aria-label="Livery source"
+                  value={source}
+                  disabled={locked}
+                  onChange={(e) => setSource(e.target.value)}
+                >
+                  <option value="">Choose a project livery</option>
+                  {board.folders
+                    .filter((f) => f.kind === "livery")
+                    .map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  className="secondary"
+                  disabled={locked || !source || data.liveries.length >= 20}
+                  onClick={() => void addLivery()}
+                >
+                  Include livery
+                </button>
+              </div>
+            )}
           </div>
           <p className="field-hint">
             Upload livery textures to Roblox, then include their decal IDs here.
             Preview images for ERLCX are selected separately.
           </p>
+          {draftId && (
+            <PostLiveryPicker
+              onBusy={setBusy}
+              catalogue={catalogue}
+              value={data.liveries}
+              disabled={locked}
+              onChange={(liveries) => {
+                edit({ liveries });
+                setActiveLivery(0);
+              }}
+            />
+          )}
           {!data.liveries.length && <p>No liveries selected.</p>}
           <details className="publishing-manual">
             <summary>Use existing decal IDs manually</summary>
@@ -675,9 +809,8 @@ export default function Publishing({
       {step === "Review" && (
         <section className="publishing-review">
           <p className="field-hint">
-            Export this post, import it in the Apex Chrome extension, then use
-            Fill current step on each ERLCX upload page. Review every page and
-            continue yourself.
+            The assistant stops at the final review. Agreement and publication
+            remain your choice.
           </p>
           <h2>{data.title || "Untitled post"}</h2>
           <p className="pre-wrap">{data.description}</p>
@@ -696,6 +829,37 @@ export default function Publishing({
               ))}
             </div>
           ))}
+          {draftId &&
+            sources
+              .filter((s) => s.state !== "current")
+              .map((s) => (
+                <p key={s.folderId}>
+                  {s.vehicle}: source {s.state}. Saved codes are unchanged.
+                </p>
+              ))}
+          {draftId && sources.some((s) => s.state !== "current") && (
+            <label className="post-check">
+              <input
+                type="checkbox"
+                checked={reviewed}
+                onChange={(e) => setReviewed(e.target.checked)}
+              />
+              I reviewed the saved codes and preview images and want to use this
+              snapshot.
+            </label>
+          )}
+          {data.liveries
+            .filter((l) => l.source && l.sides.some((s) => !s.decalId))
+            .map((l) => (
+              <button
+                key={l.source!.folderId}
+                className="secondary"
+                disabled={dirty || busy}
+                onClick={() => onOpenRoblox?.(l.source!.folderId)}
+              >
+                Open Roblox uploads: {l.vehicle}
+              </button>
+            ))}
           {requirements.length > 0 && (
             <ul aria-label="Publishing requirements">
               {requirements.map((r) => (
@@ -703,9 +867,76 @@ export default function Publishing({
               ))}
             </ul>
           )}
+          {draftId && (
+            <div className="browser-handoff">
+              <button
+                className="primary"
+                disabled={
+                  busy ||
+                  dirty ||
+                  !!requirements.length ||
+                  !browser?.connected ||
+                  (sources.some((s) => s.state !== "current") && !reviewed) ||
+                  ["running", "paused"].includes(browser?.state ?? "")
+                }
+                onClick={() => {
+                  setBusy(true);
+                  setError("");
+                  void prepareBrowser(draftId, saved.revision, reviewed)
+                    .then(() => browserStatus())
+                    .then(setBrowser)
+                    .catch((e) => setError(errorMessage(e)))
+                    .finally(() => setBusy(false));
+                }}
+              >
+                Prepare on ERLCX
+              </button>
+              {!browser?.connected && (
+                <p>Verify the Chrome connection in Settings.</p>
+              )}
+              {browser?.postId === draftId && (
+                <>
+                  <p role="status">
+                    {browser.step} {browser.message}
+                  </p>
+                  {browser.state === "paused" && (
+                    <button
+                      className="secondary"
+                      onClick={() =>
+                        void controlBrowser("resume").catch((e) =>
+                          setError(errorMessage(e)),
+                        )
+                      }
+                    >
+                      Resume assistant
+                    </button>
+                  )}
+                  {["running", "paused"].includes(browser.state) && (
+                    <button
+                      className="secondary"
+                      onClick={() =>
+                        void controlBrowser("cancel").catch((e) =>
+                          setError(errorMessage(e)),
+                        )
+                      }
+                    >
+                      Cancel assistant
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           <button
-            className="primary"
-            disabled={busy || dirty || requirements.length > 0}
+            className={draftId ? "secondary" : "primary"}
+            disabled={
+              busy ||
+              dirty ||
+              requirements.length > 0 ||
+              (!!draftId &&
+                sources.some((s) => s.state !== "current") &&
+                !reviewed)
+            }
             onClick={() => void exportBundle()}
           >
             Export for ERLCX extension
@@ -731,6 +962,10 @@ export default function Publishing({
               setData(saved.data);
               setDirty(false);
               setError("");
+              if (draftId)
+                void releasePostImages(draftId).catch((e) =>
+                  setError(errorMessage(e)),
+                );
             }}
           >
             Discard changes

@@ -64,6 +64,7 @@ version = "0.1.0"
 dependencies = [
  "apex-core",
  "apex-storage",
+ "base64 0.22.1",
  "httpdate",
  "keyring",
  "reqwest 0.12.28",

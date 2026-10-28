@@ -5,6 +5,10 @@ mod assets;
 mod notes;
 mod projects;
 mod publishing;
+mod posts;
+mod browser_bridge;
+#[allow(dead_code)] // Shared framing module is also compiled into the standalone Chrome host.
+mod chrome_protocol;
 mod roblox;
 mod upload_queue;
 
@@ -92,6 +96,7 @@ pub fn run() {
             let ws = Workspace::open(root)?;
             ws.recover_queue()?;
             let runtime = upload_queue::UploadRuntime::new()?;
+            browser_bridge::setup(app.handle())?;
             app.manage(ws.clone());
             app.manage(runtime.clone());
             upload_queue::setup_tray(app.handle(), runtime.clone(), ws.clone())?;
@@ -126,6 +131,8 @@ pub fn run() {
             upload_queue::start_upload_batch,
             upload_queue::control_upload_batch,
             upload_queue::set_edit_lock,
+            browser_bridge::chrome_settings, browser_bridge::save_chrome_settings, browser_bridge::browser_status, browser_bridge::check_browser, browser_bridge::prepare_browser, browser_bridge::control_browser,
+            posts::list_posts, posts::create_post, posts::post_draft, posts::save_post, posts::post_sources, posts::pick_post_images, posts::pin_post_images, posts::release_post_images, posts::export_post,
             publishing::publishing_draft,
             publishing::publishing_previews,
             publishing::save_publishing,

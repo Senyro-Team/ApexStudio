@@ -54,7 +54,7 @@ export default function Trash({
   return (
     <section className="trash-panel" aria-label="Project trash">
       <h2>Trash</h2>
-      {error && (
+      {error && !confirm && (
         <p className="error" role="alert">
           {error}
         </p>
@@ -115,6 +115,11 @@ export default function Trash({
           aria-label="Permanently delete"
         >
           <h2>Delete permanently?</h2>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
           <p>
             {confirm.name} · {confirm.folders} folders · {confirm.files} files
           </p>

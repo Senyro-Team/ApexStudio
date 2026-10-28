@@ -289,6 +289,8 @@ fn checked(path: &Path) -> Result<Checked, Error> {
             "asset_folders",
             "asset_placements",
             "asset_versions",
+            "posts",
+            "post_media",
             "publishing_drafts",
             "publishing_media",
             "roblox_uploads",
@@ -473,27 +475,7 @@ impl Workspace {
                 hashes.insert(hash);
             }
         }
-        let publishing = if embedded {
-            let draft = self.publishing(id)?;
-            if draft.revision > 0 {
-                Some({
-                    let mut data = draft.data;
-                    for l in &mut data.liveries {
-                        l.source = None;
-                    }
-                    data
-                })
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-        if let Some(draft) = &publishing {
-            for image in &draft.media {
-                hashes.insert(image.hash.clone());
-            }
-        }
+        let publishing = None;
         let blobs = hashes
             .into_iter()
             .map(|hash| {
@@ -624,6 +606,7 @@ impl Workspace {
             }
         }
         tx.commit().map_err(storage)?;
+        self.sync_legacy_post(&id)?;
         Ok(id)
     }
     pub fn backup(&self, destination: &Path) -> Result<(), Error> {

@@ -1,7 +1,9 @@
 import PerformanceDiagnostics from "./PerformanceDiagnostics";
+import ChromeSettings from "./ChromeSettings";
 import RobloxSettings from "./RobloxSettings";
 import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
 import ProjectsArea from "./Projects";
+const ERLCX = lazy(() => import("./ERLCX"));
 const Roblox = lazy(() => import("./Roblox"));
 const Notes = lazy(() => import("./Notes"));
 import { BackupTools } from "./Packages";
@@ -34,6 +36,7 @@ const sections = [
   { name: "Notes", icon: NotebookPen },
   { name: "Assets", icon: Images },
   { name: "Roblox", icon: Upload },
+  { name: "ERLCX", icon: ArrowUpRight },
   { name: "Settings", icon: Settings },
 ] as const;
 type Section = (typeof sections)[number]["name"];
@@ -53,6 +56,13 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [navigationLocked, setNavigationLocked] = useState(false);
+  const [robloxLock, setRobloxLock] = useState(false),
+    [chromeLock, setChromeLock] = useState(false),
+    [backupLock, setBackupLock] = useState(false);
+  useEffect(() => {
+    if (section === "Settings")
+      setNavigationLocked(robloxLock || chromeLock || backupLock);
+  }, [section, robloxLock, chromeLock, backupLock]);
   useEffect(() => {
     if (desktopAvailable) void setEditLock(navigationLocked).catch(() => {});
   }, [navigationLocked]);
@@ -212,10 +222,15 @@ export default function App() {
             onNavigate={setSection}
             onEditingChange={setNavigationLocked}
           />
-          {!["Dashboard", "Projects", "Assets"].includes(section) && (
+          {!["Dashboard", "Projects", "Assets", "ERLCX"].includes(section) && (
             <header className="page-heading">
               <h1>{section}</h1>
             </header>
+          )}
+          {section === "ERLCX" && (
+            <Suspense fallback={<p role="status">Opening ERLCX…</p>}>
+              <ERLCX onBusy={setNavigationLocked} onOpenRoblox={openRoblox} />
+            </Suspense>
           )}
           {section === "Roblox" && (
             <Suspense fallback={<p role="status">Loading uploads…</p>}>
@@ -236,9 +251,10 @@ export default function App() {
           {section === "Settings" && (
             <div className="settings-content">
               <PerformanceDiagnostics />
-              <RobloxSettings onBusy={setNavigationLocked} />
+              <RobloxSettings onBusy={setRobloxLock} />
+              <ChromeSettings onBusy={setChromeLock} />
               <BackupTools
-                onBusy={setNavigationLocked}
+                onBusy={setBackupLock}
                 onRestore={() => {
                   setWorkspaceGeneration((v) => v + 1);
                   void load();

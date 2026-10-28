@@ -11,6 +11,13 @@ const files = [
   "popup.css",
   "popup.js",
   "adapter.js",
+  "storage.js",
+  "native.js",
+  "automation.js",
+  "service-worker.js",
+  "handoff.html",
+  "handoff.css",
+  "handoff.js",
   "bundle.js",
   "icon32.png",
   "icon128.png",
@@ -23,7 +30,10 @@ for (const file of files)
   await copyFile(resolve(source, file), resolve(destination, file));
 console.log(`Unpacked extension: ${destination}`);
 
-const archive = resolve(root, "dist/apex-erlcx-extension-0.1.0.zip");
+const { version } = JSON.parse(
+  await readFile(resolve(source, "manifest.json"), "utf8"),
+);
+const archive = resolve(root, `dist/apex-erlcx-extension-${version}.zip`);
 await writeFile(
   archive,
   zipStored(

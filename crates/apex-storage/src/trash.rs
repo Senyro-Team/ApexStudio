@@ -58,16 +58,23 @@ impl Workspace {
         tx.commit().map_err(storage)
     }
     pub fn release_content(&self, owner: &str) -> Result<(), Error> {
+        let gate = self.content_gate();
+        let _guard = gate.lock();
+        let db = self.connection()?;
+        let mut q = db
+            .prepare("SELECT hash FROM content_leases WHERE owner=?1")
+            .map_err(storage)?;
+        let hashes = q
+            .query_map([owner], |r| r.get::<_, String>(0))
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)?;
         self.connection()?
             .execute("DELETE FROM content_leases WHERE owner=?1", [owner])
             .map_err(storage)?;
-        Ok(())
+        self.collect_content(&hashes)
     }
-    fn trash_selection(
-        &self,
-        id: &str,
-        folder: bool,
-    ) -> Result<TrashSelection, Error> {
+    fn trash_selection(&self, id: &str, folder: bool) -> Result<TrashSelection, Error> {
         let db = self.connection()?;
         if folder {
             let f = self.folder(id)?;
@@ -272,7 +279,7 @@ impl Workspace {
             let tx = db
                 .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
                 .map_err(storage)?;
-            let used:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM assets WHERE hash=?1 UNION ALL SELECT 1 FROM asset_versions WHERE hash=?1 UNION ALL SELECT 1 FROM asset_folders WHERE cover_hash=?1 UNION ALL SELECT 1 FROM note_images WHERE hash=?1 UNION ALL SELECT 1 FROM publishing_media WHERE hash=?1 UNION ALL SELECT 1 FROM content_leases WHERE hash=?1 AND expires_at>?2 UNION ALL SELECT 1 FROM upload_jobs j WHERE j.hash=?1 AND (j.state IN ('submitting','polling') OR (j.state NOT IN ('complete','cancelled') AND EXISTS(SELECT 1 FROM upload_batch_items i JOIN upload_batches b ON b.id=i.batch_id WHERE i.job_id=j.id AND i.enabled=1 AND b.state IN ('running','paused')))))",params![hash,super::queue_now()],|r|r.get(0)).map_err(storage)?;
+            let used:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM assets WHERE hash=?1 UNION ALL SELECT 1 FROM asset_versions WHERE hash=?1 UNION ALL SELECT 1 FROM asset_folders WHERE cover_hash=?1 UNION ALL SELECT 1 FROM note_images WHERE hash=?1 UNION ALL SELECT 1 FROM publishing_media WHERE hash=?1 UNION ALL SELECT 1 FROM post_media WHERE hash=?1 UNION ALL SELECT 1 FROM content_leases WHERE hash=?1 AND expires_at>?2 UNION ALL SELECT 1 FROM upload_jobs j WHERE j.hash=?1 AND (j.state IN ('submitting','polling') OR (j.state NOT IN ('complete','cancelled') AND EXISTS(SELECT 1 FROM upload_batch_items i JOIN upload_batches b ON b.id=i.batch_id WHERE i.job_id=j.id AND i.enabled=1 AND b.state IN ('running','paused')))))",params![hash,super::queue_now()],|r|r.get(0)).map_err(storage)?;
             if used {
                 continue;
             }

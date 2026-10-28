@@ -134,6 +134,7 @@ impl Workspace {
             .map_err(storage)?;
         }
         tx.commit().map_err(storage)?;
+        self.sync_legacy_post(project)?;
         self.publishing(project)
     }
     pub fn export_publishing(&self, project: &str, destination: &Path) -> Result<(), Error> {
@@ -163,9 +164,13 @@ impl Workspace {
                 }
             }
         }
+        self.write_public_bundle(&draft.data, destination)
+    }
+    pub(super) fn write_public_bundle(&self, data: &PublishingInput, destination:&Path)->Result<(),Error>{
+        data.validate(true)?;
         let mut media = Vec::new();
         let mut blobs = Vec::new();
-        for m in &draft.data.media {
+        for m in &data.media {
             let path = self.root.join("files").join(&m.hash);
             super::validate_texture(&path)?;
             let bytes = fs::read(path).map_err(storage)?;
@@ -186,8 +191,8 @@ impl Workspace {
                 r.get(0)
             })
             .map_err(storage)?;
-        let liveries: Vec<_> = draft.data.liveries.iter().map(|l| serde_json::json!({"vehicle":l.vehicle,"primaryColor":l.primary_color,"secondaryColor":l.secondary_color,"opacity":l.opacity,"sides":l.sides})).collect();
-        let manifest = serde_json::json!({"version":1,"kind":"apex-publish","targetOrigin":"https://erlcx.com","exportId":uuid::Uuid::now_v7().to_string(),"generatedAt":generated_at,"title":draft.data.title,"description":draft.data.description,"tags":draft.data.tags,"youtubeUrl":draft.data.youtube_url,"liveries":liveries,"media":media});
+        let liveries: Vec<_> = data.liveries.iter().map(|l| serde_json::json!({"vehicle":l.vehicle,"primaryColor":l.primary_color,"secondaryColor":l.secondary_color,"opacity":l.opacity,"sides":l.sides})).collect();
+        let manifest = serde_json::json!({"version":1,"kind":"apex-publish","targetOrigin":"https://erlcx.com","exportId":uuid::Uuid::now_v7().to_string(),"generatedAt":generated_at,"title":data.title,"description":data.description,"tags":data.tags,"youtubeUrl":data.youtube_url,"liveries":liveries,"media":media});
         let parent = destination.parent().ok_or(Error::NotFound)?;
         let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(storage)?;
         {
@@ -265,7 +270,8 @@ mod tests {
         let package = dir.path().join("project.apexstd");
         ws.export_project(&p.id, true, true, &package).unwrap();
         let pid = ws.import_package(&package).unwrap();
-        assert_eq!(ws.publishing(&pid).unwrap().data.media.len(), 2);
+        assert!(ws.publishing(&pid).unwrap().data.media.is_empty());
+        assert_eq!(ws.post(&p.id).unwrap().data.media.len(), 2);
         let reopened = Workspace::open(dir.path().join("ws")).unwrap();
         assert_eq!(reopened.publishing(&p.id).unwrap().revision, saved.revision);
         let backup = dir.path().join("backup.apexbackup");
