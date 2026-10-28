@@ -786,3 +786,13 @@ pub async fn copy_asset_item(
     let ws = workspace.inner().clone();
     work(move || ws.copy_item(&project_id, &id, is_folder, folder_id.as_deref())).await
 }
+#[tauri::command]
+pub async fn trash_preview(id:String,folder:bool,workspace:tauri::State<'_,Workspace>)->Result<apex_storage::TrashPreview,CommandError>{let ws=workspace.inner().clone();work(move||ws.trash_preview(&id,folder)).await}
+#[tauri::command]
+pub async fn trash_item(id:String,folder:bool,app:tauri::AppHandle,workspace:tauri::State<'_,Workspace>)->Result<String,CommandError>{let ws=workspace.inner().clone();let result=work(move||ws.trash_item(&id,folder)).await;app.state::<std::sync::Arc<super::upload_queue::UploadRuntime>>().changed();result}
+#[tauri::command]
+pub async fn list_trash(workspace:tauri::State<'_,Workspace>)->Result<Vec<apex_storage::TrashItem>,CommandError>{let ws=workspace.inner().clone();work(move||ws.trash_items()).await}
+#[tauri::command]
+pub async fn restore_trash(id:String,workspace:tauri::State<'_,Workspace>)->Result<String,CommandError>{let ws=workspace.inner().clone();work(move||ws.restore_trash(&id)).await}
+#[tauri::command]
+pub async fn purge_trash(id:String,workspace:tauri::State<'_,Workspace>)->Result<(),CommandError>{let ws=workspace.inner().clone();work(move||ws.purge_trash(&id)).await}

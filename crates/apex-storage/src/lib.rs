@@ -1,6 +1,6 @@
 //! SQLite workspace adapter and immutable, content-addressed managed files.
 use apex_core::{Error, WorkspaceInfo, WorkspaceRepository};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -22,7 +22,9 @@ mod pipeline;
 pub use pipeline::{png_dimensions, PreparationProgress, PreparedTexture};
 mod queue;
 pub use queue::*;
-const SCHEMA_VERSION: u32 = 7;
+mod trash;
+pub use trash::*;
+const SCHEMA_VERSION: u32 = 8;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
@@ -136,6 +138,12 @@ impl Workspace {
                 .execute_batch(include_str!("schema7.sql"))
                 .map_err(storage)?;
         }
+        if version<8 {
+            if version>0 {workspace.backup(&workspace.root.join("backups").join(format!("before-schema-8-{}.apexbackup",uuid::Uuid::now_v7())))?;}
+            connection.execute_batch(include_str!("schema8.sql")).map_err(storage)?;
+            let issues:Option<String>=connection.query_row("PRAGMA foreign_key_check",[],|r|r.get(0)).optional().map_err(storage)?;
+            if issues.is_some(){return Err(storage("Migration foreign-key check failed."));}
+        }
         Ok(workspace)
     }
 
@@ -155,6 +163,7 @@ impl Workspace {
     /// Stream a regular file into managed storage. Originals stay untouched.
     /// Duplicate bytes share a single blob. No browser-supplied paths reach this API yet.
     pub fn import_file(&self, source: &Path) -> Result<String, Error> {
+        let gate=self.content_gate(); let _content=gate.lock();
         let metadata = fs::symlink_metadata(source).map_err(storage)?;
         if !metadata.file_type().is_file() {
             return Err(storage("Select a regular file."));

@@ -182,7 +182,7 @@ impl Workspace {
             return Err(Error::InvalidContent("Choose a livery folder.".into()));
         }
         let db = self.connection()?;
-        let mut statement=db.prepare("SELECT a.id,a.name,a.hash,p.slot,u.state,u.operation,u.asset_id,u.moderation,u.message FROM assets a JOIN asset_placements p ON p.asset_id=a.id LEFT JOIN roblox_uploads u ON u.account_id=?2 AND u.hash=a.hash WHERE p.folder_id=?1 AND p.slot IS NOT NULL ORDER BY p.slot").map_err(storage)?;
+        let mut statement=db.prepare("SELECT a.id,a.name,a.hash,p.slot,u.state,u.operation,u.asset_id,u.moderation,u.message FROM assets a JOIN asset_placements p ON p.asset_id=a.id LEFT JOIN roblox_uploads u ON u.account_id=?2 AND u.hash=a.hash WHERE p.folder_id=?1 AND a.trash_id IS NULL AND p.slot IS NOT NULL ORDER BY p.slot").map_err(storage)?;
         let textures = statement
             .query_map(params![folder, account], |r| {
                 let hash: String = r.get(2)?;

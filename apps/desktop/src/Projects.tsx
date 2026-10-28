@@ -1,4 +1,5 @@
 import AssetPreview from "./AssetPreview";
+import Trash from "./Trash";
 import AssetBrowser from "./AssetBrowser";
 import { lazy, Suspense } from "react";
 const Notes = lazy(() => import("./Notes"));
@@ -297,6 +298,7 @@ export default function Projects({
   onNavigate: (section: "Dashboard" | "Projects" | "Assets") => void;
   onEditingChange: (editing: boolean) => void;
 }) {
+  const [showTrash, setShowTrash] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -342,6 +344,7 @@ export default function Projects({
       setMenu(false);
       setConfirmArchive(false);
     }
+    setShowTrash(false);
     setQuery("");
     setInspector(null);
   }, [section]);
@@ -812,46 +815,67 @@ export default function Projects({
         <>
           <header className="page-heading">
             <h1>Assets</h1>
+            <button
+              className="secondary"
+              onClick={() => setShowTrash((v) => !v)}
+            >
+              {showTrash ? "All assets" : "Trash"}
+            </button>
           </header>
-          <div className="file-toolbar">
-            <label className="search-field">
-              <Search size={17} />
-              <input
-                aria-label="Search assets"
-                placeholder="Search files"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </label>
-          </div>
-          {assets.length ? (
-            <div className="asset-grid">
-              {matchingAssets.map((asset) => (
-                <button
-                  key={asset.id}
-                  className="asset-tile"
-                  onClick={() => open(asset.projectId, asset.id)}
-                >
-                  <div className="asset-thumbnail">
-                    {asset.preview ? (
-                      <AssetPreview src={asset.preview} />
-                    ) : (
-                      <File size={32} />
-                    )}
-                  </div>
-                  <strong>{asset.name}</strong>
-                  <small>
-                    {projects.find((project) => project.id === asset.projectId)
-                      ?.name ?? "Project"}
-                  </small>
-                </button>
-              ))}
-            </div>
+          {showTrash ? (
+            <Trash
+              onBusy={setNoteDirty}
+              onChange={() => {
+                void refresh();
+                void listAssets(null)
+                  .then(setAssets)
+                  .catch((e) => setError(errorMessage(e)));
+              }}
+            />
           ) : (
-            <div className="empty-state">
-              <h2>No imported files yet</h2>
-              <p>Open a project to import files into your workspace.</p>
-            </div>
+            <>
+              <div className="file-toolbar">
+                <label className="search-field">
+                  <Search size={17} />
+                  <input
+                    aria-label="Search assets"
+                    placeholder="Search files"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                </label>
+              </div>
+              {assets.length ? (
+                <div className="asset-grid">
+                  {matchingAssets.map((asset) => (
+                    <button
+                      key={asset.id}
+                      className="asset-tile"
+                      onClick={() => open(asset.projectId, asset.id)}
+                    >
+                      <div className="asset-thumbnail">
+                        {asset.preview ? (
+                          <AssetPreview src={asset.preview} />
+                        ) : (
+                          <File size={32} />
+                        )}
+                      </div>
+                      <strong>{asset.name}</strong>
+                      <small>
+                        {projects.find(
+                          (project) => project.id === asset.projectId,
+                        )?.name ?? "Project"}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <h2>No imported files yet</h2>
+                  <p>Open a project to import files into your workspace.</p>
+                </div>
+              )}
+            </>
           )}
         </>
       )}

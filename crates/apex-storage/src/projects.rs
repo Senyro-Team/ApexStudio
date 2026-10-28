@@ -6,7 +6,7 @@ use std::{fs, path::Path};
 impl Workspace {
     pub fn projects(&self) -> Result<Vec<Project>, Error> {
         let connection = self.connection()?;
-        let mut query=connection.prepare("SELECT p.id,p.metadata,p.created_at,p.updated_at,p.archived,(SELECT count(*) FROM assets a WHERE a.project_id=p.id) FROM projects p ORDER BY p.updated_at DESC,p.id DESC").map_err(storage)?;
+        let mut query=connection.prepare("SELECT p.id,p.metadata,p.created_at,p.updated_at,p.archived,(SELECT count(*) FROM assets a WHERE a.project_id=p.id AND a.trash_id IS NULL) FROM projects p ORDER BY p.updated_at DESC,p.id DESC").map_err(storage)?;
         let rows = query
             .query_map([], |row| {
                 Ok((
@@ -35,7 +35,7 @@ impl Workspace {
     }
     pub fn project(&self, id: &str) -> Result<Project, Error> {
         let db = self.connection()?;
-        db.query_row("SELECT metadata,created_at,updated_at,archived,(SELECT count(*) FROM assets WHERE project_id=?1) FROM projects WHERE id=?1",[id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,bool>(3)?,r.get::<_,i64>(4)?))).optional().map_err(storage)?.map(|(metadata,created_at,updated_at,archived,count)|Ok(Project{id:id.into(),fields:serde_json::from_str(&metadata).map_err(storage)?,created_at,updated_at,archived,asset_count:u32::try_from(count).map_err(storage)?})).unwrap_or(Err(Error::NotFound))
+        db.query_row("SELECT metadata,created_at,updated_at,archived,(SELECT count(*) FROM assets WHERE project_id=?1 AND trash_id IS NULL) FROM projects WHERE id=?1",[id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,bool>(3)?,r.get::<_,i64>(4)?))).optional().map_err(storage)?.map(|(metadata,created_at,updated_at,archived,count)|Ok(Project{id:id.into(),fields:serde_json::from_str(&metadata).map_err(storage)?,created_at,updated_at,archived,asset_count:u32::try_from(count).map_err(storage)?})).unwrap_or(Err(Error::NotFound))
     }
     pub fn save_project(&self, id: Option<&str>, fields: ProjectInput) -> Result<Project, Error> {
         let fields = apex_core::validate_project(fields)?;
@@ -69,7 +69,7 @@ impl Workspace {
     }
     pub fn assets(&self, project_id: Option<&str>) -> Result<Vec<Asset>, Error> {
         let connection = self.connection()?;
-        let mut query=connection.prepare("SELECT a.id,a.project_id,a.name,a.hash,m.size,a.imported_at FROM assets a JOIN managed_files m ON a.hash=m.hash WHERE (?1 IS NULL OR a.project_id=?1) ORDER BY a.imported_at DESC,a.id DESC").map_err(storage)?;
+        let mut query=connection.prepare("SELECT a.id,a.project_id,a.name,a.hash,m.size,a.imported_at FROM assets a JOIN managed_files m ON a.hash=m.hash WHERE a.trash_id IS NULL AND (?1 IS NULL OR a.project_id=?1) ORDER BY a.imported_at DESC,a.id DESC").map_err(storage)?;
         let rows = query
             .query_map([project_id], |row| {
                 Ok((

@@ -83,7 +83,7 @@ const JOB_SELECT:&str="SELECT j.id,j.account_id,j.hash,j.name,j.state,j.pass,j.n
 impl Workspace {
     pub fn roblox_liveries(&self, account: &str) -> Result<Vec<RobloxLiverySummary>, Error> {
         let db = self.connection()?;
-        let mut q=db.prepare("SELECT f.id,f.project_id,json_extract(pr.metadata,'$.name'),f.name,f.vehicle_id,count(p.asset_id),sum(CASE WHEN u.asset_id IS NOT NULL AND u.moderation!='rejected' THEN 1 ELSE 0 END) FROM asset_folders f JOIN projects pr ON pr.id=f.project_id LEFT JOIN asset_placements p ON p.folder_id=f.id AND p.slot IS NOT NULL LEFT JOIN assets a ON a.id=p.asset_id LEFT JOIN roblox_uploads u ON u.account_id=?1 AND u.hash=a.hash WHERE f.kind='livery' AND pr.archived=0 GROUP BY f.id ORDER BY pr.updated_at DESC,f.name COLLATE NOCASE").map_err(storage)?;
+        let mut q=db.prepare("SELECT f.id,f.project_id,json_extract(pr.metadata,'$.name'),f.name,f.vehicle_id,count(p.asset_id),sum(CASE WHEN u.asset_id IS NOT NULL AND u.moderation!='rejected' THEN 1 ELSE 0 END) FROM asset_folders f JOIN projects pr ON pr.id=f.project_id LEFT JOIN asset_placements p ON p.folder_id=f.id AND p.slot IS NOT NULL LEFT JOIN assets a ON a.id=p.asset_id LEFT JOIN roblox_uploads u ON u.account_id=?1 AND u.hash=a.hash WHERE f.kind='livery' AND f.trash_id IS NULL AND a.trash_id IS NULL AND pr.archived=0 GROUP BY f.id ORDER BY pr.updated_at DESC,f.name COLLATE NOCASE").map_err(storage)?;
         let result = q
             .query_map([account], |r| {
                 Ok(RobloxLiverySummary {
@@ -108,6 +108,7 @@ impl Workspace {
         folders: &[String],
         force: bool,
     ) -> Result<String, Error> {
+        let gate=self.content_gate();let _guard=gate.lock();
         if folders.is_empty() || folders.len() > 500 || id.len() > 100 || id.is_empty() {
             return Err(Error::InvalidContent("Select 1–500 liveries.".into()));
         }
@@ -258,7 +259,7 @@ impl Workspace {
         let tx = db
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(storage)?;
-        let sql=format!("{JOB_SELECT} WHERE j.state=?1 AND j.next_at<=?2 AND EXISTS(SELECT 1 FROM upload_batch_items i JOIN upload_batches b ON b.id=i.batch_id WHERE i.job_id=j.id AND b.state='running') ORDER BY j.pass DESC,j.id LIMIT ?3");
+        let sql=format!("{JOB_SELECT} WHERE j.state=?1 AND j.next_at<=?2 AND EXISTS(SELECT 1 FROM upload_batch_items i JOIN upload_batches b ON b.id=i.batch_id WHERE i.job_id=j.id AND i.enabled=1 AND b.state='running') ORDER BY j.pass DESC,j.id LIMIT ?3");
         let tasks = tx
             .prepare(&sql)
             .map_err(storage)?
@@ -362,7 +363,8 @@ impl Workspace {
             .map_err(storage)?;
             tx.execute("INSERT INTO roblox_uploads(account_id,hash,state,asset_id,moderation)VALUES(?1,?2,'uploaded',?3,?4) ON CONFLICT(account_id,hash) DO UPDATE SET state='uploaded',asset_id=excluded.asset_id,moderation=excluded.moderation,operation=NULL,message=''",params![job.account_id,job.hash,id,moderation]).map_err(storage)?;
         }
-        tx.execute("UPDATE upload_batches SET state='complete' WHERE state IN ('running','paused') AND NOT EXISTS(SELECT 1 FROM upload_batch_items i JOIN upload_jobs j ON j.id=i.job_id WHERE i.batch_id=upload_batches.id AND j.state!='complete')",[]).map_err(storage)?;
+        tx.execute("UPDATE upload_jobs SET state='cancelled',message='Source moved to trash.' WHERE id=?1 AND state='queued' AND NOT EXISTS(SELECT 1 FROM upload_batch_items i JOIN upload_batches b ON b.id=i.batch_id WHERE i.job_id=upload_jobs.id AND i.enabled=1 AND b.state IN ('running','paused'))",[&job.id]).map_err(storage)?;
+        tx.execute("UPDATE upload_batches SET state='complete' WHERE state IN ('running','paused') AND NOT EXISTS(SELECT 1 FROM upload_batch_items i JOIN upload_jobs j ON j.id=i.job_id WHERE i.batch_id=upload_batches.id AND i.enabled=1 AND j.state NOT IN ('complete','cancelled'))",[]).map_err(storage)?;
         tx.commit().map_err(storage)?;
         Ok(())
     }
@@ -384,10 +386,10 @@ impl Workspace {
             }
             "cancel" => {
                 tx.execute("UPDATE upload_batches SET state='cancelled' WHERE (?1 IS NULL OR id=?1) AND state IN ('running','paused')",[id]).map_err(storage)?;
-                tx.execute("UPDATE upload_jobs SET state='cancelled' WHERE state IN ('queued','processing','failed','needs_review') AND NOT EXISTS(SELECT 1 FROM upload_batch_items i JOIN upload_batches b ON b.id=i.batch_id WHERE i.job_id=upload_jobs.id AND b.state IN ('running','paused'))",[]).map_err(storage)?;
+                tx.execute("UPDATE upload_jobs SET state='cancelled' WHERE state IN ('queued','processing','failed','needs_review') AND NOT EXISTS(SELECT 1 FROM upload_batch_items i JOIN upload_batches b ON b.id=i.batch_id WHERE i.job_id=upload_jobs.id AND i.enabled=1 AND b.state IN ('running','paused'))",[]).map_err(storage)?;
             }
             "retry" => {
-                tx.execute("UPDATE upload_jobs SET state=CASE WHEN EXISTS(SELECT 1 FROM upload_passes p WHERE p.job_id=upload_jobs.id AND p.pass=upload_jobs.pass AND p.operation IS NOT NULL AND p.state!='failed') THEN 'processing' ELSE 'queued' END,next_at=0,message='' WHERE state='failed' AND id IN(SELECT job_id FROM upload_batch_items WHERE ?1 IS NULL OR batch_id=?1)",[id]).map_err(storage)?;
+                tx.execute("UPDATE upload_jobs SET state=CASE WHEN EXISTS(SELECT 1 FROM upload_passes p WHERE p.job_id=upload_jobs.id AND p.pass=upload_jobs.pass AND p.operation IS NOT NULL AND p.state!='failed') THEN 'processing' ELSE 'queued' END,next_at=0,message='' WHERE state='failed' AND id IN(SELECT job_id FROM upload_batch_items WHERE enabled=1 AND (?1 IS NULL OR batch_id=?1))",[id]).map_err(storage)?;
                 tx.execute("UPDATE upload_batches SET state='running' WHERE (?1 IS NULL OR id=?1) AND state='paused'",[id]).map_err(storage)?;
             }
             _ => return Err(Error::InvalidContent("Unknown upload action.".into())),

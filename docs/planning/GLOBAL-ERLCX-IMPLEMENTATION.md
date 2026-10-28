@@ -12,3 +12,9 @@ Baseline: a616cb1, schema 7. Work is split into Frontplate, trash (schema 8), th
 ## Block 1 — Frontplate
 
 Added to filename recognition, storage slot validation and the manual side picker. Number defaults to 1 only for recognized Frontplate names; first following number wins. Downstream Roblox, Markdown and ERLCX use side strings and retain the canonical value without a format change.
+
+## Block 2: project trash (schema 8)
+
+Soft deletion keeps folders, placements, versions and covers. Active name/slot indexes exclude trash. Pending upload references are disabled, shared work stays active, and submitted operations remain traceable. Restore uses a unique name and falls back to the project root when the parent is unavailable. Permanent deletion collects only unreferenced content; note/post media, leases and active operations protect blobs. A workspace content gate serializes file promotion, backup and collection. Terminal upload history no longer owns file bytes.
+
+Verification: 33 storage unit tests pass, including recursive restore, name conflicts, missing parents, shared blobs, interrupted queues and backup/restore. Existing 45 frontend tests and production frontend build pass. Rust doc-test invocation is restricted by Windows Application Control (rustdoc error 4551); unit/all-target checks do not require bypassing this policy.

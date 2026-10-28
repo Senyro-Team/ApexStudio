@@ -392,3 +392,24 @@ export const liveryPreparations = (tokens: string[]) =>
     "livery_preparations",
     { tokens },
   );
+export interface TrashPreview {
+  name: string;
+  files: number;
+  folders: number;
+}
+export interface TrashItem extends TrashPreview {
+  id: string;
+  projectId: string;
+  projectName: string;
+  rootId: string;
+  kind: "folder" | "file";
+  deletedAt: string;
+}
+export const trashPreview = (id: string, folder: boolean) =>
+  invoke<TrashPreview>("trash_preview", { id, folder });
+export const trashItem = (id: string, folder: boolean) =>
+  invoke<string>("trash_item", { id, folder });
+export const listTrash = () => invoke<TrashItem[]>("list_trash");
+export const restoreTrash = (id: string) =>
+  invoke<string>("restore_trash", { id });
+export const purgeTrash = (id: string) => invoke<void>("purge_trash", { id });

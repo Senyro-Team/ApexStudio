@@ -59,6 +59,7 @@ impl Workspace {
         project: &str,
         paths: &[PathBuf],
     ) -> Result<Vec<PublishingPreview>, Error> {
+        let gate=self.content_gate(); let _content=gate.lock();
         self.editable_project(project)?;
         if paths.len() > 10 {
             return Err(Error::InvalidContent(
@@ -84,6 +85,7 @@ impl Workspace {
         revision: u64,
         data: PublishingInput,
     ) -> Result<PublishingDraft, Error> {
+        let gate=self.content_gate(); let _content=gate.lock();
         self.editable_project(project)?;
         data.validate(false)?;
         for m in &data.media {
@@ -135,6 +137,7 @@ impl Workspace {
         self.publishing(project)
     }
     pub fn export_publishing(&self, project: &str, destination: &Path) -> Result<(), Error> {
+        let gate=self.content_gate(); let _content=gate.lock();
         let draft = self.publishing(project)?;
         draft.data.validate(true)?;
         for livery in &draft.data.liveries {

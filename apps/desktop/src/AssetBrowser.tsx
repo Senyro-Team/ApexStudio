@@ -13,6 +13,9 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import {
+  trashPreview,
+  trashItem,
+  type TrashPreview,
   prepareLiveryFolders,
   type LiveryFolderDraft,
   assetBoard,
@@ -54,6 +57,35 @@ export default function AssetBrowser({
   onBusy: (value: boolean) => void;
   onChange: () => void;
 }) {
+  const [trashTarget, setTrashTarget] = useState<(Item & TrashPreview) | null>(
+    null,
+  );
+  const trashDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (trashTarget) trashDialog.current?.showModal();
+  }, [trashTarget]);
+  async function requestTrash() {
+    if (!explorerSelection) return;
+    try {
+      const info = await trashPreview(
+        explorerSelection.id,
+        explorerSelection.folder,
+      );
+      setTrashTarget({ ...explorerSelection, ...info });
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+  async function confirmTrash() {
+    if (!trashTarget) return;
+    await act(async () => {
+      await trashItem(trashTarget.id, trashTarget.folder);
+      setSelected(null);
+      setExplorerSelection(null);
+      setClipboard(null);
+      setTrashTarget(null);
+    }, "Moved to trash.");
+  }
   const [folderBatch, setFolderBatch] = useState<LiveryFolderDraft[] | null>(
     null,
   );
@@ -140,9 +172,15 @@ export default function AssetBrowser({
     browserRef.current?.focus({ preventScroll: true });
   }, [folderId]);
   useEffect(() => {
-    onBusy(busy || Boolean(draft) || Boolean(folderForm) || !!folderBatch);
+    onBusy(
+      busy ||
+        Boolean(draft) ||
+        Boolean(folderForm) ||
+        !!folderBatch ||
+        !!trashTarget,
+    );
     return () => onBusy(false);
-  }, [busy, draft, folderForm, folderBatch, onBusy]);
+  }, [busy, draft, folderForm, folderBatch, trashTarget, onBusy]);
   async function reload() {
     const next = await assetBoard(project.id);
     setBoard(next);
@@ -463,6 +501,38 @@ export default function AssetBrowser({
         }
       }}
     >
+      {trashTarget && (
+        <dialog
+          ref={trashDialog}
+          aria-label="Move to trash"
+          onCancel={(e) => {
+            if (busy) e.preventDefault();
+            else setTrashTarget(null);
+          }}
+        >
+          <h2>Move to trash?</h2>
+          <p>
+            {trashTarget.name} · {trashTarget.folders} folders ·{" "}
+            {trashTarget.files} files
+          </p>
+          <div className="button-row">
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() => setTrashTarget(null)}
+            >
+              Cancel
+            </button>
+            <button
+              className="primary"
+              disabled={busy}
+              onClick={() => void confirmTrash()}
+            >
+              Move to trash
+            </button>
+          </div>
+        </dialog>
+      )}
       {error && (
         <p className="error pre-wrap" role="alert">
           {error}
@@ -953,6 +1023,15 @@ export default function AssetBrowser({
                     onClick={() => copySelection(true)}
                   >
                     Cut
+                  </button>
+                )}
+                {explorerSelection && (
+                  <button
+                    className="text-button"
+                    disabled={locked}
+                    onClick={() => void requestTrash()}
+                  >
+                    Move to trash
                   </button>
                 )}
                 {clipboard && (

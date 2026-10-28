@@ -85,6 +85,7 @@ dependencies = [
  "apex-core",
  "base64 0.22.1",
  "image",
+ "parking_lot",
  "rusqlite",
  "serde",
  "serde_json",

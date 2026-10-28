@@ -40,7 +40,7 @@ impl Workspace {
     }
     pub fn folders(&self, project: &str) -> Result<Vec<AssetFolder>, Error> {
         let db = self.connection()?;
-        let mut s=db.prepare("SELECT id,project_id,parent_id,name,kind,vehicle_id,cover_hash FROM asset_folders WHERE project_id=?1 ORDER BY name COLLATE NOCASE").map_err(storage)?;
+        let mut s=db.prepare("SELECT id,project_id,parent_id,name,kind,vehicle_id,cover_hash FROM asset_folders WHERE project_id=?1 AND trash_id IS NULL ORDER BY name COLLATE NOCASE").map_err(storage)?;
         let result = s
             .query_map([project], |r| {
                 Ok(AssetFolder {
@@ -64,13 +64,13 @@ impl Workspace {
         result
     }
     pub fn folder(&self, id: &str) -> Result<AssetFolder, Error> {
-        let mut f=self.connection()?.query_row("SELECT id,project_id,parent_id,name,kind,vehicle_id,cover_hash FROM asset_folders WHERE id=?1",[id],|r|Ok(AssetFolder{id:r.get(0)?,project_id:r.get(1)?,parent_id:r.get(2)?,name:r.get(3)?,kind:r.get(4)?,vehicle_id:r.get(5)?,cover_hash:r.get(6)?,preview:None})).optional().map_err(storage)?.ok_or(Error::NotFound)?;
+        let mut f=self.connection()?.query_row("SELECT id,project_id,parent_id,name,kind,vehicle_id,cover_hash FROM asset_folders WHERE id=?1 AND trash_id IS NULL",[id],|r|Ok(AssetFolder{id:r.get(0)?,project_id:r.get(1)?,parent_id:r.get(2)?,name:r.get(3)?,kind:r.get(4)?,vehicle_id:r.get(5)?,cover_hash:r.get(6)?,preview:None})).optional().map_err(storage)?.ok_or(Error::NotFound)?;
         f.preview = f.cover_hash.as_deref().and_then(|h| self.thumbnail(h));
         Ok(f)
     }
     pub fn board(&self, project: &str) -> Result<AssetBoard, Error> {
         let db = self.connection()?;
-        let mut s=db.prepare("SELECT p.asset_id,p.folder_id,p.slot FROM asset_placements p JOIN assets a ON a.id=p.asset_id WHERE a.project_id=?1").map_err(storage)?;
+        let mut s=db.prepare("SELECT p.asset_id,p.folder_id,p.slot FROM asset_placements p JOIN assets a ON a.id=p.asset_id WHERE a.project_id=?1 AND a.trash_id IS NULL").map_err(storage)?;
         let placements = s
             .query_map([project], |r| {
                 Ok(Placement {
@@ -107,7 +107,7 @@ impl Workspace {
         self.editable_project(project)?;
         validate_folder_name(name)?;
         self.validate_parent(project, parent)?;
-        let collision: bool = self.connection()?.query_row("SELECT EXISTS(SELECT 1 FROM asset_folders WHERE project_id=?1 AND parent_id IS ?2 AND name=?3 COLLATE NOCASE AND (?4 IS NULL OR id<>?4))",params![project,parent,name.trim(),id],|r|r.get(0)).map_err(storage)?;
+        let collision: bool = self.connection()?.query_row("SELECT EXISTS(SELECT 1 FROM asset_folders WHERE project_id=?1 AND trash_id IS NULL AND parent_id IS ?2 AND name=?3 COLLATE NOCASE AND (?4 IS NULL OR id<>?4))",params![project,parent,name.trim(),id],|r|r.get(0)).map_err(storage)?;
         if collision {
             return Err(bad(
                 "A folder with this name already exists here. Rename it before moving.",
@@ -344,6 +344,7 @@ impl Workspace {
         folder: Option<&str>,
         paths: &[PathBuf],
     ) -> Result<ImportReport, Error> {
+        let gate=self.content_gate(); let _content=gate.lock();
         self.editable_project(project)?;
         if let Some(id) = folder {
             if self.folder(id)?.project_id != project {
@@ -360,7 +361,7 @@ impl Workspace {
                 let hash = self.import_file(path)?;
                 let mut db = self.connection()?;
                 let tx = db.transaction().map_err(storage)?;
-                let exists:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM assets a LEFT JOIN asset_placements p ON p.asset_id=a.id WHERE a.project_id=?1 AND a.name=?2 AND a.hash=?3 AND p.folder_id IS ?4)",params![project,name,hash,folder],|r|r.get(0)).map_err(storage)?;
+                let exists:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM assets a LEFT JOIN asset_placements p ON p.asset_id=a.id WHERE a.project_id=?1 AND a.trash_id IS NULL AND a.name=?2 AND a.hash=?3 AND p.folder_id IS ?4)",params![project,name,hash,folder],|r|r.get(0)).map_err(storage)?;
                 if exists {
                     return Ok(false);
                 }
@@ -400,6 +401,7 @@ impl Workspace {
         Ok(report)
     }
     pub fn set_cover(&self, id: &str, path: &Path) -> Result<(), Error> {
+        let gate=self.content_gate(); let _content=gate.lock();
         let f = self.folder(id)?;
         self.editable_project(&f.project_id)?;
         validate_png(path)?;
@@ -492,6 +494,7 @@ impl Workspace {
         files: &[(crate::PreparedTexture, String, Option<String>)],
         cover: Option<usize>,
     ) -> Result<String, Error> {
+        let gate=self.content_gate(); let _content=gate.lock();
         self.editable_project(project)?;
         validate_folder_name(name)?;
         self.validate_parent(project, parent)?;
@@ -555,7 +558,7 @@ impl Workspace {
         }
         for (filename, hash, slot) in prepared {
             let old: Option<(String, String, String)> = if let Some(slot) = slot {
-                tx.query_row("SELECT a.id,a.hash,a.name FROM assets a JOIN asset_placements p ON p.asset_id=a.id WHERE p.folder_id=?1 AND p.slot=?2",params![id,slot],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(storage)?
+                tx.query_row("SELECT a.id,a.hash,a.name FROM assets a JOIN asset_placements p ON p.asset_id=a.id WHERE p.folder_id=?1 AND p.slot=?2 AND a.trash_id IS NULL",params![id,slot],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(storage)?
             } else {
                 None
             };
@@ -960,15 +963,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::open(dir.path().join("old")).unwrap();
         ws.rename("Old studio").unwrap();
-        ws.connection().unwrap().execute_batch("DROP TABLE upload_attempts;DROP TABLE upload_batch_items;DROP TABLE upload_passes;DROP TABLE upload_jobs;DROP TABLE upload_batches;DROP TABLE image_validation;DROP TABLE roblox_uploads;DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;PRAGMA user_version=3;").unwrap();
+        ws.connection().unwrap().execute_batch("DROP INDEX assets_trash;ALTER TABLE assets DROP COLUMN trash_id;DROP TABLE content_leases;DROP TABLE upload_attempts;DROP TABLE upload_batch_items;DROP TABLE upload_passes;DROP TABLE upload_jobs;DROP TABLE upload_batches;DROP TABLE image_validation;DROP TABLE roblox_uploads;DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;DROP TABLE trash_entries;PRAGMA user_version=3;").unwrap();
         let path = dir.path().join("old.apexbackup");
         ws.backup(&path).unwrap();
         let restored = Workspace::open(dir.path().join("new")).unwrap();
         restored.restore_backup(&path).unwrap();
-        assert_eq!(restored.info().unwrap().schema_version, 7);
+        assert_eq!(restored.info().unwrap().schema_version, 8);
         assert_eq!(restored.info().unwrap().name, "Old studio");
         let migrated = Workspace::open(dir.path().join("old")).unwrap();
-        assert_eq!(migrated.info().unwrap().schema_version, 7);
+        assert_eq!(migrated.info().unwrap().schema_version, 8);
         assert!(std::fs::read_dir(migrated.root.join("backups"))
             .unwrap()
             .next()
