@@ -964,14 +964,15 @@ mod tests {
         let ws = Workspace::open(dir.path().join("old")).unwrap();
         ws.rename("Old studio").unwrap();
         ws.connection().unwrap().execute_batch("DROP TABLE post_media;DROP TABLE posts;DROP INDEX assets_trash;ALTER TABLE assets DROP COLUMN trash_id;DROP TABLE content_leases;DROP TABLE upload_attempts;DROP TABLE upload_batch_items;DROP TABLE upload_passes;DROP TABLE upload_jobs;DROP TABLE upload_batches;DROP TABLE image_validation;DROP TABLE roblox_uploads;DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;DROP TABLE trash_entries;PRAGMA user_version=3;").unwrap();
+        ws.connection().unwrap().execute_batch("DROP TABLE statistics_snapshots; DROP TABLE statistics_sales;").unwrap();
         let path = dir.path().join("old.apexbackup");
         ws.backup(&path).unwrap();
         let restored = Workspace::open(dir.path().join("new")).unwrap();
         restored.restore_backup(&path).unwrap();
-        assert_eq!(restored.info().unwrap().schema_version, 9);
+        assert_eq!(restored.info().unwrap().schema_version, crate::SCHEMA_VERSION);
         assert_eq!(restored.info().unwrap().name, "Old studio");
         let migrated = Workspace::open(dir.path().join("old")).unwrap();
-        assert_eq!(migrated.info().unwrap().schema_version, 9);
+        assert_eq!(migrated.info().unwrap().schema_version, crate::SCHEMA_VERSION);
         assert!(std::fs::read_dir(migrated.root.join("backups"))
             .unwrap()
             .next()

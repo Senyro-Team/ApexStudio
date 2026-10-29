@@ -281,6 +281,8 @@ fn checked(path: &Path) -> Result<Checked, Error> {
             "trash_entries",
             "content_leases",
             "workspace_settings",
+            "statistics_snapshots",
+            "statistics_sales",
             "managed_files",
             "projects",
             "assets",

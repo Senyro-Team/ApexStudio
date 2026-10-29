@@ -1,6 +1,7 @@
 import PerformanceDiagnostics from "./PerformanceDiagnostics";
 import ChromeSettings from "./ChromeSettings";
 import RobloxSettings from "./RobloxSettings";
+import Statistics, { StatisticsOverview, StatisticsSettings, useStatistics } from "./Statistics";
 import { invoke } from "@tauri-apps/api/core";
 import {
   applyTheme,
@@ -36,6 +37,7 @@ import {
   PanelLeftOpen,
   HardDrive,
   ArrowUpRight,
+  ChartNoAxesCombined,
 } from "lucide-react";
 import {
   setEditLock,
@@ -54,6 +56,7 @@ const sections = [
   { name: "Assets", icon: Images },
   { name: "Roblox", icon: Upload },
   { name: "ERLCX", icon: ArrowUpRight },
+  { name: "Statistics", icon: ChartNoAxesCombined },
   { name: "Settings", icon: Settings },
 ] as const;
 type Section = (typeof sections)[number]["name"];
@@ -236,6 +239,7 @@ export default function App() {
     if (desktopAvailable) void setEditLock(navigationLocked).catch(() => {});
   }, [navigationLocked]);
   const [workspaceGeneration, setWorkspaceGeneration] = useState(0);
+  const stats = useStatistics(workspaceGeneration);
   async function load() {
     setLoading(true);
     setError("");
@@ -395,6 +399,7 @@ export default function App() {
             onNavigate={setSection}
             onEditingChange={setNavigationLocked}
           />
+          {section === "Dashboard" && <StatisticsOverview stats={stats} onOpen={() => setSection("Statistics")} />}
           {!["Dashboard", "Projects", "Assets", "ERLCX"].includes(section) && (
             <header className="page-heading">
               <h1>{section}</h1>
@@ -421,6 +426,7 @@ export default function App() {
               />
             </Suspense>
           )}
+          {section === "Statistics" && <Statistics stats={stats} onSettings={() => setSection("Settings")} />}
           {section === "Settings" && (
             <div className="settings-content">
               <section className="theme-settings">
@@ -613,6 +619,7 @@ export default function App() {
               <PerformanceDiagnostics />
               <RobloxSettings onBusy={setRobloxLock} />
               <ChromeSettings onBusy={setChromeLock} />
+              <StatisticsSettings stats={stats} />
               <BackupTools
                 onBusy={setBackupLock}
                 onRestore={() => {

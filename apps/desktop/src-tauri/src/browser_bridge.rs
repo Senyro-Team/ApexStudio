@@ -1,6 +1,6 @@
 use super::{chrome_protocol as protocol, projects::work, CommandError};
 use apex_core::Error;
-use apex_storage::Workspace;
+use apex_storage::{SalesData, Workspace};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -29,6 +29,14 @@ struct Transfer {
     post_id: String,
     command: String,
 }
+struct StatisticsTransfer {
+    token: String,
+    session: Option<String>,
+    profile_id: String,
+    expires: Instant,
+    state: String,
+    message: String,
+}
 #[derive(Default)]
 struct BridgeState {
     config: protocol::ChromeConfig,
@@ -37,6 +45,8 @@ struct BridgeState {
     transfer: Option<Transfer>,
     pending: Option<String>,
     status: BrowserStatus,
+    statistics: Option<StatisticsTransfer>,
+    workspace: Option<Workspace>,
 }
 #[derive(Clone, Default)]
 pub struct BrowserBridge(Arc<Mutex<BridgeState>>);
@@ -59,6 +69,7 @@ impl BrowserBridge {
     pub(super) fn invalidate(&self) -> Result<(), Error> {
         let mut s = self.lock()?;
         s.transfer = None;
+        s.statistics = None;
         s.pending = None;
         s.checked = None;
         s.check = None;
@@ -108,6 +119,30 @@ impl BrowserBridge {
             }
             s.checked = Some(Instant::now());
             s.status.message = "Chrome connection verified.".into();
+            return Ok(json!({"ok":true}));
+        }
+        if kind == "statistics_claim" || kind == "statistics_submit" || kind == "statistics_error" {
+            let workspace = s.workspace.clone();
+            let t = s.statistics.as_mut().ok_or_else(|| invalid("No statistics request is active."))?;
+            if Instant::now() > t.expires { return Err(invalid("Statistics request expired.")); }
+            if kind == "statistics_claim" {
+                if t.session.is_some() || r["token"].as_str() != Some(t.token.as_str()) { return Err(invalid("Invalid statistics token.")); }
+                let session = secret();
+                t.token.clear();
+                t.session = Some(session.clone());
+                return Ok(json!({"session":session,"profileId":t.profile_id}));
+            }
+            if t.state != "running" || t.session.is_none() || r["session"].as_str() != t.session.as_deref() { return Err(invalid("Invalid statistics session.")); }
+            if kind == "statistics_error" {
+                t.state = "failed".into();
+                t.message = if r["reason"].as_str() == Some("account_mismatch") { "The signed-in ERLCX account does not match the selected user." } else { "Could not read the signed-in creator dashboard. Check your Chrome login and try again." }.into();
+                return Ok(json!({"ok":true}));
+            }
+            if r["profileId"].as_str() != Some(t.profile_id.as_str()) { return Err(invalid("The signed-in ERLCX account does not match the selected user.")); }
+            let data: SalesData = serde_json::from_value(r["data"].clone()).map_err(|_| invalid("Invalid sales statistics."))?;
+            workspace.ok_or_else(|| invalid("Workspace unavailable."))?.save_statistics_sales(&t.profile_id, &data)?;
+            t.state = "complete".into();
+            t.message = "Creator dashboard updated.".into();
             return Ok(json!({"ok":true}));
         }
         let Some(t) = s.transfer.as_mut() else {
@@ -205,7 +240,7 @@ fn initial_pipe(name: &str) -> Result<tokio::net::windows::named_pipe::NamedPipe
     })
 }
 #[cfg(windows)]
-pub fn setup(app: &tauri::AppHandle) -> Result<(), Error> {
+pub fn setup(app: &tauri::AppHandle, workspace: Workspace) -> Result<(), Error> {
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::windows::named_pipe::ServerOptions,
@@ -221,6 +256,7 @@ pub fn setup(app: &tauri::AppHandle) -> Result<(), Error> {
     )
     .map_err(|e| Error::Storage(e.to_string()))?;
     bridge.lock()?.config = config.clone();
+    bridge.lock()?.workspace = Some(workspace);
     app.manage(bridge.clone());
     // Acquire the endpoint before exposing it. first_pipe_instance prevents accidental sharing.
     let initial = initial_pipe(&config.pipe)?;
@@ -263,8 +299,10 @@ pub fn setup(app: &tauri::AppHandle) -> Result<(), Error> {
     Ok(())
 }
 #[cfg(not(windows))]
-pub fn setup(app: &tauri::AppHandle) -> Result<(), Error> {
-    app.manage(BrowserBridge::default());
+pub fn setup(app: &tauri::AppHandle, workspace: Workspace) -> Result<(), Error> {
+    let bridge = BrowserBridge::default();
+    bridge.lock()?.workspace = Some(workspace);
+    app.manage(bridge);
     Ok(())
 }
 #[tauri::command]
@@ -319,7 +357,7 @@ pub fn save_chrome_settings(
         .into());
     }
     let mut state = bridge.lock()?;
-    if state.transfer.is_some() || state.pending.is_some() {
+    if state.transfer.is_some() || state.pending.is_some() || state.statistics.as_ref().is_some_and(|t| t.state == "running" && Instant::now() < t.expires) {
         return Err(invalid("Finish or cancel the active browser handoff first.").into());
     }
     config.pipe = state.config.pipe.clone();
@@ -375,6 +413,34 @@ pub fn check_browser(bridge: tauri::State<'_, BrowserBridge>) -> Result<(), Comm
     launch(&state.config, &format!("check={token}"))?;
     Ok(())
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatisticsBrowserStatus { state: String, message: String }
+
+#[tauri::command]
+pub fn statistics_browser_status(bridge: tauri::State<'_, BrowserBridge>) -> Result<StatisticsBrowserStatus, CommandError> {
+    let mut state = bridge.lock()?;
+    if let Some(t) = state.statistics.as_mut() {
+        if t.state == "running" && Instant::now() > t.expires { t.state = "failed".into(); t.message = "Chrome connection timed out. Try again.".into(); }
+        return Ok(StatisticsBrowserStatus { state: t.state.clone(), message: t.message.clone() });
+    }
+    Ok(StatisticsBrowserStatus { state: "idle".into(), message: String::new() })
+}
+
+#[tauri::command]
+pub fn start_statistics_browser(bridge: tauri::State<'_, BrowserBridge>, workspace: tauri::State<'_, Workspace>) -> Result<(), CommandError> {
+    let id = workspace.statistics_profile()?.ok_or_else(|| invalid("Set a Roblox user ID in Settings first."))?;
+    let mut state = bridge.lock()?;
+    if !state.checked.is_some_and(|t| t.elapsed() < Duration::from_secs(300)) { return Err(invalid("Verify the Chrome connection in Settings first.").into()); }
+    if state.pending.is_some() || state.transfer.as_ref().is_some_and(|t| Instant::now() < t.expires) || state.statistics.as_ref().is_some_and(|t| t.state == "running" && Instant::now() < t.expires) { return Err(invalid("A Chrome operation is already active.").into()); }
+    let token = secret();
+    let config = state.config.clone();
+    state.statistics = Some(StatisticsTransfer { token: token.clone(), session: None, profile_id: id, expires: Instant::now() + Duration::from_secs(120), state: "running".into(), message: "Opening creator dashboard…".into() });
+    drop(state);
+    if let Err(e) = launch(&config, &format!("statistics={token}")) { bridge.lock()?.statistics = None; return Err(e.into()); }
+    Ok(())
+}
 #[tauri::command]
 pub async fn prepare_browser(
     id: String,
@@ -395,7 +461,7 @@ pub async fn prepare_browser(
             {
                 return Err(invalid("Verify the Chrome connection in Settings first."));
             }
-            if state.pending.is_some()
+            if state.statistics.as_ref().is_some_and(|t| t.state == "running" && Instant::now() < t.expires) || state.pending.is_some()
                 || state
                     .transfer
                     .as_ref()
@@ -557,5 +623,33 @@ mod tests {
         assert!(b.process(r.clone()).is_ok());
         assert!(b.snapshot().unwrap().connected);
         assert!(b.process(r).is_err());
+    }
+    #[test]
+    fn statistics_are_bound_to_one_use_token_session_and_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path()).unwrap();
+        ws.set_statistics_profile("123").unwrap();
+        let b = fixture();
+        {
+            let mut state = b.lock().unwrap();
+            state.workspace = Some(ws.clone());
+            state.statistics = Some(StatisticsTransfer { token:"once".into(), session:None, profile_id:"123".into(), expires:Instant::now()+Duration::from_secs(60), state:"running".into(), message:String::new() });
+        }
+        let mut claim = request("statistics_claim");
+        claim["token"] = "once".into();
+        let session = b.process(claim.clone()).unwrap()["session"].as_str().unwrap().to_owned();
+        assert!(b.process(claim).is_err());
+        let mut submit = request("statistics_submit");
+        submit["session"] = session.into();
+        submit["profileId"] = "wrong".into();
+        submit["data"] = json!({"sales":1,"allTimeSales":2,"netRobux":70,"grossRobux":100,"series":[]});
+        assert!(b.process(submit.clone()).is_err());
+        submit["profileId"] = "123".into();
+        submit["data"]["buyer"] = "private".into();
+        assert!(b.process(submit.clone()).is_err());
+        submit["data"].as_object_mut().unwrap().remove("buyer");
+        assert!(b.process(submit.clone()).is_ok());
+        assert!(b.process(submit).is_err());
+        assert_eq!(ws.statistics_sales("123").unwrap().unwrap().data.net_robux, 70);
     }
 }

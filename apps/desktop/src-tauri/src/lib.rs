@@ -11,6 +11,7 @@ mod browser_bridge;
 mod chrome_protocol;
 mod roblox;
 mod upload_queue;
+mod statistics;
 
 #[derive(serde::Serialize)]
 struct CommandError {
@@ -127,7 +128,7 @@ pub fn run() {
             let ws = Workspace::open(root)?;
             ws.recover_queue()?;
             let runtime = upload_queue::UploadRuntime::new()?;
-            browser_bridge::setup(app.handle())?;
+            browser_bridge::setup(app.handle(), ws.clone())?;
             app.manage(ws.clone());
             app.manage(runtime.clone());
             upload_queue::setup_tray(app.handle(), runtime.clone(), ws.clone())?;
@@ -171,6 +172,13 @@ pub fn run() {
             publishing::export_publishing,
             workspace_info,
             rename_workspace,
+            statistics::statistics_profile,
+            statistics::set_statistics_profile,
+            statistics::statistics_history,
+            statistics::refresh_statistics,
+            statistics::statistics_sales,
+            browser_bridge::start_statistics_browser,
+            browser_bridge::statistics_browser_status,
             set_app_theme_icon,
             projects::list_projects,
             projects::save_project,

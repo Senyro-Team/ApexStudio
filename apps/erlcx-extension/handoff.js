@@ -1,6 +1,7 @@
 import { readBundle } from "./bundle.js";
 import { storage } from "./storage.js";
 import { nativeConnection } from "./native.js";
+import { readCreatorStatistics } from "./creator-statistics.js";
 const $ = (id) => document.getElementById(id);
 let native = null,
   timer = null;
@@ -47,6 +48,55 @@ async function init() {
       $("step").textContent = "Connected";
       $("status").textContent =
         "Apex Studio and this Chrome profile are connected.";
+      return;
+    }
+    if (params.has("statistics")) {
+      const claim = await native.request({
+        kind: "statistics_claim",
+        token: params.get("statistics"),
+      });
+      try {
+        $("step").textContent = "Creator statistics";
+        $("status").textContent = "Opening the creator dashboard…";
+        const tab = await chrome.tabs.create({
+          url: "https://erlcx.com/creator/dashboard",
+          active: true,
+        });
+        const started = Date.now();
+        while ((await chrome.tabs.get(tab.id)).status !== "complete") {
+          if (Date.now() - started > 20000)
+            throw Error("Creator dashboard did not finish loading.");
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: "MAIN",
+          func: readCreatorStatistics,
+          args: [claim.profileId],
+        });
+        if (results.length !== 1 || !results[0].result)
+          throw Error("Creator statistics unavailable.");
+        await native.request({
+          kind: "statistics_submit",
+          session: claim.session,
+          profileId: claim.profileId,
+          data: results[0].result,
+        });
+        $("status").textContent = "Creator statistics sent to Apex Studio.";
+      } catch (e) {
+        await native
+          .request({
+            kind: "statistics_error",
+            session: claim.session,
+            reason:
+              e.message ===
+              "The signed-in ERLCX account does not match the selected user."
+                ? "account_mismatch"
+                : "unavailable",
+          })
+          .catch(() => {});
+        throw e;
+      }
       return;
     }
     const claimed = await native.request({

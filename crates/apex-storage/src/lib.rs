@@ -25,9 +25,11 @@ mod queue;
 pub use queue::*;
 mod trash;
 mod posts;
+mod statistics;
+pub use statistics::*;
 pub use posts::*;
 pub use trash::*;
-const SCHEMA_VERSION: u32 = 9;
+const SCHEMA_VERSION: u32 = 11;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
@@ -160,6 +162,18 @@ impl Workspace {
         if version < 9 {
             if version > 0 {workspace.backup(&workspace.root.join("backups").join(format!("before-schema-9-{}.apexbackup",uuid::Uuid::now_v7())))?;}
             connection.execute_batch(include_str!("schema9.sql")).map_err(storage)?;
+        }
+        if version < 10 {
+            if version > 0 {
+                workspace.backup(&workspace.root.join("backups").join(format!("before-schema-10-{}.apexbackup", uuid::Uuid::now_v7())))?;
+            }
+            connection.execute_batch(include_str!("schema10.sql")).map_err(storage)?;
+        }
+        if version < 11 {
+            if version > 0 {
+                workspace.backup(&workspace.root.join("backups").join(format!("before-schema-11-{}.apexbackup", uuid::Uuid::now_v7())))?;
+            }
+            connection.execute_batch(include_str!("schema11.sql")).map_err(storage)?;
         }
         *workspace
             .anchor

@@ -1,5 +1,26 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
+export interface StatisticsPost {
+  bundleId: number;
+  title: string;
+  views: number | null;
+  likes: number | null;
+  copies: number | null;
+  favourites: number | null;
+  ratingCount: number | null;
+  ratingAverage: number | null;
+}
+export interface StatisticsSnapshot { collectedAt: string; posts: StatisticsPost[] }
+export interface SalesData { sales: number; allTimeSales: number; netRobux: number; grossRobux: number; series: {date:string; sales:number; netRobux:number}[] }
+export interface SalesSnapshot { collectedAt: string; data: SalesData }
+export const statisticsProfile = () => invoke<string | null>("statistics_profile");
+export const setStatisticsProfile = (profileId: string) => invoke<void>("set_statistics_profile", { profileId });
+export const statisticsHistory = () => invoke<StatisticsSnapshot[]>("statistics_history");
+export const refreshStatistics = () => invoke<StatisticsSnapshot[]>("refresh_statistics");
+export const statisticsSales = () => invoke<SalesSnapshot | null>("statistics_sales");
+export const startStatisticsBrowser = () => invoke<void>("start_statistics_browser");
+export const statisticsBrowserStatus = () => invoke<{state:string;message:string}>("statistics_browser_status");
+
 export interface WorkspaceInfo {
   name: string;
   root: string;

@@ -18,6 +18,7 @@ const files = [
   "handoff.html",
   "handoff.css",
   "handoff.js",
+  "creator-statistics.js",
   "bundle.js",
   "icon32.png",
   "icon128.png",

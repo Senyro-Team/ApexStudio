@@ -45,6 +45,13 @@ vi.mock("./bridge", () => ({
   listAssets: vi.fn(),
   saveProject: vi.fn(),
   archiveProject: vi.fn(),
+  statisticsProfile: vi.fn().mockResolvedValue(null),
+  statisticsHistory: vi.fn().mockResolvedValue([]),
+  statisticsSales: vi.fn().mockResolvedValue(null),
+  statisticsBrowserStatus: vi.fn(),
+  startStatisticsBrowser: vi.fn(),
+  setStatisticsProfile: vi.fn(),
+  refreshStatistics: vi.fn(),
   importAssets: vi.fn(),
   saveAssetCopy: vi.fn(),
   errorMessage: (error: unknown) =>
