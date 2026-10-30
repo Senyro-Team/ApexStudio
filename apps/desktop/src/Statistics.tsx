@@ -133,7 +133,7 @@ export function StatisticsSettings({ stats }: { stats: Stats }) {
   const [id, setId] = useState(stats.profile ?? "");
   useEffect(() => setId(stats.profile ?? ""), [stats.profile]);
   return (
-    <section className="statistics-settings">
+    <section className="statistics-settings" id="settings-statistics">
       <h2>ERLCX statistics</h2>
       <label htmlFor="statistics-profile">Roblox user ID</label>
       <input

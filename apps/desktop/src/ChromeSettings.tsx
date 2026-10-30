@@ -71,7 +71,7 @@ export default function ChromeSettings({
     }
   }
   return (
-    <section className="roblox-settings">
+    <section className="roblox-settings" id="settings-chrome">
       <h2>ERLCX · Chrome</h2>
       {error && (
         <p role="alert" className="error">

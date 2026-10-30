@@ -52,7 +52,7 @@ export default function RobloxSettings({
     }
   }
   return (
-    <section className="roblox-settings">
+    <section className="roblox-settings" id="settings-roblox">
       <h2>Roblox</h2>
       <p className="field-hint">
         Personal-account decal uploads. Credentials are protected by Windows

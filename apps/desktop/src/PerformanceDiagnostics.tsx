@@ -23,7 +23,7 @@ export default function PerformanceDiagnostics() {
     return () => observer.disconnect();
   }, []);
   return (
-    <details className="performance-diagnostics">
+    <details className="performance-diagnostics" id="settings-performance">
       <summary>Interface performance</summary>
       <dl>
         <dt>Tasks over 50 ms</dt>

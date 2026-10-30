@@ -205,7 +205,7 @@ export function BackupTools({
     }
   }
   return (
-    <section className="backup-tools">
+    <section className="backup-tools" id="settings-backups">
       <h2>Backups</h2>
       <p>Backups include your database and managed files.</p>
       <button
