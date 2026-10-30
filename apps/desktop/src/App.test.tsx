@@ -308,6 +308,27 @@ describe("workspace shell", () => {
     expect(screen.getByText("No projects")).toBeTruthy();
     expect(screen.queryByText("NYPD Christmas 2019")).toBeNull();
   });
+  it("edits dashboard widgets on a grid only after confirmation and keeps the layout", async () => {
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    await user.click(screen.getByRole("button", { name: "Robux revenue" }));
+    await user.click(screen.getByRole("gridcell", { name: "Row 1, column 4: Empty" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(localStorage.getItem("apex-studio-dashboard-widgets")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    await user.click(screen.getByRole("button", { name: "Robux revenue" }));
+    await user.click(screen.getByRole("gridcell", { name: "Row 1, column 4: Empty" }));
+    await user.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    expect(screen.getByRole("heading", { name: "Robux revenue" })).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").robux).toBe(3);
+    view.unmount();
+    render(<App />);
+    await screen.findByText("My workspace");
+    expect(screen.getByRole("heading", { name: "Robux revenue" })).toBeTruthy();
+  });
   it("saves a workspace name and uses the confirmed response in the shell", async () => {
     vi.mocked(renameWorkspace).mockResolvedValue({
       ...info,

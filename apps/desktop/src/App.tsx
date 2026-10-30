@@ -1,7 +1,8 @@
 import PerformanceDiagnostics from "./PerformanceDiagnostics";
 import ChromeSettings from "./ChromeSettings";
 import RobloxSettings from "./RobloxSettings";
-import Statistics, { StatisticsOverview, StatisticsSettings, useStatistics } from "./Statistics";
+import Statistics, { StatisticsSettings, useStatistics } from "./Statistics";
+import { DashboardWidgets, DashboardWidgetEditor, loadDashboardLayout, saveDashboardLayout, type DashboardLayout } from "./DashboardWidgets";
 import { invoke } from "@tauri-apps/api/core";
 import {
   applyTheme,
@@ -61,8 +62,34 @@ const sections = [
 ] as const;
 type Section = (typeof sections)[number]["name"];
 
+const settingsCategories = [
+  ["appearance", "Appearance"],
+  ["dashboard", "Dashboard"],
+  ["performance", "Performance"],
+  ["roblox", "Roblox"],
+  ["chrome", "Chrome"],
+  ["statistics", "Statistics"],
+  ["backups", "Backups"],
+  ["workspace", "Workspace"],
+  ["storage", "Storage"],
+] as const;
+
+function highlightSettingsCategory(id: string) {
+  requestAnimationFrame(() => {
+    const heading = document
+      .getElementById(id)
+      ?.querySelector<HTMLElement>("h2, summary");
+    if (!heading) return;
+    heading.classList.remove("settings-category-highlight");
+    void heading.offsetWidth;
+    heading.classList.add("settings-category-highlight");
+  });
+}
+
 export default function App() {
   const [section, setSection] = useState<Section>("Dashboard");
+  const [dashboardLayout, setDashboardLayout] = useState<DashboardLayout>(loadDashboardLayout);
+  const [dashboardEditing, setDashboardEditing] = useState(false);
   const [customThemes, setCustomThemes] = useState<Theme[]>(loadCustomThemes);
   const [themeOverrides, setThemeOverrides] = useState(loadThemeOverrides);
   const [themeId, setThemeId] = useState(() => savedTheme(customThemes));
@@ -399,7 +426,7 @@ export default function App() {
             onNavigate={setSection}
             onEditingChange={setNavigationLocked}
           />
-          {section === "Dashboard" && <StatisticsOverview stats={stats} onOpen={() => setSection("Statistics")} />}
+          {section === "Dashboard" && <DashboardWidgets layout={dashboardLayout} stats={stats} onNavigate={setSection} />}
           {!["Dashboard", "Projects", "Assets", "ERLCX"].includes(section) && (
             <header className="page-heading">
               <h1>{section}</h1>
@@ -429,7 +456,18 @@ export default function App() {
           {section === "Statistics" && <Statistics stats={stats} onSettings={() => setSection("Settings")} />}
           {section === "Settings" && (
             <div className="settings-content">
-              <section className="theme-settings">
+              <nav className="settings-nav" aria-label="Settings categories">
+                {settingsCategories.map(([id, label]) => (
+                  <a
+                    key={id}
+                    href={`#settings-${id}`}
+                    onClick={() => highlightSettingsCategory(`settings-${id}`)}
+                  >
+                    {label}
+                  </a>
+                ))}
+              </nav>
+              <section className="theme-settings" id="settings-appearance">
                 <h2>Appearance</h2>
                 <p>Choose a theme for the app and its logo.</p>
                 <h3>Color themes</h3>
@@ -616,6 +654,25 @@ export default function App() {
                   </p>
                 )}
               </section>
+              <section id="settings-dashboard" className="dashboard-settings">
+                <h2>Dashboard</h2>
+                <p>Choose and arrange the widgets on your dashboard.</p>
+                {!dashboardEditing ? (
+                  <button className="secondary" onClick={() => setDashboardEditing(true)}>Edit dashboard</button>
+                ) : (
+                  <DashboardWidgetEditor
+                    layout={dashboardLayout}
+                    stats={stats}
+                    onConfirm={(layout) => {
+                      saveDashboardLayout(layout);
+                      setDashboardLayout(layout);
+                      setDashboardEditing(false);
+                      setSection("Dashboard");
+                    }}
+                    onCancel={() => setDashboardEditing(false)}
+                  />
+                )}
+              </section>
               <PerformanceDiagnostics />
               <RobloxSettings onBusy={setRobloxLock} />
               <ChromeSettings onBusy={setChromeLock} />
@@ -627,7 +684,7 @@ export default function App() {
                   void load();
                 }}
               />
-              <section>
+              <section id="settings-workspace">
                 <h2>Workspace</h2>
                 <form onSubmit={(event) => void save(event)}>
                   <label htmlFor="workspace-name">Workspace name</label>
@@ -654,7 +711,7 @@ export default function App() {
                   </span>
                 </form>
               </section>
-              <section className="storage-details">
+              <section className="storage-details" id="settings-storage">
                 <h2>Storage</h2>
                 <dl>
                   <dt>Workspace folder</dt>
