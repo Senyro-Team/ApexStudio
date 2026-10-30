@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "studio.apexdesigns.apexstudio",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run prepare:chrome-bridge && npm run dev",
     "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
