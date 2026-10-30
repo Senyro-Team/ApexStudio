@@ -21,6 +21,66 @@ export const statisticsSales = () => invoke<SalesSnapshot | null>("statistics_sa
 export const startStatisticsBrowser = () => invoke<void>("start_statistics_browser");
 export const statisticsBrowserStatus = () => invoke<{state:string;message:string}>("statistics_browser_status");
 
+export interface SyncServerInfo {
+  product: string;
+  apiVersion: string;
+  serverVersion: string;
+  serverInstanceId: string;
+  origin: string;
+}
+export interface SyncTeam {
+  id: string;
+  name: string;
+  role: "owner" | "admin" | "designer" | "read_only";
+}
+export interface SyncUser {
+  id: string;
+  email: string;
+  displayName: string;
+  teams: SyncTeam[];
+}
+export interface SyncConnectionStatus {
+  server: SyncServerInfo;
+  user: SyncUser | null;
+  sessionExpired: boolean;
+  savedSessionForDifferentServer: boolean;
+}
+export const syncCheckServer = (serverUrl: string) =>
+  invoke<SyncServerInfo>("sync_check_server", { serverUrl });
+export const syncConnectionStatus = (serverUrl: string) =>
+  invoke<SyncConnectionStatus>("sync_connection_status", { serverUrl });
+export const syncSignIn = (serverUrl: string, email: string, password: string) =>
+  invoke<SyncConnectionStatus>("sync_sign_in", { serverUrl, email, password });
+export const syncAcceptInvitation = (
+  serverUrl: string,
+  invitationToken: string,
+  email: string,
+  displayName: string,
+  password: string,
+) => invoke<SyncConnectionStatus>("sync_accept_invitation", {
+  serverUrl,
+  invitationToken,
+  email,
+  displayName,
+  password,
+});
+export const syncInitialSetup = (
+  serverUrl: string,
+  bootstrapToken: string,
+  teamName: string,
+  email: string,
+  displayName: string,
+  password: string,
+) => invoke<SyncConnectionStatus>("sync_initial_setup", {
+  serverUrl,
+  bootstrapToken,
+  teamName,
+  email,
+  displayName,
+  password,
+});
+export const syncDisconnect = () => invoke<void>("sync_disconnect");
+
 export interface WorkspaceInfo {
   name: string;
   root: string;

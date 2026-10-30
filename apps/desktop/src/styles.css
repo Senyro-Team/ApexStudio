@@ -2251,6 +2251,198 @@ button:disabled:hover {
   margin-top: 24px;
   flex-wrap: wrap;
 }
+.team-sync-settings {
+  max-width: 760px;
+}
+.team-sync-settings > p {
+  margin: 16px 0 24px;
+  line-height: 1.6;
+}
+.team-sync-server-form > label,
+.team-sync-access form > label,
+.team-sync-selected-team > label,
+.team-sync-details form > label {
+  display: block;
+  margin: 22px 0 9px;
+  font-weight: 600;
+}
+.team-sync-url-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.team-sync-url-row input {
+  flex: 1;
+  min-width: 0;
+  max-width: 520px;
+}
+.team-sync-url-row button,
+.team-sync-account-heading .text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.team-sync-server-form > .field-hint {
+  margin: 10px 0 20px;
+}
+.team-sync-message {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 18px 0;
+  line-height: 1.5;
+}
+.team-sync-error svg {
+  flex: none;
+  color: #f28b82;
+}
+.team-sync-success svg {
+  flex: none;
+  color: #66d49b;
+}
+.team-sync-server-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 24px 0 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--card-border);
+  border-bottom: 1px solid var(--card-border);
+}
+.team-sync-server-status > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.team-sync-server-status > div > span:last-child,
+.team-sync-server-status small {
+  color: var(--muted);
+}
+.team-sync-server-status small {
+  text-align: right;
+}
+.team-sync-status-dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+  background: #66d49b;
+}
+.team-sync-access,
+.team-sync-account {
+  margin-top: 26px;
+}
+.team-sync-access form,
+.team-sync-details form {
+  max-width: 520px;
+}
+.team-sync-access form h3 {
+  margin: 0 0 8px;
+}
+.team-sync-access form input,
+.team-sync-details form input,
+.team-sync-selected-team select {
+  width: min(100%, 440px);
+}
+.team-sync-access .button-row {
+  justify-content: flex-start;
+  margin-top: 20px;
+}
+.team-sync-account {
+  padding-top: 24px;
+  border-top: 1px solid var(--card-border);
+}
+.team-sync-account-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.team-sync-account-heading h3,
+.team-sync-account-heading p {
+  margin: 0;
+}
+.team-sync-account-heading p {
+  margin-top: 5px;
+  color: var(--muted);
+}
+.team-sync-account-heading .text-button {
+  white-space: nowrap;
+}
+.team-sync-selected-team {
+  margin-top: 22px;
+}
+.team-sync-team-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: min(100%, 440px);
+  padding: 12px 14px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+.team-sync-team-value span {
+  color: var(--muted);
+  text-transform: capitalize;
+}
+.team-sync-details {
+  max-width: 580px;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--card-border);
+}
+.team-sync-details summary {
+  width: fit-content;
+  cursor: pointer;
+  font-weight: 600;
+}
+.team-sync-details summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+.team-sync-details form {
+  padding-top: 14px;
+}
+.team-sync-details form > p {
+  max-width: 65ch;
+  margin: 10px 0 20px;
+  line-height: 1.55;
+}
+.team-sync-details form > button {
+  margin-top: 22px;
+}
+.team-sync-spinning {
+  animation: team-sync-spin 900ms linear infinite;
+}
+@keyframes team-sync-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .team-sync-spinning { animation-duration: 2.4s; }
+}
+@media (max-width: 620px) {
+  .team-sync-url-row,
+  .team-sync-server-status,
+  .team-sync-account-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .team-sync-url-row input {
+    max-width: none;
+  }
+  .team-sync-url-row button,
+  .team-sync-account-heading .text-button {
+    width: fit-content;
+  }
+  .team-sync-server-status small {
+    text-align: left;
+  }
+}
 .roblox-dialog {
   width: min(800px, calc(100vw - 48px));
   max-height: 85vh;

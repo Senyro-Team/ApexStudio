@@ -11,6 +11,7 @@ mod projects;
 mod publishing;
 mod roblox;
 mod statistics;
+mod team_sync;
 mod upload_queue;
 
 #[derive(serde::Serialize)]
@@ -121,6 +122,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .manage(roblox::RobloxState::default())
+        .manage(team_sync::TeamSyncState::default())
         .manage(notes::PendingArchives::default())
         .manage(assets::LiveryDrafts::default())
         .setup(|app| {
@@ -192,6 +194,12 @@ pub fn run() {
             statistics::statistics_sales,
             browser_bridge::start_statistics_browser,
             browser_bridge::statistics_browser_status,
+            team_sync::sync_check_server,
+            team_sync::sync_connection_status,
+            team_sync::sync_sign_in,
+            team_sync::sync_accept_invitation,
+            team_sync::sync_initial_setup,
+            team_sync::sync_disconnect,
             set_app_theme_icon,
             projects::list_projects,
             projects::save_project,

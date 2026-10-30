@@ -32,7 +32,7 @@ Status: server API implementation in progress, 2026-10-30. The Rust service now 
 1. **Contract and server foundation:** implemented; see [server API contract](../TEAM-SYNC-API.md).
 2. **Team access:** initial implementation includes one-time bootstrap, Argon2id password hashes, bearer sessions, 72-hour invitations, membership and role checks. Account recovery and email delivery are not implemented.
 3. **Project sync:** initial API includes revisioned records, change cursors, tombstones, blob manifests, direct small-file upload, and resumable chunked uploads. Client conflict resolution and end-to-end audit/retention operations remain outstanding.
-4. **Desktop connection:** server URL and connection check in Settings, sign-in/join flow, sync status and explicit conflict resolution; local-only workspaces remain supported.
+4. **Desktop connection:** Settings now supports server checks, sign-in, invitation acceptance, first-team setup, session storage and team selection. The actual project sync worker, local/server project mapping and explicit conflict-resolution UI remain outstanding.
 5. **Operations:** tested consistent backups/restores, upgrades, retention, logs without secrets, and a documented manual update path.
 
 ## Identity decision
@@ -41,4 +41,4 @@ Version 1 uses server-managed accounts and one-time invitations. An OIDC provide
 
 ## Foundation implementation
 
-The Rust service exposes liveness, database readiness, public server information, one-time initial setup, login, and invitation acceptance. Authenticated endpoints provide session identity, logout, team membership, invitation creation, role changes, member removal, project records, change feeds, and content-addressed blob transfer. The server-info response includes a stable per-installation ID. Docker Compose supports Caddy and a separate Cloudflare Tunnel deployment. This is an API foundation for development and integration; do not rely on it for production team data until the desktop client, rate limiting, tested database/blob backups, restore validation, and upgrade operations are complete.
+The Rust service exposes liveness, database readiness, public server information, one-time initial setup, login, and invitation acceptance. Authenticated endpoints provide session identity, logout, team membership, invitation creation, role changes, member removal, project records, change feeds, and content-addressed blob transfer. The desktop Settings surface checks the server, signs in, accepts invitations or initializes the first team, and displays the account and team role. Session tokens are stored in Windows Credential Manager and bound to the server origin and instance ID. The project sync worker and conflict-resolution UI are not implemented yet. Do not rely on this for production team data until rate limiting, tested database/blob backups, restore validation, and upgrade operations are complete.

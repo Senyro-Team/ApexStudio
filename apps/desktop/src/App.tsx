@@ -1,6 +1,7 @@
 import PerformanceDiagnostics from "./PerformanceDiagnostics";
 import ChromeSettings from "./ChromeSettings";
 import RobloxSettings from "./RobloxSettings";
+import TeamSyncSettings from "./TeamSyncSettings";
 import Statistics, { StatisticsSettings, useStatistics } from "./Statistics";
 import { DashboardWidgets, DashboardWidgetEditor, loadDashboardLayout, saveDashboardLayout, type DashboardLayout } from "./DashboardWidgets";
 import { invoke } from "@tauri-apps/api/core";
@@ -69,6 +70,7 @@ const settingsCategories = [
   ["roblox", "Roblox"],
   ["chrome", "Chrome"],
   ["statistics", "Statistics"],
+  ["team-sync", "Team sync"],
   ["backups", "Backups"],
   ["workspace", "Workspace"],
   ["storage", "Storage"],
@@ -257,11 +259,12 @@ export default function App() {
   const [navigationLocked, setNavigationLocked] = useState(false);
   const [robloxLock, setRobloxLock] = useState(false),
     [chromeLock, setChromeLock] = useState(false),
-    [backupLock, setBackupLock] = useState(false);
+    [backupLock, setBackupLock] = useState(false),
+    [teamSyncLock, setTeamSyncLock] = useState(false);
   useEffect(() => {
     if (section === "Settings")
-      setNavigationLocked(robloxLock || chromeLock || backupLock);
-  }, [section, robloxLock, chromeLock, backupLock]);
+      setNavigationLocked(robloxLock || chromeLock || backupLock || teamSyncLock);
+  }, [section, robloxLock, chromeLock, backupLock, teamSyncLock]);
   useEffect(() => {
     if (desktopAvailable) void setEditLock(navigationLocked).catch(() => {});
   }, [navigationLocked]);
@@ -677,6 +680,7 @@ export default function App() {
               <RobloxSettings onBusy={setRobloxLock} />
               <ChromeSettings onBusy={setChromeLock} />
               <StatisticsSettings stats={stats} />
+              <TeamSyncSettings onBusy={setTeamSyncLock} />
               <BackupTools
                 onBusy={setBackupLock}
                 onRestore={() => {
