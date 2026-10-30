@@ -124,7 +124,8 @@ impl Workspace {
         self.note(id)
     }
     pub fn attach_note_image(&self, id: &str, path: &Path) -> Result<String, Error> {
-        let gate=self.content_gate(); let _content=gate.lock();
+        let gate = self.content_gate();
+        let _content = gate.lock();
         let note = self.note(id)?;
         if note.archived {
             return Err(Error::InvalidContent(

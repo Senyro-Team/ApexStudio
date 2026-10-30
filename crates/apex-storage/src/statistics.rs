@@ -170,7 +170,13 @@ mod tests {
             rating_average: None,
         };
         ws.save_statistics_snapshot("123", &[p]).unwrap();
-        let sales = SalesData { sales: 2, all_time_sales: 4, net_robux: 70, gross_robux: 100, series: vec![] };
+        let sales = SalesData {
+            sales: 2,
+            all_time_sales: 4,
+            net_robux: 70,
+            gross_robux: 100,
+            series: vec![],
+        };
         ws.save_statistics_sales("123", &sales).unwrap();
         let backup = dir.path().join("snapshot.apexbackup");
         ws.backup(&backup).unwrap();
@@ -184,7 +190,15 @@ mod tests {
             restored.statistics_snapshots("123").unwrap()[0].posts[0].likes,
             None
         );
-        assert_eq!(restored.statistics_sales("123").unwrap().unwrap().data.net_robux, 70);
+        assert_eq!(
+            restored
+                .statistics_sales("123")
+                .unwrap()
+                .unwrap()
+                .data
+                .net_robux,
+            70
+        );
         restored.set_statistics_profile("456").unwrap();
         assert!(matches!(
             restored.save_statistics_snapshot("123", &[]),
@@ -192,7 +206,10 @@ mod tests {
         ));
         assert!(restored.statistics_snapshots("456").unwrap().is_empty());
         assert!(restored.statistics_sales("456").unwrap().is_none());
-        assert!(matches!(restored.save_statistics_sales("123", &sales), Err(Error::Conflict)));
+        assert!(matches!(
+            restored.save_statistics_sales("123", &sales),
+            Err(Error::Conflict)
+        ));
     }
     #[test]
     fn profile_id_must_be_numeric_and_nonzero() {
@@ -206,10 +223,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::open(dir.path()).unwrap();
         ws.set_statistics_profile("123").unwrap();
-        ws.connection().unwrap().execute_batch("DROP TABLE statistics_sales; PRAGMA user_version=10;").unwrap();
+        ws.connection()
+            .unwrap()
+            .execute_batch("DROP TABLE statistics_sales; PRAGMA user_version=10;")
+            .unwrap();
         drop(ws);
         let reopened = Workspace::open(dir.path()).unwrap();
-        assert_eq!(reopened.statistics_profile().unwrap().as_deref(), Some("123"));
+        assert_eq!(
+            reopened.statistics_profile().unwrap().as_deref(),
+            Some("123")
+        );
         assert!(reopened.statistics_sales("123").unwrap().is_none());
     }
 }

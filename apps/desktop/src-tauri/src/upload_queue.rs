@@ -43,7 +43,9 @@ pub struct UploadSnapshot {
     pub next_allowed_at: i64,
 }
 impl UploadRuntime {
-    pub fn changed(&self){self.dirty.store(true,Ordering::Relaxed);}
+    pub fn changed(&self) {
+        self.dirty.store(true, Ordering::Relaxed);
+    }
     pub fn new() -> Result<Arc<Self>, Error> {
         Ok(Arc::new(Self {
             http: roblox::client()?,

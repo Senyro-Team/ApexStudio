@@ -344,7 +344,8 @@ impl Workspace {
         folder: Option<&str>,
         paths: &[PathBuf],
     ) -> Result<ImportReport, Error> {
-        let gate=self.content_gate(); let _content=gate.lock();
+        let gate = self.content_gate();
+        let _content = gate.lock();
         self.editable_project(project)?;
         if let Some(id) = folder {
             if self.folder(id)?.project_id != project {
@@ -401,7 +402,8 @@ impl Workspace {
         Ok(report)
     }
     pub fn set_cover(&self, id: &str, path: &Path) -> Result<(), Error> {
-        let gate=self.content_gate(); let _content=gate.lock();
+        let gate = self.content_gate();
+        let _content = gate.lock();
         let f = self.folder(id)?;
         self.editable_project(&f.project_id)?;
         validate_png(path)?;
@@ -494,7 +496,8 @@ impl Workspace {
         files: &[(crate::PreparedTexture, String, Option<String>)],
         cover: Option<usize>,
     ) -> Result<String, Error> {
-        let gate=self.content_gate(); let _content=gate.lock();
+        let gate = self.content_gate();
+        let _content = gate.lock();
         self.editable_project(project)?;
         validate_folder_name(name)?;
         self.validate_parent(project, parent)?;
@@ -964,15 +967,24 @@ mod tests {
         let ws = Workspace::open(dir.path().join("old")).unwrap();
         ws.rename("Old studio").unwrap();
         ws.connection().unwrap().execute_batch("DROP TABLE post_media;DROP TABLE posts;DROP INDEX assets_trash;ALTER TABLE assets DROP COLUMN trash_id;DROP TABLE content_leases;DROP TABLE upload_attempts;DROP TABLE upload_batch_items;DROP TABLE upload_passes;DROP TABLE upload_jobs;DROP TABLE upload_batches;DROP TABLE image_validation;DROP TABLE roblox_uploads;DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;DROP TABLE trash_entries;PRAGMA user_version=3;").unwrap();
-        ws.connection().unwrap().execute_batch("DROP TABLE statistics_snapshots; DROP TABLE statistics_sales;").unwrap();
+        ws.connection()
+            .unwrap()
+            .execute_batch("DROP TABLE statistics_snapshots; DROP TABLE statistics_sales;")
+            .unwrap();
         let path = dir.path().join("old.apexbackup");
         ws.backup(&path).unwrap();
         let restored = Workspace::open(dir.path().join("new")).unwrap();
         restored.restore_backup(&path).unwrap();
-        assert_eq!(restored.info().unwrap().schema_version, crate::SCHEMA_VERSION);
+        assert_eq!(
+            restored.info().unwrap().schema_version,
+            crate::SCHEMA_VERSION
+        );
         assert_eq!(restored.info().unwrap().name, "Old studio");
         let migrated = Workspace::open(dir.path().join("old")).unwrap();
-        assert_eq!(migrated.info().unwrap().schema_version, crate::SCHEMA_VERSION);
+        assert_eq!(
+            migrated.info().unwrap().schema_version,
+            crate::SCHEMA_VERSION
+        );
         assert!(std::fs::read_dir(migrated.root.join("backups"))
             .unwrap()
             .next()

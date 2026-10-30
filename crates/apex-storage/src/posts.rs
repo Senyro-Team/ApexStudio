@@ -279,7 +279,7 @@ mod tests {
             .unwrap()
             .textures
             .remove(0);
-        ws.claim_decal(&folder,"123",&texture.hash).unwrap();
+        ws.claim_decal(&folder, "123", &texture.hash).unwrap();
         ws.save_decal_upload(&super::super::DecalUpload {
             account_id: "123".into(),
             hash: texture.hash.clone(),

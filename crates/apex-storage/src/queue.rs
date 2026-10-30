@@ -108,7 +108,8 @@ impl Workspace {
         folders: &[String],
         force: bool,
     ) -> Result<String, Error> {
-        let gate=self.content_gate();let _guard=gate.lock();
+        let gate = self.content_gate();
+        let _guard = gate.lock();
         if folders.is_empty() || folders.len() > 500 || id.len() > 100 || id.is_empty() {
             return Err(Error::InvalidContent("Select 1–500 liveries.".into()));
         }

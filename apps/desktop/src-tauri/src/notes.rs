@@ -231,7 +231,8 @@ pub async fn apply_archive(
             .remove(&token)
             .ok_or(Error::NotFound)?;
         if restore {
-            app.state::<super::browser_bridge::BrowserBridge>().invalidate()?;
+            app.state::<super::browser_bridge::BrowserBridge>()
+                .invalidate()?;
             ws.restore_backup(&path).map(|p| {
                 format!(
                     "Workspace restored. Previous workspace backup: {}",

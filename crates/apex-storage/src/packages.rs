@@ -422,7 +422,8 @@ impl Workspace {
         include_notes: bool,
         destination: &Path,
     ) -> Result<(), Error> {
-        let gate=self.content_gate(); let _content=gate.lock();
+        let gate = self.content_gate();
+        let _content = gate.lock();
         let project = self.project(id)?;
         let assets = if embedded {
             self.assets(Some(id))?
@@ -503,7 +504,8 @@ impl Workspace {
         self.write_archive(&m, None, destination)
     }
     pub fn import_package(&self, path: &Path) -> Result<String, Error> {
-        let gate=self.content_gate(); let _content=gate.lock();
+        let gate = self.content_gate();
+        let _content = gate.lock();
         let c = checked(path)?;
         if c.manifest.kind != "project" {
             return Err(invalid("Use Restore backup for a workspace backup."));
@@ -612,7 +614,8 @@ impl Workspace {
         Ok(id)
     }
     pub fn backup(&self, destination: &Path) -> Result<(), Error> {
-        let gate=self.content_gate(); let _content=gate.lock();
+        let gate = self.content_gate();
+        let _content = gate.lock();
         let dir = tempfile::tempdir().map_err(storage)?;
         let path = dir.path().join("workspace.sqlite3");
         let source = self.connection()?;
@@ -655,7 +658,8 @@ impl Workspace {
         self.write_archive(&m, Some(&path), destination)
     }
     pub fn restore_backup(&self, path: &Path) -> Result<PathBuf, Error> {
-        let gate=self.content_gate(); let _content=gate.lock();
+        let gate = self.content_gate();
+        let _content = gate.lock();
         let c = checked(path)?;
         if c.manifest.kind != "workspace" {
             return Err(invalid("Choose a workspace backup."));

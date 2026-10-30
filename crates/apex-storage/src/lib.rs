@@ -23,11 +23,11 @@ mod pipeline;
 pub use pipeline::{png_dimensions, PreparationProgress, PreparedTexture};
 mod queue;
 pub use queue::*;
-mod trash;
 mod posts;
 mod statistics;
-pub use statistics::*;
+mod trash;
 pub use posts::*;
+pub use statistics::*;
 pub use trash::*;
 const SCHEMA_VERSION: u32 = 11;
 
@@ -153,27 +153,56 @@ impl Workspace {
                 .execute_batch(include_str!("schema7.sql"))
                 .map_err(storage)?;
         }
-        if version<8 {
-            if version>0 {workspace.backup(&workspace.root.join("backups").join(format!("before-schema-8-{}.apexbackup",uuid::Uuid::now_v7())))?;}
-            connection.execute_batch(include_str!("schema8.sql")).map_err(storage)?;
-            let issues:Option<String>=connection.query_row("PRAGMA foreign_key_check",[],|r|r.get(0)).optional().map_err(storage)?;
-            if issues.is_some(){return Err(storage("Migration foreign-key check failed."));}
+        if version < 8 {
+            if version > 0 {
+                workspace.backup(&workspace.root.join("backups").join(format!(
+                    "before-schema-8-{}.apexbackup",
+                    uuid::Uuid::now_v7()
+                )))?;
+            }
+            connection
+                .execute_batch(include_str!("schema8.sql"))
+                .map_err(storage)?;
+            let issues: Option<String> = connection
+                .query_row("PRAGMA foreign_key_check", [], |r| r.get(0))
+                .optional()
+                .map_err(storage)?;
+            if issues.is_some() {
+                return Err(storage("Migration foreign-key check failed."));
+            }
         }
         if version < 9 {
-            if version > 0 {workspace.backup(&workspace.root.join("backups").join(format!("before-schema-9-{}.apexbackup",uuid::Uuid::now_v7())))?;}
-            connection.execute_batch(include_str!("schema9.sql")).map_err(storage)?;
+            if version > 0 {
+                workspace.backup(&workspace.root.join("backups").join(format!(
+                    "before-schema-9-{}.apexbackup",
+                    uuid::Uuid::now_v7()
+                )))?;
+            }
+            connection
+                .execute_batch(include_str!("schema9.sql"))
+                .map_err(storage)?;
         }
         if version < 10 {
             if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!("before-schema-10-{}.apexbackup", uuid::Uuid::now_v7())))?;
+                workspace.backup(&workspace.root.join("backups").join(format!(
+                    "before-schema-10-{}.apexbackup",
+                    uuid::Uuid::now_v7()
+                )))?;
             }
-            connection.execute_batch(include_str!("schema10.sql")).map_err(storage)?;
+            connection
+                .execute_batch(include_str!("schema10.sql"))
+                .map_err(storage)?;
         }
         if version < 11 {
             if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!("before-schema-11-{}.apexbackup", uuid::Uuid::now_v7())))?;
+                workspace.backup(&workspace.root.join("backups").join(format!(
+                    "before-schema-11-{}.apexbackup",
+                    uuid::Uuid::now_v7()
+                )))?;
             }
-            connection.execute_batch(include_str!("schema11.sql")).map_err(storage)?;
+            connection
+                .execute_batch(include_str!("schema11.sql"))
+                .map_err(storage)?;
         }
         *workspace
             .anchor
@@ -208,7 +237,8 @@ impl Workspace {
     /// Stream a regular file into managed storage. Originals stay untouched.
     /// Duplicate bytes share a single blob. No browser-supplied paths reach this API yet.
     pub fn import_file(&self, source: &Path) -> Result<String, Error> {
-        let gate=self.content_gate(); let _content=gate.lock();
+        let gate = self.content_gate();
+        let _content = gate.lock();
         let metadata = fs::symlink_metadata(source).map_err(storage)?;
         if !metadata.file_type().is_file() {
             return Err(storage("Select a regular file."));
