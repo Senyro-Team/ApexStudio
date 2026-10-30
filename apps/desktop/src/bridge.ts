@@ -45,6 +45,12 @@ export interface SyncConnectionStatus {
   sessionExpired: boolean;
   savedSessionForDifferentServer: boolean;
 }
+export type SyncInvitationRole = "admin" | "designer" | "read_only";
+export interface SyncInvitation {
+  invitationToken: string;
+  role: SyncInvitationRole;
+  expiresInSeconds: number;
+}
 export const syncCheckServer = (serverUrl: string) =>
   invoke<SyncServerInfo>("sync_check_server", { serverUrl });
 export const syncConnectionStatus = (serverUrl: string) =>
@@ -64,6 +70,11 @@ export const syncAcceptInvitation = (
   displayName,
   password,
 });
+export const syncCreateInvitation = (
+  serverUrl: string,
+  teamId: string,
+  role: SyncInvitationRole,
+) => invoke<SyncInvitation>("sync_create_invitation", { serverUrl, teamId, role });
 export const syncInitialSetup = (
   serverUrl: string,
   bootstrapToken: string,

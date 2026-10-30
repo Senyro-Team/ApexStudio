@@ -198,6 +198,7 @@ pub fn run() {
             team_sync::sync_connection_status,
             team_sync::sync_sign_in,
             team_sync::sync_accept_invitation,
+            team_sync::sync_create_invitation,
             team_sync::sync_initial_setup,
             team_sync::sync_disconnect,
             set_app_theme_icon,

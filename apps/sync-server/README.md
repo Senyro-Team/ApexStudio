@@ -1,6 +1,6 @@
 # Apex Sync Server
 
-This Docker deployment runs the Apex Sync Server API for team access and project synchronization. The initial API supports first-owner setup, password sign-in, one-time invitations, team roles, revisioned project records, tombstones, and content-addressed file transfer. The desktop sign-in/sync client and production backup/restore process are not yet implemented. Review the [API contract](../../docs/planning/TEAM-SYNC-API.md) before integrating a client.
+This Docker deployment runs the Apex Sync Server API for team access and project synchronization. The API supports first-owner setup, password sign-in, one-time invitation codes, team roles, revisioned project records, tombstones, and content-addressed file transfer. Apex Studio Settings can check the server, sign in, create and accept invitation codes, and show team membership. Project sync execution and production backup/restore remain future work. Review the [API contract](../../docs/planning/TEAM-SYNC-API.md) before integrating a client.
 
 ## Requirements
 

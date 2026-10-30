@@ -32,7 +32,7 @@ Status: server API implementation in progress, 2026-10-30. The Rust service now 
 1. **Contract and server foundation:** implemented; see [server API contract](../TEAM-SYNC-API.md).
 2. **Team access:** initial implementation includes one-time bootstrap, Argon2id password hashes, bearer sessions, 72-hour invitations, membership and role checks. Account recovery and email delivery are not implemented.
 3. **Project sync:** initial API includes revisioned records, change cursors, tombstones, blob manifests, direct small-file upload, and resumable chunked uploads. Client conflict resolution and end-to-end audit/retention operations remain outstanding.
-4. **Desktop connection:** Settings now supports server checks, sign-in, invitation acceptance, first-team setup, session storage and team selection. The actual project sync worker, local/server project mapping and explicit conflict-resolution UI remain outstanding.
+4. **Desktop connection:** Settings supports server checks, sign-in, invitation code creation and acceptance, first-team setup, session storage and team selection. The actual project sync worker, local/server project mapping and explicit conflict-resolution UI remain outstanding.
 5. **Operations:** tested consistent backups/restores, upgrades, retention, logs without secrets, and a documented manual update path.
 
 ## Identity decision

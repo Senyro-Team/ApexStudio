@@ -11,9 +11,9 @@ Status: implemented server-side contract, 2026-10-30. API base path: `/api/v1`. 
 | `GET /api/v1/server-info` | Product, API/server versions, stable server-instance ID. |
 | `POST /api/v1/setup` | Create the first team Owner, team and session. Requires the configured one-time bootstrap token. Available only until setup succeeds. |
 | `POST /api/v1/sessions` | Sign in with email and password. |
-| `POST /api/v1/invitations/accept` | Consume a one-time invite, create the account and return a session. |
+| `POST /api/v1/invitations/accept` | Consume a one-time invitation code, create the account and return a session. |
 
-The setup request contains `bootstrapToken`, `teamName`, `email`, `displayName`, and `password`. Invitation acceptance contains `invitationToken`, `email`, `displayName`, and `password`. Passwords must be 12–128 characters. Emails are trimmed and lowercased. The server stores Argon2 password hashes and hashes bearer-session and invitation tokens before persistence. Session lifetime is 30 days. Invitation lifetime is 72 hours; the raw invite token is returned once at creation.
+The setup request contains `bootstrapToken`, `teamName`, `email`, `displayName`, and `password`. Invitation acceptance contains `invitationToken`, `email`, `displayName`, and `password`. Passwords must be 12–128 characters. Emails are trimmed and lowercased. The server stores Argon2 password hashes and hashes bearer-session and invitation tokens before persistence. Session lifetime is 30 days. An invitation code is a 256-bit random bearer secret, valid for 72 hours and usable once. The raw code is returned only once when created; it must be shared privately. It grants access to the selected team and role but does not verify ownership of the email address entered during registration. No email is sent.
 
 ## Authenticated team endpoints
 
@@ -24,11 +24,11 @@ Send `Authorization: Bearer <accessToken>` on every route below.
 | `GET /api/v1/session` | Current user and their teams/roles. |
 | `DELETE /api/v1/sessions/current` | Revoke the current session. |
 | `GET /api/v1/teams/{teamId}/members` | List active members. |
-| `POST /api/v1/teams/{teamId}/invitations` | Create an invite with role `admin`, `designer`, or `read_only`. |
+| `POST /api/v1/teams/{teamId}/invitations` | Create a one-time invitation code with role `admin`, `designer`, or `read_only`. |
 | `PATCH /api/v1/teams/{teamId}/members/{userId}` | Change a member role. |
 | `DELETE /api/v1/teams/{teamId}/members/{userId}` | Remove a member from this team. |
 
-Roles are `owner`, `admin`, `designer`, and `read_only`. Designers can change project data; read-only members cannot. Owners and admins can manage members; only Owners can grant or revoke Admin. Ownership transfer, invite revocation/listing, email delivery, password reset, and account recovery are not implemented. Invitations are bearer links and are not bound to an email address; share them only with the intended person.
+Roles are `owner`, `admin`, `designer`, and `read_only`. Designers can change project data; read-only members cannot. Owners and admins can manage members; only Owners can grant or revoke Admin. Ownership transfer, invite revocation/listing, email delivery, password reset, and account recovery are not implemented. Invitation codes are not bound to an email address; share them only with the intended person.
 
 ## Project records and conflict handling
 
@@ -62,6 +62,6 @@ Chunked uploads support blobs up to 512 MiB and expire after 24 hours. The compl
 
 Use HTTPS at the public origin. Cloudflare Tunnel only transports requests; it does not replace server authentication. Keep the bootstrap token at least 32 characters, use it once to create the initial Owner, then remove it from the deployment environment and restart the API. Keep database and blob volumes together and back them up consistently.
 
-The desktop Settings surface checks a server, signs in, accepts invitations, performs one-time first-team setup, and displays account/team membership. Session tokens are stored in Windows Credential Manager and bound to both the normalized server origin and its stable instance ID. The active team selection is a local device preference. Project sync execution, local/server project mapping, and conflict-resolution UI are not implemented yet.
+The desktop Settings surface checks a server, signs in, creates and accepts invitation codes, performs one-time first-team setup, and displays account/team membership. Session tokens are stored in Windows Credential Manager and bound to both the normalized server origin and its stable instance ID. The active team selection is a local device preference. Project sync execution, local/server project mapping, and conflict-resolution UI are not implemented yet.
 
 Production safeguards still needed include tested PostgreSQL/blob backup and restore, operational rate limiting, audit/retention policy, account recovery, and integration testing against a freshly deployed server. The API contract may evolve before a stable public release; check `server-info` and API version before synchronizing.

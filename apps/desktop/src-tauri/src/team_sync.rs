@@ -55,6 +55,14 @@ pub struct SyncConnectionStatus {
     pub saved_session_for_different_server: bool,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncInvitation {
+    pub invitation_token: String,
+    pub role: String,
+    pub expires_in_seconds: u64,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SessionResponse {
@@ -363,6 +371,53 @@ pub async fn sync_accept_invitation(
         "password": password.as_str(),
     });
     authenticate(base, server, "api/v1/invitations/accept", payload).await
+}
+
+#[tauri::command]
+pub async fn sync_create_invitation(
+    server_url: String,
+    team_id: String,
+    role: String,
+    state: State<'_, TeamSyncState>,
+) -> Result<SyncInvitation, String> {
+    let _guard = state.0.lock().await;
+    let team_id = uuid::Uuid::parse_str(&team_id)
+        .map_err(|_| error("Select a valid team before creating an invitation."))?;
+    if !matches!(role.as_str(), "admin" | "designer" | "read_only") {
+        return Err(error("Choose a valid invitation role."));
+    }
+
+    let base = origin(&server_url)?;
+    let server = server_info(&base).await?;
+    let Some(saved) = load_session()? else {
+        return Err(error(
+            "Sign in to the team server before inviting a member.",
+        ));
+    };
+    if saved.server_origin != server.origin || saved.server_instance_id != server.server_instance_id
+    {
+        return Err(error(
+            "Sign in to this team server before inviting a member.",
+        ));
+    }
+
+    let response = client()?
+        .post(api_url(
+            &base,
+            &format!("api/v1/teams/{team_id}/invitations"),
+        )?)
+        .headers(auth_headers(&saved.access_token)?)
+        .json(&json!({ "role": role }))
+        .send()
+        .await
+        .map_err(|_| error("Could not reach the team server. Check your connection."))?;
+    let invitation: SyncInvitation = response_json(response).await?;
+    if invitation.expires_in_seconds == 0 || invitation.invitation_token.is_empty() {
+        return Err(error(
+            "The team server returned an invalid invitation code.",
+        ));
+    }
+    Ok(invitation)
 }
 
 #[tauri::command]

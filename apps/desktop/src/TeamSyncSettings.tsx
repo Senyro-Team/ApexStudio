@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Check, CircleAlert, LogOut, RefreshCw, Server } from "lucide-react";
+import { Check, CircleAlert, Copy, LogOut, RefreshCw, Server } from "lucide-react";
 import {
   desktopAvailable,
   syncAcceptInvitation,
   syncCheckServer,
   syncConnectionStatus,
+  syncCreateInvitation,
   syncDisconnect,
   syncInitialSetup,
   syncSignIn,
   type SyncConnectionStatus,
+  type SyncInvitation,
+  type SyncInvitationRole,
 } from "./bridge";
 
 const SERVER_URL_KEY = "apex-studio.team-sync.server-url";
@@ -48,6 +51,8 @@ export default function TeamSyncSettings({
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [invitePassword, setInvitePassword] = useState("");
+  const [inviteRole, setInviteRole] = useState<SyncInvitationRole>("designer");
+  const [createdInvitation, setCreatedInvitation] = useState<SyncInvitation | null>(null);
   const [setupToken, setSetupToken] = useState("");
   const [teamName, setTeamName] = useState("");
   const [ownerName, setOwnerName] = useState("");
@@ -122,6 +127,10 @@ export default function TeamSyncSettings({
     const current = teams.some((team) => team.id === activeTeam)
       ? activeTeam
       : (teams[0]?.id ?? "");
+    if (current !== activeTeam) {
+      setCreatedInvitation(null);
+      setInviteRole("designer");
+    }
     setActiveTeam(current);
     try {
       if (current) window.localStorage.setItem(ACTIVE_TEAM_KEY, current);
@@ -133,6 +142,8 @@ export default function TeamSyncSettings({
 
   function changeActiveTeam(id: string) {
     setActiveTeam(id);
+    setCreatedInvitation(null);
+    setInviteRole("designer");
     try {
       window.localStorage.setItem(ACTIVE_TEAM_KEY, id);
     } catch {
@@ -151,6 +162,35 @@ export default function TeamSyncSettings({
 
   const connectedUser = connection?.user;
   const selectedTeam = connectedUser?.teams.find((team) => team.id === activeTeam);
+  const canInvite = selectedTeam?.role === "owner" || selectedTeam?.role === "admin";
+
+  async function createInvitation(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedTeam) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    setCreatedInvitation(null);
+    try {
+      const invitation = await syncCreateInvitation(serverUrl, selectedTeam.id, inviteRole);
+      setCreatedInvitation(invitation);
+      setNotice("Invitation code created.");
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copyInvitationCode() {
+    if (!createdInvitation) return;
+    try {
+      await navigator.clipboard.writeText(createdInvitation.invitationToken);
+      setNotice("Invitation code copied.");
+    } catch {
+      setError("Could not copy the code. Select and copy it manually.");
+    }
+  }
 
   return (
     <section className="team-sync-settings" id="settings-team-sync">
@@ -242,6 +282,7 @@ export default function TeamSyncSettings({
                   await syncDisconnect();
                   setConnection(null);
                   setActiveTeam("");
+                  setCreatedInvitation(null);
                   try {
                     window.localStorage.removeItem(ACTIVE_TEAM_KEY);
                   } catch {
@@ -285,6 +326,45 @@ export default function TeamSyncSettings({
             <p className="team-sync-message">
               This account is not a member of a team on this server.
             </p>
+          )}
+          {selectedTeam && canInvite && (
+            <section className="team-sync-invitations" aria-labelledby="team-sync-invite-title">
+              <h3 id="team-sync-invite-title">Invite a member</h3>
+              <p className="field-hint">
+                Create a single-use code to share privately. It expires after 72 hours; no email is sent.
+              </p>
+              <form onSubmit={(event) => void createInvitation(event)}>
+                <label htmlFor="team-sync-invite-role">Team role</label>
+                <select
+                  id="team-sync-invite-role"
+                  value={inviteRole}
+                  onChange={(event) => {
+                    setInviteRole(event.target.value as SyncInvitationRole);
+                    setCreatedInvitation(null);
+                  }}
+                  disabled={busy}
+                >
+                  {selectedTeam.role === "owner" && <option value="admin">Admin</option>}
+                  <option value="designer">Designer</option>
+                  <option value="read_only">Read-only</option>
+                </select>
+                <button className="secondary" disabled={busy}>
+                  {busy ? "Creating code…" : "Create invitation code"}
+                </button>
+              </form>
+              {createdInvitation && (
+                <div className="team-sync-invitation-code" role="status">
+                  <code>{createdInvitation.invitationToken}</code>
+                  <button className="secondary" type="button" onClick={() => void copyInvitationCode()}>
+                    <Copy size={16} />
+                    Copy code
+                  </button>
+                  <p className="field-hint">
+                    Share it only with the intended person. It grants {createdInvitation.role.replace("_", " ")} access and can be used once.
+                  </p>
+                </div>
+              )}
+            </section>
           )}
         </div>
       ) : connection ? (
@@ -349,7 +429,7 @@ export default function TeamSyncSettings({
                 ));
               }}
             >
-              <label htmlFor="team-sync-invite-token">Invitation link or token</label>
+              <label htmlFor="team-sync-invite-token">Invitation code</label>
               <input
                 id="team-sync-invite-token"
                 value={invitationToken}
