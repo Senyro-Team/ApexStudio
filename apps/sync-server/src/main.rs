@@ -1,19 +1,29 @@
 #![forbid(unsafe_code)]
 
-use std::{env, error::Error, net::SocketAddr};
+mod auth;
+mod sync;
 
-use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
+use std::{env, error::Error, net::SocketAddr, path::PathBuf, sync::Arc};
+
+use axum::{
+    extract::DefaultBodyLimit, extract::State, http::StatusCode, routing::get, Json, Router,
+};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use tokio::net::TcpListener;
+use tokio::sync::Semaphore;
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 const API_VERSION: &str = "v1";
 
 #[derive(Clone)]
-struct AppState {
-    database: PgPool,
+pub struct AppState {
+    pub database: PgPool,
+    pub bootstrap_token_hash: Option<[u8; 32]>,
+    pub password_hash_slots: Arc<Semaphore>,
+    pub storage_dir: PathBuf,
 }
 
 #[derive(Serialize)]
@@ -49,12 +59,39 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let migrations = sqlx::migrate::Migrator::new(std::path::Path::new("migrations")).await?;
     migrations.run(&database).await?;
     ensure_server_instance(&database).await?;
+    let storage_dir = PathBuf::from(env_value("APEX_SYNC_DATA_DIR", "/data")?);
+    tokio::fs::create_dir_all(storage_dir.join("blobs")).await?;
+    tokio::fs::create_dir_all(storage_dir.join("staging")).await?;
+    cleanup_expired_blob_uploads(&database, &storage_dir).await?;
 
-    let state = AppState { database };
+    let bootstrap_token_hash = match env::var("APEX_SYNC_BOOTSTRAP_TOKEN") {
+        Ok(token) if token.is_empty() => None,
+        Ok(token) if token.len() >= 32 => Some(Sha256::digest(token.as_bytes()).into()),
+        Ok(_) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "APEX_SYNC_BOOTSTRAP_TOKEN must contain at least 32 characters",
+            )
+            .into())
+        }
+        Err(std::env::VarError::NotPresent) => None,
+        Err(error) => return Err(error.into()),
+    };
+
+    let state = AppState {
+        database,
+        bootstrap_token_hash,
+        password_hash_slots: Arc::new(Semaphore::new(4)),
+        storage_dir,
+    };
     let app = Router::new()
+        .layer(DefaultBodyLimit::max(2 * 1024 * 1024 + 128 * 1024))
         .route("/health/live", get(liveness))
         .route("/health/ready", get(readiness))
         .route("/api/v1/server-info", get(server_info))
+        .merge(auth::public_routes())
+        .merge(auth::private_routes(state.clone()))
+        .merge(auth::protect(sync::private_routes(), state.clone()))
         .with_state(state);
 
     let listener = TcpListener::bind(bind_address).await?;
@@ -88,6 +125,25 @@ async fn ensure_server_instance(database: &PgPool) -> Result<(), sqlx::Error> {
     .bind(candidate_id)
     .execute(database)
     .await?;
+    Ok(())
+}
+
+async fn cleanup_expired_blob_uploads(
+    database: &PgPool,
+    storage_dir: &std::path::Path,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let expired = sqlx::query_scalar::<_, Uuid>(
+        "DELETE FROM blob_uploads WHERE expires_at<=now() RETURNING id",
+    )
+    .fetch_all(database)
+    .await?;
+    for upload_id in expired {
+        let path = storage_dir
+            .join("staging")
+            .join("uploads")
+            .join(upload_id.to_string());
+        let _ = tokio::fs::remove_dir_all(path).await;
+    }
     Ok(())
 }
 

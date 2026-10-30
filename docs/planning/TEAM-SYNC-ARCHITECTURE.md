@@ -1,6 +1,6 @@
 # Apex Studio team sync — architecture proposal
 
-Status: planning, 2026-10-30. No server or sync code is implemented by this document.
+Status: server API implementation in progress, 2026-10-30. The Rust service now includes account setup and sign-in, invitations, role management, revisioned project records, tombstones, and content-addressed file transfer. The desktop sign-in and sync client, production operations, and backup/restore workflow remain future work.
 
 ## Product shape
 
@@ -29,9 +29,9 @@ Status: planning, 2026-10-30. No server or sync code is implemented by this docu
 
 ## Delivery slices
 
-1. **Contract and server foundation:** versioned API contract, Rust HTTP service, PostgreSQL migrations, Docker Compose, configuration validation, health/readiness and version endpoints.
-2. **Team access:** administrator bootstrap, one-time invitations, sessions, membership and role checks. Password storage and recovery policy must be decided before implementation.
-3. **Project sync:** project and note revisions, manifest exchange, tombstones, conflict responses, resumable content-addressed blob transfer, audit trail.
+1. **Contract and server foundation:** implemented; see [server API contract](../TEAM-SYNC-API.md).
+2. **Team access:** initial implementation includes one-time bootstrap, Argon2id password hashes, bearer sessions, 72-hour invitations, membership and role checks. Account recovery and email delivery are not implemented.
+3. **Project sync:** initial API includes revisioned records, change cursors, tombstones, blob manifests, direct small-file upload, and resumable chunked uploads. Client conflict resolution and end-to-end audit/retention operations remain outstanding.
 4. **Desktop connection:** server URL and connection check in Settings, sign-in/join flow, sync status and explicit conflict resolution; local-only workspaces remain supported.
 5. **Operations:** tested consistent backups/restores, upgrades, retention, logs without secrets, and a documented manual update path.
 
@@ -41,4 +41,4 @@ Version 1 uses server-managed accounts and one-time invitations. An OIDC provide
 
 ## Foundation implementation
 
-The initial Rust service exposes liveness, database readiness, and API/server version endpoints. The server-info response includes a stable per-installation ID so the desktop can later identify the configured server. Docker Compose provides PostgreSQL and Caddy HTTPS termination. This is infrastructure groundwork only: authentication, team management, and synchronization endpoints are not implemented, so do not connect a team workspace or expose it as a production sync service yet.
+The Rust service exposes liveness, database readiness, public server information, one-time initial setup, login, and invitation acceptance. Authenticated endpoints provide session identity, logout, team membership, invitation creation, role changes, member removal, project records, change feeds, and content-addressed blob transfer. The server-info response includes a stable per-installation ID. Docker Compose supports Caddy and a separate Cloudflare Tunnel deployment. This is an API foundation for development and integration; do not rely on it for production team data until the desktop client, rate limiting, tested database/blob backups, restore validation, and upgrade operations are complete.

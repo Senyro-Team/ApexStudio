@@ -8,3 +8,7 @@ apps/desktop/src-tauri/gen/
 .DS_Store
 Thumbs.db
 .impeccable/build
+apps/sync-server/.env
+apps/sync-server/.env.*
+!apps/sync-server/.env.example
+!apps/sync-server/.env.*.example

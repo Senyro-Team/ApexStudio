@@ -1,8 +1,11 @@
 # Apex Sync Server
 
-This Docker deployment is the infrastructure foundation for team sync. It currently serves health and version information only. It has no sign-in, invitations, project access controls, or synchronization API, so it is not ready for real team data.
+This Docker deployment runs the Apex Sync Server API for team access and project synchronization. The initial API supports first-owner setup, password sign-in, one-time invitations, team roles, revisioned project records, tombstones, and content-addressed file transfer. The desktop sign-in/sync client and production backup/restore process are not yet implemented. Review the [API contract](../../docs/planning/TEAM-SYNC-API.md) before integrating a client.
 
 ## Requirements
+
+For a temporary Windows PC deployment without incoming ports, use the
+[Cloudflare Tunnel setup](TUNNEL.md) instead of the Caddy deployment below.
 
 - A Linux server with Docker Engine and Docker Compose.
 - A domain or subdomain whose DNS `A`/`AAAA` record points to this server.
@@ -33,4 +36,4 @@ The server binds only inside the Compose network; Caddy is the only service publ
 - `database-data`: PostgreSQL server data.
 - `proxy-data` and `proxy-config`: Caddy certificates and runtime state.
 
-The first version has no user project blobs. A consistent backup/restore procedure for PostgreSQL and the future blob store must be implemented before storing team work here.
+The `blob-data` volume stores project files. Back up PostgreSQL and this volume at the same consistent point. A tested backup/restore tool is not yet included; use only test data until that workflow is available.
