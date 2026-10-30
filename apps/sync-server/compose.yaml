@@ -1,0 +1,51 @@
+services:
+  database:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: apex_sync
+      POSTGRES_USER: apex_sync
+      POSTGRES_PASSWORD: ${APEX_SYNC_DB_PASSWORD:?Set APEX_SYNC_DB_PASSWORD in .env}
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apex_sync -d apex_sync"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      APEX_SYNC_BIND: 0.0.0.0:8080
+      APEX_SYNC_DATABASE_URL: postgres://apex_sync:${APEX_SYNC_DB_PASSWORD}@database:5432/apex_sync
+      RUST_LOG: info
+    depends_on:
+      database:
+        condition: service_healthy
+    expose:
+      - "8080"
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      APEX_SERVER_DOMAIN: ${APEX_SERVER_DOMAIN:?Set APEX_SERVER_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - proxy-data:/data
+      - proxy-config:/config
+    depends_on:
+      - api
+
+volumes:
+  database-data:
+  proxy-data:
+  proxy-config:
