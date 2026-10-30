@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "resources": {
+      "../../../target/release/apex-chrome-bridge.exe": "apex-chrome-bridge.exe"
+    }
+  }
+}

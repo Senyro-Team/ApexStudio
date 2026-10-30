@@ -92,6 +92,9 @@ export default function App() {
   const [section, setSection] = useState<Section>("Dashboard");
   const [dashboardLayout, setDashboardLayout] = useState<DashboardLayout>(loadDashboardLayout);
   const [dashboardEditing, setDashboardEditing] = useState(false);
+  useEffect(() => {
+    if (section === "Dashboard" && dashboardEditing) document.documentElement.scrollTop = 0;
+  }, [section, dashboardEditing]);
   const [customThemes, setCustomThemes] = useState<Theme[]>(loadCustomThemes);
   const [themeOverrides, setThemeOverrides] = useState(loadThemeOverrides);
   const [themeId, setThemeId] = useState(() => savedTheme(customThemes));
@@ -422,14 +425,40 @@ export default function App() {
               )}
             </div>
           )}
-          <ProjectsArea
-            key={workspaceGeneration}
-            onOpenRoblox={openRoblox}
-            section={section}
-            onNavigate={setSection}
-            onEditingChange={setNavigationLocked}
-          />
-          {section === "Dashboard" && <DashboardWidgets layout={dashboardLayout} stats={stats} onNavigate={setSection} />}
+          {!(section === "Dashboard" && dashboardEditing) && (
+            <ProjectsArea
+              key={workspaceGeneration}
+              onOpenRoblox={openRoblox}
+              section={section}
+              onNavigate={setSection}
+              onEditingChange={setNavigationLocked}
+            />
+          )}
+          {section === "Dashboard" && (dashboardEditing ? (
+            <section className="dashboard-live-editor">
+              <header className="page-heading">
+                <h1>Edit dashboard</h1>
+                <p>Move, add, or remove widgets and see the result right here.</p>
+              </header>
+              <DashboardWidgetEditor
+                layout={dashboardLayout}
+                stats={stats}
+                onConfirm={(layout) => {
+                  saveDashboardLayout(layout);
+                  setDashboardLayout(layout);
+                  setDashboardEditing(false);
+                }}
+                onCancel={() => setDashboardEditing(false)}
+              />
+            </section>
+          ) : (
+            <DashboardWidgets
+              layout={dashboardLayout}
+              stats={stats}
+              onNavigate={setSection}
+              onEdit={() => setDashboardEditing(true)}
+            />
+          ))}
           {!["Dashboard", "Projects", "Assets", "ERLCX"].includes(section) && (
             <header className="page-heading">
               <h1>{section}</h1>
@@ -660,21 +689,7 @@ export default function App() {
               <section id="settings-dashboard" className="dashboard-settings">
                 <h2>Dashboard</h2>
                 <p>Choose and arrange the widgets on your dashboard.</p>
-                {!dashboardEditing ? (
-                  <button className="secondary" onClick={() => setDashboardEditing(true)}>Edit dashboard</button>
-                ) : (
-                  <DashboardWidgetEditor
-                    layout={dashboardLayout}
-                    stats={stats}
-                    onConfirm={(layout) => {
-                      saveDashboardLayout(layout);
-                      setDashboardLayout(layout);
-                      setDashboardEditing(false);
-                      setSection("Dashboard");
-                    }}
-                    onCancel={() => setDashboardEditing(false)}
-                  />
-                )}
+                <button className="secondary" onClick={() => { setDashboardEditing(true); setSection("Dashboard"); }}>Edit dashboard</button>
               </section>
               <PerformanceDiagnostics />
               <RobloxSettings onBusy={setRobloxLock} />

@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
@@ -17,6 +18,9 @@ import {
   vehicleCatalogue,
   listAssets,
   saveProject,
+  statisticsHistory,
+  statisticsProfile,
+  statisticsSales,
   type Project,
 } from "./bridge";
 
@@ -323,11 +327,131 @@ describe("workspace shell", () => {
     await user.click(screen.getByRole("gridcell", { name: "Row 1, column 4: Empty" }));
     await user.click(screen.getByRole("button", { name: "Confirm dashboard" }));
     expect(screen.getByRole("heading", { name: "Robux revenue" })).toBeTruthy();
-    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").robux).toBe(3);
+    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").robux).toEqual({ column: 3, row: 0, width: 1, height: 1 });
     view.unmount();
     render(<App />);
     await screen.findByText("My workspace");
     expect(screen.getByRole("heading", { name: "Robux revenue" })).toBeTruthy();
+  });
+  it("moves and removes widgets in the live dashboard editor", async () => {
+    render(<App />);
+    await screen.findByText("My workspace");
+    await userEvent.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    const transfer = {
+      data: "",
+      effectAllowed: "move",
+      dropEffect: "move",
+      setData(_type: string, value: string) { this.data = value; },
+      getData() { return this.data; },
+    };
+    fireEvent.dragStart(screen.getByRole("gridcell", { name: /Row 1, column 1: Live clock/ }), { dataTransfer: transfer });
+    fireEvent.dragOver(screen.getByRole("gridcell", { name: "Row 1, column 4: Empty" }), { dataTransfer: transfer });
+    fireEvent.drop(screen.getByRole("gridcell", { name: "Row 1, column 4: Empty" }), { dataTransfer: transfer });
+    expect(screen.getByRole("gridcell", { name: /Row 1, column 4: Live clock/ })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Remove Views" }));
+    expect(screen.getByRole("gridcell", { name: "Row 2, column 1: Empty" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Robux revenue" }));
+    await userEvent.click(screen.getByRole("gridcell", { name: "Row 2, column 1: Empty" }));
+    expect(screen.getByRole("gridcell", { name: /Row 2, column 1: Robux revenue/ })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Drag to resize Robux revenue" }));
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("gridcell", { name: /Robux revenue, 2 by 1/ })).toBeTruthy();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("gridcell", { name: /Robux revenue, 2 by 2/ })).toBeTruthy();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("gridcell", { name: /Robux revenue, 1 by 2/ })).toBeTruthy();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.queryByLabelText("Robux revenue width")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    const saved = JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}");
+    expect(saved.clock).toEqual({ column: 3, row: 0, width: 1, height: 1 });
+    expect(saved.views).toBeUndefined();
+    expect(saved.robux).toEqual({ column: 0, row: 1, width: 2, height: 2 });
+    expect(saved.likes).not.toEqual({ column: 1, row: 1, width: 1, height: 1 });
+  });
+  it("loads layouts saved before widget resizing was added", async () => {
+    localStorage.setItem("apex-studio-dashboard-widgets", JSON.stringify({ clock: 0, date: 1 }));
+    render(<App />);
+    await screen.findByText("My workspace");
+    await userEvent.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    expect(screen.getByRole("gridcell", { name: /Row 1, column 1: Live clock, 1 by 1/ })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Drag to resize Live clock" }));
+    await userEvent.keyboard("{ArrowDown}");
+    await userEvent.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").clock).toEqual({ column: 0, row: 0, width: 1, height: 2 });
+  });
+  it("resizes a widget by dragging its corner and previews the size before saving", async () => {
+    render(<App />);
+    await screen.findByText("My workspace");
+    await userEvent.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    const grid = screen.getByRole("grid", { name: "Dashboard layout" });
+    Object.defineProperty(grid, "clientWidth", { configurable: true, value: 842 });
+    const handle = screen.getByRole("button", { name: "Drag to resize Live clock" });
+    vi.stubGlobal("PointerEvent", MouseEvent);
+    try {
+      fireEvent.pointerDown(handle, { clientX: 100, clientY: 100 });
+      fireEvent.pointerMove(handle, { clientX: 314, clientY: 314 });
+      fireEvent.pointerUp(handle);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(screen.getByRole("gridcell", { name: /Live clock, 2 by 2/ })).toBeTruthy();
+    expect(localStorage.getItem("apex-studio-dashboard-widgets")).toBeNull();
+  });
+  it("previews and saves a round analog clock design", async () => {
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    await user.click(screen.getByRole("button", { name: "Live clock" }));
+    await user.click(screen.getByRole("button", { name: "Live clock design: Round clock" }));
+    const clockCell = screen.getByRole("gridcell", { name: /Live clock, 1 by 1/ });
+    expect(within(clockCell).getByRole("img", { name: /Round clock/ })).toBeTruthy();
+    expect(localStorage.getItem("apex-studio-dashboard-widgets")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").clock.design).toBe("analog");
+    view.unmount();
+    render(<App />);
+    await screen.findByText("My workspace");
+    expect(screen.getByRole("img", { name: /Round clock/ })).toBeTruthy();
+  });
+  it("applies a selected design when adding a new widget", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    await user.click(screen.getByRole("button", { name: "Robux revenue" }));
+    await user.click(screen.getByRole("button", { name: "Robux revenue design: Glass" }));
+    await user.click(screen.getByRole("gridcell", { name: "Row 1, column 4: Empty" }));
+    const widget = screen.getByRole("gridcell", { name: /Robux revenue, 1 by 1/ });
+    expect(widget.querySelector(".design-glass")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").robux.design).toBe("glass");
+  });
+  it("shows saved post and sales figures in dashboard widgets", async () => {
+    vi.mocked(statisticsProfile).mockResolvedValue("123");
+    vi.mocked(statisticsHistory).mockResolvedValue([{
+      collectedAt: "2026-10-30T12:00:00Z",
+      posts: [{ bundleId: 42, title: "Latest livery", views: 120, likes: 7, copies: 3, favourites: 0, ratingCount: 0, ratingAverage: null }],
+    }]);
+    vi.mocked(statisticsSales).mockResolvedValue({
+      collectedAt: "2026-10-30T12:00:00Z",
+      data: { sales: 5, allTimeSales: 17, netRobux: 42, grossRobux: 60, series: [] },
+    });
+    render(<App />);
+    await screen.findByText("My workspace");
+    await screen.findAllByText("Latest livery");
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await userEvent.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    await userEvent.click(screen.getByRole("button", { name: "Robux revenue" }));
+    await userEvent.click(screen.getByRole("gridcell", { name: "Row 1, column 4: Empty" }));
+    await userEvent.click(screen.getByRole("button", { name: "All-time sales" }));
+    await userEvent.click(screen.getByRole("gridcell", { name: "Row 2, column 4: Empty" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    expect(screen.getByText("R$ 42")).toBeTruthy();
+    expect(screen.getByText("17")).toBeTruthy();
+    expect(screen.getAllByText("120").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Latest livery").length).toBeGreaterThan(0);
   });
   it("saves a workspace name and uses the confirmed response in the shell", async () => {
     vi.mocked(renameWorkspace).mockResolvedValue({
