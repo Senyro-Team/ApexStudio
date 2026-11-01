@@ -4,6 +4,7 @@ import RobloxSettings from "./RobloxSettings";
 import TeamSyncSettings from "./TeamSyncSettings";
 import Statistics, { StatisticsSettings, useStatistics } from "./Statistics";
 import { DashboardWidgets, DashboardWidgetEditor, loadDashboardLayout, saveDashboardLayout, type DashboardLayout } from "./DashboardWidgets";
+import { loadWallpaper, saveWallpaper } from "./wallpaper";
 import { invoke } from "@tauri-apps/api/core";
 import {
   applyTheme,
@@ -21,7 +22,7 @@ import {
   type ThemeCustomization,
   type ThemeMode,
 } from "./themes";
-import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import ProjectsArea from "./Projects";
 const ERLCX = lazy(() => import("./ERLCX"));
 const Roblox = lazy(() => import("./Roblox"));
@@ -40,6 +41,7 @@ import {
   HardDrive,
   ArrowUpRight,
   ChartNoAxesCombined,
+  ImagePlus,
 } from "lucide-react";
 import {
   setEditLock,
@@ -107,6 +109,78 @@ export default function App() {
   const [newThemeColor, setNewThemeColor] = useState("#8c91ff");
   const [newThemeMode, setNewThemeMode] = useState<ThemeMode>("black");
   const [themeError, setThemeError] = useState("");
+  const [wallpaper, setWallpaper] = useState<Blob | null>(null);
+  const [wallpaperUrl, setWallpaperUrl] = useState<string | null>(null);
+  const [wallpaperLoading, setWallpaperLoading] = useState(true);
+  const [wallpaperBusy, setWallpaperBusy] = useState(false);
+  const [wallpaperStatus, setWallpaperStatus] = useState("");
+  const wallpaperFileInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    let active = true;
+    void loadWallpaper()
+      .then((image) => { if (active) setWallpaper(image); })
+      .catch(() => { if (active) setWallpaperStatus("The background image could not be loaded."); })
+      .finally(() => { if (active) setWallpaperLoading(false); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!wallpaper) {
+      setWallpaperUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(wallpaper);
+    setWallpaperUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [wallpaper]);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (wallpaperUrl) {
+      root.dataset.wallpaper = "true";
+      root.style.setProperty("--wallpaper-image", `url("${wallpaperUrl}")`);
+    } else {
+      delete root.dataset.wallpaper;
+      root.style.removeProperty("--wallpaper-image");
+    }
+    return () => {
+      delete root.dataset.wallpaper;
+      root.style.removeProperty("--wallpaper-image");
+    };
+  }, [wallpaperUrl]);
+  async function chooseWallpaper(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type)) {
+      setWallpaperStatus("Choose a PNG, JPEG, WebP, or AVIF image.");
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setWallpaperStatus("Choose an image smaller than 25 MB.");
+      return;
+    }
+    setWallpaperBusy(true);
+    try {
+      await saveWallpaper(file);
+      setWallpaper(file);
+      setWallpaperStatus("Background image saved.");
+    } catch {
+      setWallpaperStatus("The background image could not be saved.");
+    } finally {
+      setWallpaperBusy(false);
+    }
+  }
+  async function removeWallpaper() {
+    setWallpaperBusy(true);
+    try {
+      await saveWallpaper(null);
+      setWallpaper(null);
+      setWallpaperStatus("Background image removed.");
+    } catch {
+      setWallpaperStatus("The background image could not be removed.");
+    } finally {
+      setWallpaperBusy(false);
+    }
+  }
   const baseTheme =
     [...themes, ...customThemes].find((option) => option.id === themeId) ??
     themes[0];
@@ -685,6 +759,40 @@ export default function App() {
                     {themeError}
                   </p>
                 )}
+                <div className="wallpaper-settings">
+                  <h3>Background image</h3>
+                  <p>Choose a photo for the app background. Panels and buttons become translucent glass while an image is active.</p>
+                  {wallpaperUrl && <img className="wallpaper-preview" src={wallpaperUrl} alt="Current background" />}
+                  <input
+                    id="wallpaper-file"
+                    ref={wallpaperFileInput}
+                    aria-label="Background image file"
+                    className="wallpaper-file-input"
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/avif"
+                    disabled={wallpaperLoading || wallpaperBusy}
+                    onChange={(event) => void chooseWallpaper(event)}
+                  />
+                  <button
+                    className="wallpaper-upload-button"
+                    type="button"
+                    disabled={wallpaperLoading || wallpaperBusy}
+                    onClick={() => wallpaperFileInput.current?.click()}
+                  >
+                    <span className="wallpaper-upload-icon"><ImagePlus size={22} aria-hidden="true" /></span>
+                    <span className="wallpaper-upload-copy">
+                      <strong>{wallpaperUrl ? "Change background image" : "Upload background image"}</strong>
+                      <small>PNG, JPEG, WebP or AVIF · up to 25 MB</small>
+                    </span>
+                    <ArrowUpRight size={19} aria-hidden="true" />
+                  </button>
+                  {wallpaperUrl && (
+                    <button className="secondary" type="button" disabled={wallpaperBusy} onClick={() => void removeWallpaper()}>
+                      Remove background image
+                    </button>
+                  )}
+                  {wallpaperStatus && <p role="status" className="field-hint">{wallpaperStatus}</p>}
+                </div>
               </section>
               <section id="settings-dashboard" className="dashboard-settings">
                 <h2>Dashboard</h2>

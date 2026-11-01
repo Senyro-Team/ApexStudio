@@ -128,6 +128,8 @@ export const saveProject = (id: string | null, fields: ProjectFields) =>
   invoke<Project>("save_project", { id, fields });
 export const archiveProject = (id: string, archived: boolean) =>
   invoke<Project>("archive_project", { id, archived });
+export const deleteArchivedProject = (id: string) =>
+  invoke<void>("delete_archived_project", { id });
 export const listAssets = (projectId: string | null) =>
   invoke<Asset[]>("list_assets", { projectId });
 export const importAssets = (
@@ -190,6 +192,8 @@ export const archiveNote = (note: Note, archived: boolean) =>
     revision: note.revision,
     archived,
   });
+export const deleteArchivedNote = (note: Note) =>
+  invoke<void>("delete_archived_note", { id: note.id, revision: note.revision });
 export const attachNoteImage = (id: string) =>
   invoke<string | null>("attach_note_image", { id });
 export const noteImage = (id: string, hash: string) =>

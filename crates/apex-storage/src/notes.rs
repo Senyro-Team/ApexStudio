@@ -123,6 +123,48 @@ impl Workspace {
         if self.connection()?.execute("UPDATE notes SET archived=?1,revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?2 AND revision=?3",params![archived,id,revision]).map_err(storage)?==0 { return Err(Error::Conflict); }
         self.note(id)
     }
+    pub fn delete_archived_note(&self, id: &str, revision: u32) -> Result<(), Error> {
+        let gate = self.content_gate();
+        let _guard = gate.lock();
+        let mut db = self.connection()?;
+        let archived: bool = db
+            .query_row("SELECT archived FROM notes WHERE id=?1", [id], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(storage)?
+            .ok_or(Error::NotFound)?;
+        if !archived {
+            return Err(Error::InvalidContent(
+                "Archive the note before deleting it permanently.".into(),
+            ));
+        }
+        let mut query = db
+            .prepare("SELECT hash FROM note_images WHERE note_id=?1")
+            .map_err(storage)?;
+        let hashes = query
+            .query_map([id], |row| row.get::<_, String>(0))
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)?;
+        drop(query);
+        let tx = db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(storage)?;
+        tx.execute("DELETE FROM note_images WHERE note_id=?1", [id])
+            .map_err(storage)?;
+        let changed = tx
+            .execute(
+                "DELETE FROM notes WHERE id=?1 AND revision=?2 AND archived=1",
+                params![id, revision],
+            )
+            .map_err(storage)?;
+        if changed == 0 {
+            return Err(Error::Conflict);
+        }
+        tx.commit().map_err(storage)?;
+        self.collect_content(&hashes)
+    }
     pub fn attach_note_image(&self, id: &str, path: &Path) -> Result<String, Error> {
         let gate = self.content_gate();
         let _content = gate.lock();
@@ -194,6 +236,23 @@ impl Workspace {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    #[test]
+    fn permanent_delete_requires_archive_and_keeps_shared_image() {
+        let temp = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(temp.path().join("workspace")).unwrap();
+        let first = ws.create_note(None).unwrap();
+        let second = ws.create_note(None).unwrap();
+        let source = temp.path().join("image.png");
+        image::RgbImage::new(2, 2).save(&source).unwrap();
+        let hash = ws.attach_note_image(&first.id, &source).unwrap();
+        ws.attach_note_image(&second.id, &source).unwrap();
+        assert!(ws.delete_archived_note(&first.id, first.revision).is_err());
+        let first = ws.archive_note(&first.id, first.revision, true).unwrap();
+        ws.delete_archived_note(&first.id, first.revision).unwrap();
+        assert!(ws.note(&first.id).is_err());
+        assert!(ws.note(&second.id).is_ok());
+        assert!(ws.root.join("files").join(hash).exists());
+    }
     #[test]
     fn notes_reopen_and_conflicting_saves_do_not_overwrite() {
         let dir = tempfile::tempdir().unwrap();

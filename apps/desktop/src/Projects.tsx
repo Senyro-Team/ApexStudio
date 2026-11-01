@@ -11,6 +11,10 @@ import {
   File,
   FolderOpen,
   MoreHorizontal,
+  PencilLine,
+  Archive,
+  ArchiveRestore,
+  Trash2,
   X,
   Search,
 } from "lucide-react";
@@ -19,6 +23,7 @@ import {
   listProjects,
   saveProject,
   archiveProject,
+  deleteArchivedProject,
   listAssets,
   importAssets,
   saveAssetCopy,
@@ -308,6 +313,7 @@ export default function Projects({
   const [showArchived, setShowArchived] = useState(false);
   const [menu, setMenu] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [inspector, setInspector] = useState<Asset | null>(null);
   const [loading, setLoading] = useState(desktopAvailable);
   const [busy, setBusy] = useState(false);
@@ -341,6 +347,7 @@ export default function Projects({
       setSelected(null);
       setMenu(false);
       setConfirmArchive(false);
+      setConfirmDelete(false);
     }
     setShowTrash(false);
     setQuery("");
@@ -376,6 +383,7 @@ export default function Projects({
     setTab("Assets");
     setNotice("");
     setError("");
+    setConfirmDelete(false);
     onNavigate("Projects");
   };
   const create = () => {
@@ -410,6 +418,22 @@ export default function Projects({
           ? "Project archived. Files are preserved."
           : "Project restored.",
       );
+    } catch (error) {
+      setError(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function deleteProject() {
+    if (!project?.archived) return;
+    setBusy(true);
+    setError("");
+    try {
+      await deleteArchivedProject(project.id);
+      setProjects((items) => items.filter((item) => item.id !== project.id));
+      setSelected(null);
+      setConfirmDelete(false);
+      setNotice("Project permanently deleted.");
     } catch (error) {
       setError(errorMessage(error));
     } finally {
@@ -613,23 +637,45 @@ export default function Projects({
               {menu && (
                 <div className="action-menu">
                   <button
+                    className="action-menu-item"
                     disabled={project.archived || busy}
                     onClick={() => {
                       setEditor(project);
                       setMenu(false);
                     }}
                   >
-                    Edit project
+                    <PencilLine size={17} aria-hidden="true" />
+                    <span>Edit project</span>
                   </button>
                   <button
+                    className="action-menu-item"
                     disabled={busy}
                     onClick={() => {
                       setConfirmArchive(true);
+                      setConfirmDelete(false);
                       setMenu(false);
                     }}
                   >
-                    {project.archived ? "Restore project" : "Archive project"}
+                    {project.archived ? <ArchiveRestore size={17} aria-hidden="true" /> : <Archive size={17} aria-hidden="true" />}
+                    <span>{project.archived ? "Restore project" : "Archive project"}</span>
                   </button>
+                  {project.archived && (
+                    <>
+                      <div className="action-menu-divider" aria-hidden="true" />
+                      <button
+                        className="action-menu-item action-menu-danger"
+                        disabled={busy}
+                        onClick={() => {
+                          setConfirmDelete(true);
+                          setConfirmArchive(false);
+                          setMenu(false);
+                        }}
+                      >
+                        <Trash2 size={17} aria-hidden="true" />
+                        <span>Delete permanently</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -652,6 +698,17 @@ export default function Projects({
                 className="text-button"
                 onClick={() => setConfirmArchive(false)}
               >
+                Cancel
+              </button>
+            </div>
+          )}
+          {confirmDelete && project.archived && (
+            <div className="confirm-panel" role="alertdialog" aria-label="Delete project permanently">
+              <p>Delete “{project.name}” permanently from this workspace? Its files, folders, notes and project draft will be removed. Existing backups are unchanged.</p>
+              <button className="danger" disabled={busy} onClick={() => void deleteProject()}>
+                Delete permanently
+              </button>
+              <button className="text-button" disabled={busy} onClick={() => setConfirmDelete(false)}>
                 Cancel
               </button>
             </div>
