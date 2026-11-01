@@ -232,7 +232,7 @@ mod tests {
         let source = temp.path().join("image.png");
         image::RgbImage::new(2, 2).save(&source).unwrap();
         let asset = ws
-            .import_project_files(&project.id, &[source.clone()])
+            .import_project_files(&project.id, std::slice::from_ref(&source))
             .unwrap()
             .imported
             .remove(0);
