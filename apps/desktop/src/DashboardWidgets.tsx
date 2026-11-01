@@ -16,18 +16,30 @@ export const dashboardWidgetOptions = [
   { id: "shortcuts", label: "Shortcuts" },
 ] as const;
 export type DashboardWidgetId = (typeof dashboardWidgetOptions)[number]["id"];
-export type WidgetDesign = "classic" | "glass" | "minimal" | "analog";
+export type WidgetDesign = "classic" | "glass" | "digital-minimal" | "digital-bold" | "minimal" | "accent" | "outline" | "analog" | "calendar" | "split";
 const generalDesigns = [
   { id: "classic", label: "Classic" },
   { id: "glass", label: "Glass" },
   { id: "minimal", label: "Minimal" },
+  { id: "accent", label: "Bold" },
+  { id: "outline", label: "Frame" },
 ] as const;
 const clockDesigns = [
   { id: "classic", label: "Digital" },
+  { id: "glass", label: "Glass digital" },
+  { id: "digital-minimal", label: "Minimal digital" },
+  { id: "digital-bold", label: "Bold digital" },
   { id: "analog", label: "Round clock" },
-  { id: "glass", label: "Glass" },
-  { id: "minimal", label: "Minimal" },
+  { id: "minimal", label: "Minimal dial" },
+  { id: "outline", label: "Roman dial" },
+  { id: "accent", label: "Glow dial" },
 ] as const;
+const dateDesigns = [
+  ...generalDesigns,
+  { id: "calendar", label: "Calendar" },
+  { id: "split", label: "Split date" },
+] as const;
+const designsForWidget = (id: DashboardWidgetId) => id === "clock" ? clockDesigns : id === "date" ? dateDesigns : generalDesigns;
 const widgetVisuals: Record<DashboardWidgetId, { icon: LucideIcon; description: string }> = {
   robux: { icon: Wallet, description: "Creator earnings" },
   sales: { icon: ShoppingBag, description: "Lifetime total" },
@@ -111,7 +123,7 @@ export function loadDashboardLayout(): DashboardLayout {
         : value;
       if (validPlacement(placement) && !occupied(result, placement)) {
         const normalized = { ...placement };
-        if (!normalized.design || !["classic", "glass", "minimal", "analog"].includes(normalized.design) || (option.id !== "clock" && normalized.design === "analog")) delete normalized.design;
+        if (!normalized.design || !designsForWidget(option.id).some((design) => design.id === normalized.design)) delete normalized.design;
         result[option.id] = normalized;
       }
     }
@@ -143,18 +155,41 @@ function metricTotal(stats: Stats, key: "views" | "likes" | "copies") {
   return posts.reduce((sum, post) => sum + (post[key] ?? 0), 0);
 }
 
-function AnalogClock({ now }: { now: Date }) {
+type RoundClockDesign = "analog" | "minimal" | "outline" | "accent";
+const isRoundClockDesign = (design: WidgetDesign): design is RoundClockDesign =>
+  design === "analog" || design === "minimal" || design === "outline" || design === "accent";
+
+function AnalogClock({ now, variant = "analog" }: { now: Date; variant?: RoundClockDesign }) {
   const hour = ((now.getHours() % 12) + now.getMinutes() / 60) * 30;
   const minute = (now.getMinutes() + now.getSeconds() / 60) * 6;
   const second = now.getSeconds() * 6;
-  return <svg className="dashboard-analog-clock" viewBox="0 0 120 120" role="img" aria-label={`Round clock: ${now.toLocaleTimeString()}`}>
+  const label = clockDesigns.find((design) => design.id === variant)?.label ?? "Round clock";
+  return <svg className={`dashboard-analog-clock clock-${variant}`} viewBox="0 0 120 120" role="img" aria-label={`${label}: ${now.toLocaleTimeString()}`}>
     <circle className="clock-dial" cx="60" cy="60" r="55" />
-    {Array.from({ length: 12 }, (_, index) => <line key={index} className={index % 3 === 0 ? "clock-mark-major" : "clock-mark"} x1="60" y1="12" x2="60" y2={index % 3 === 0 ? "22" : "18"} transform={`rotate(${index * 30} 60 60)`} />)}
+    {variant === "outline" ? [
+      ["XII", 60, 24], ["III", 96, 65], ["VI", 60, 105], ["IX", 23, 65],
+    ].map(([numeral, x, y]) => <text key={numeral} className="clock-numeral" x={x} y={y} textAnchor="middle">{numeral}</text>) :
+      Array.from({ length: 12 }, (_, index) => variant === "minimal" && index % 3 !== 0 ? null : <line key={index} className={index % 3 === 0 ? "clock-mark-major" : "clock-mark"} x1="60" y1="12" x2="60" y2={index % 3 === 0 ? "22" : "18"} transform={`rotate(${index * 30} 60 60)`} />)}
     <line className="clock-hand-hour" x1="60" y1="65" x2="60" y2="35" transform={`rotate(${hour} 60 60)`} />
     <line className="clock-hand-minute" x1="60" y1="67" x2="60" y2="25" transform={`rotate(${minute} 60 60)`} />
-    <line className="clock-hand-second" x1="60" y1="70" x2="60" y2="19" transform={`rotate(${second} 60 60)`} />
+    {variant !== "minimal" && <line className="clock-hand-second" x1="60" y1="70" x2="60" y2="19" transform={`rotate(${second} 60 60)`} />}
     <circle className="clock-pin" cx="60" cy="60" r="4" />
   </svg>;
+}
+
+function CalendarDate({ now }: { now: Date }) {
+  return <div className="dashboard-calendar-date" role="img" aria-label={`Calendar date: ${now.toLocaleDateString()}`}>
+    <span className="dashboard-calendar-month">{now.toLocaleDateString([], { month: "long" })}</span>
+    <strong>{now.getDate()}</strong>
+    <span className="dashboard-calendar-footer">{now.toLocaleDateString([], { weekday: "long" })} · {now.getFullYear()}</span>
+  </div>;
+}
+
+function SplitDate({ now }: { now: Date }) {
+  return <div className="dashboard-split-date">
+    <strong>{now.getDate()}</strong>
+    <span><b>{now.toLocaleDateString([], { weekday: "long" })}</b><small>{now.toLocaleDateString([], { month: "long", year: "numeric" })}</small></span>
+  </div>;
 }
 
 function WidgetContent({ id, design, stats, now, onNavigate }: {
@@ -165,8 +200,12 @@ function WidgetContent({ id, design, stats, now, onNavigate }: {
   onNavigate?: (section: "Projects" | "Notes" | "Statistics") => void;
 }) {
   const posts = stats.history.at(-1)?.posts ?? [];
-  if (id === "clock" && design === "analog") return <AnalogClock now={now} />;
+  if (id === "clock" && isRoundClockDesign(design)) return <AnalogClock now={now} variant={design} />;
+  if (id === "clock" && design === "digital-minimal") return <strong className="dashboard-widget-value">{now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong>;
+  if (id === "clock" && design === "digital-bold") return <div className="dashboard-digital-bold"><strong>{now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong><span>{String(now.getSeconds()).padStart(2, "0")}</span></div>;
   if (id === "clock") return <strong className="dashboard-widget-value">{now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</strong>;
+  if (id === "date" && design === "calendar") return <CalendarDate now={now} />;
+  if (id === "date" && design === "split") return <SplitDate now={now} />;
   if (id === "date") return <strong className="dashboard-widget-date">{now.toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</strong>;
   if (id === "shortcuts") return <div className="dashboard-shortcuts">{(["Projects", "Notes", "Statistics"] as const).map((section) => <button className="secondary" key={section} onClick={(event) => { event.stopPropagation(); onNavigate?.(section); }} disabled={!onNavigate}>{section}</button>)}</div>;
   if (id === "robux" || id === "sales") return <><strong className="dashboard-widget-value">{stats.sales ? `${id === "robux" ? "R$ " : ""}${number(id === "robux" ? stats.sales.data.netRobux : stats.sales.data.allTimeSales)}` : "—"}</strong><span className="field-hint">{stats.sales ? "Creator dashboard snapshot" : "Load sales in Statistics"}</span></>;
@@ -246,7 +285,7 @@ export function DashboardWidgetEditor({ layout, stats, onConfirm, onCancel }: {
       else placement.design = design;
       return { ...current, [id]: placement };
     });
-    setHint(`${dashboardWidgetOptions.find((option) => option.id === id)?.label} design: ${design === "analog" ? "Round clock" : design}. Confirm to save.`);
+    setHint(`${dashboardWidgetOptions.find((option) => option.id === id)?.label} design: ${designsForWidget(id).find((option) => option.id === design)?.label}. Confirm to save.`);
   }
   function place(id: DashboardWidgetId, index: number) {
     const chosenDesign = pendingDesigns[id];
@@ -354,14 +393,15 @@ export function DashboardWidgetEditor({ layout, stats, onConfirm, onCancel }: {
       })}</div>
       {selected && <div className="dashboard-design-picker" role="group" aria-label={`${dashboardWidgetOptions.find((option) => option.id === selected)?.label} designs`}>
         <div><h3>Choose a look</h3><p>{dashboardWidgetOptions.find((option) => option.id === selected)?.label} · Changes preview instantly</p></div>
-        <div className="dashboard-design-options">{(selected === "clock" ? clockDesigns : generalDesigns).map(({ id: design, label }) => {
+        <div className="dashboard-design-options">{designsForWidget(selected).map(({ id: design, label }) => {
           const Icon = widgetVisuals[selected].icon;
-          return <button key={design} className={`dashboard-design-option ${designFor(selected) === design ? "selected" : ""}`} aria-label={`${dashboardWidgetOptions.find((option) => option.id === selected)?.label} design: ${label}`} aria-pressed={designFor(selected) === design} onClick={() => chooseDesign(selected, design)}><span className={`dashboard-design-sample design-${design}`}>{design === "analog" ? <AnalogClock now={now} /> : <Icon size={24} aria-hidden="true" />}</span><span>{label}</span></button>;
+          return <button key={design} className={`dashboard-design-option ${designFor(selected) === design ? "selected" : ""}`} aria-label={`${dashboardWidgetOptions.find((option) => option.id === selected)?.label} design: ${label}`} aria-pressed={designFor(selected) === design} onClick={() => chooseDesign(selected, design)}><span className={`dashboard-design-sample design-${design}`}>{selected === "clock" && isRoundClockDesign(design) ? <AnalogClock now={now} variant={design} /> : selected === "clock" ? <span className="dashboard-design-digital">12:34</span> : design === "calendar" ? <span className="dashboard-design-calendar"><small>{now.toLocaleDateString([], { month: "short" })}</small><b>{now.getDate()}</b></span> : design === "split" ? <span className="dashboard-design-split"><b>{now.getDate()}</b><small>{now.toLocaleDateString([], { month: "short" })}</small></span> : <Icon size={24} aria-hidden="true" />}</span><span>{label}</span></button>;
         })}</div>
       </div>}
     </div>
     <div className="dashboard-layout-heading"><h2>Your layout</h2><span>Drag to move · pull the curved corner to resize · × to remove</span></div>
     <p className="field-hint" role="status">{hint}</p>
+    <div className="dashboard-layout-scroll">
     <div className="dashboard-editor-grid" role="grid" aria-label="Dashboard layout" style={{ gridTemplateRows: `repeat(${rows}, 200px)` }}>
       {Array.from({ length: rows * columns }, (_, index) => {
         if (at(index)) return null;
@@ -376,6 +416,7 @@ export function DashboardWidgetEditor({ layout, stats, onConfirm, onCancel }: {
           <button type="button" className="dashboard-widget-resize" aria-label={`Drag to resize ${label}`} title="Drag corner to resize · arrow keys also work" draggable={false} onClick={(event) => event.stopPropagation()} onDragStart={(event) => event.preventDefault()} onPointerDown={(event) => startResize(event, id)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} onKeyDown={(event) => keyResize(event, id)}><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true"><path d="M6 26C17 26 26 17 26 6" /></svg></button>
         </div>;
       })}
+    </div>
     </div>
     <div className="dashboard-editor-actions"><button className="primary" onClick={() => onConfirm(draft)}>Confirm dashboard</button><button className="secondary" onClick={onCancel}>Cancel</button></div>
   </div>;

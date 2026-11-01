@@ -49,10 +49,18 @@ export default function LiveryFolderImport({
   const pending = useRef(
     new Set(folders.flatMap((f) => (f.draft ? [f.draft.token] : []))),
   );
+  const mounted = useRef(false);
   useEffect(
-    () => () => {
-      for (const token of pending.current)
-        void cancelLivery(token).catch(() => {});
+    () => {
+      mounted.current = true;
+      return () => {
+        mounted.current = false;
+        queueMicrotask(() => {
+          if (mounted.current) return;
+          for (const token of pending.current)
+            void cancelLivery(token).catch(() => {});
+        });
+      };
     },
     [],
   );
@@ -91,7 +99,7 @@ export default function LiveryFolderImport({
     r.slots.forEach((slot, i) => {
       if (
         slot &&
-        (!/^(Window )?(Left|Right|Front|Back|Top) ([1-9][0-9]?|100)$/.test(
+        (!/^(?:Frontplate|(?:Window )?(?:Left|Right|Front|Back|Top)) ([1-9][0-9]?|100)$/.test(
           slot,
         ) ||
           r.slots.indexOf(slot) !== i)

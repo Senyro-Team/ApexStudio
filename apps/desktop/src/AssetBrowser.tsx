@@ -184,6 +184,32 @@ export default function AssetBrowser({
     setBoard(next);
     return next;
   }
+  async function refreshAfterError() {
+    setBusy(true);
+    try {
+      const next = await reload();
+      setFolderId((id) =>
+        id && next.folders.some((folder) => folder.id === id) ? id : null,
+      );
+      setSelected((id) =>
+        id && next.assets.some((asset) => asset.id === id) ? id : null,
+      );
+      setExplorerSelection((item) =>
+        item &&
+        (item.folder ? next.folders : next.assets).some(
+          (entry) => entry.id === item.id,
+        )
+          ? item
+          : null,
+      );
+      setError("");
+      onChange();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   useEffect(() => {
     let active = true;
     assetBoard(project.id)
@@ -298,7 +324,7 @@ export default function AssetBrowser({
   }
   const issues = slots.flatMap((slot, i) =>
     slot &&
-    (!/^(Window )?(Left|Right|Front|Back|Top) ([1-9][0-9]?|100)$/.test(slot) ||
+    (!/^(?:Frontplate|(?:Window )?(?:Left|Right|Front|Back|Top)) ([1-9][0-9]?|100)$/.test(slot) ||
       slots.indexOf(slot) !== i)
       ? [
           `${draft?.files[i].name}: ${slots.indexOf(slot) !== i ? "duplicate slot" : "enter a slot number from 1 to 100"}`,
@@ -501,6 +527,7 @@ export default function AssetBrowser({
     >
       {trashTarget && (
         <dialog
+          className="trash-dialog"
           ref={trashDialog}
           aria-label="Move to trash"
           onCancel={(e) => {
@@ -522,7 +549,7 @@ export default function AssetBrowser({
               Cancel
             </button>
             <button
-              className="primary"
+              className="danger"
               disabled={busy}
               onClick={() => void confirmTrash()}
             >
@@ -532,9 +559,12 @@ export default function AssetBrowser({
         </dialog>
       )}
       {error && (
-        <p className="error pre-wrap" role="alert">
-          {error}
-        </p>
+        <div className="error pre-wrap" role="alert">
+          <p>{error}</p>
+          <button type="button" disabled={busy} onClick={() => void refreshAfterError()}>
+            Refresh files
+          </button>
+        </div>
       )}
       {notice && <p role="status">{notice}</p>}
       <div className="asset-path" aria-label="Asset folder path">

@@ -346,7 +346,7 @@ describe("workspace shell", () => {
   it("shows empty local records and no mockup projects", async () => {
     render(<App />);
     await screen.findByText("My workspace");
-    expect(screen.getByText("No projects")).toBeTruthy();
+    expect(screen.getByText("No projects yet")).toBeTruthy();
     expect(screen.queryByText("NYPD Christmas 2019")).toBeNull();
   });
   it("edits dashboard widgets on a grid only after confirmation and keeps the layout", async () => {
@@ -451,6 +451,47 @@ describe("workspace shell", () => {
     render(<App />);
     await screen.findByText("My workspace");
     expect(screen.getByRole("img", { name: /Round clock/ })).toBeTruthy();
+  });
+  it("offers equally many digital and round clock looks and saves the chosen dial", async () => {
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    await user.click(screen.getByRole("button", { name: "Live clock" }));
+    const designs = screen.getByRole("group", { name: "Live clock designs" });
+    expect(within(designs).getAllByRole("button")).toHaveLength(8);
+    await user.click(within(designs).getByRole("button", { name: "Live clock design: Bold digital" }));
+    const clockCell = screen.getByRole("gridcell", { name: /Live clock, 1 by 1/ });
+    expect(clockCell.querySelector(".dashboard-digital-bold")).toBeTruthy();
+    await user.click(within(designs).getByRole("button", { name: "Live clock design: Roman dial" }));
+    expect(within(clockCell).getByRole("img", { name: /Roman dial/ })).toBeTruthy();
+    expect(within(clockCell).getByText("XII")).toBeTruthy();
+    await user.click(within(designs).getByRole("button", { name: "Live clock design: Glow dial" }));
+    expect(within(clockCell).getByRole("img", { name: /Glow dial/ })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").clock.design).toBe("accent");
+    view.unmount();
+    render(<App />);
+    await screen.findByText("My workspace");
+    expect(screen.getByRole("img", { name: /Glow dial/ })).toBeTruthy();
+  });
+  it("previews and saves calendar and split date designs", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    await user.click(screen.getByRole("button", { name: "Date" }));
+    await user.click(screen.getByRole("button", { name: "Date design: Calendar" }));
+    const dateCell = screen.getByRole("gridcell", { name: /Date, 1 by 1/ });
+    expect(within(dateCell).getByRole("img", { name: /Calendar date/ })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").date.design).toBe("calendar");
+    await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    await user.click(screen.getByRole("button", { name: "Date" }));
+    await user.click(screen.getByRole("button", { name: "Date design: Split date" }));
+    expect(screen.getByRole("gridcell", { name: /Date, 1 by 1/ }).querySelector(".dashboard-split-date")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").date.design).toBe("split");
   });
   it("applies a selected design when adding a new widget", async () => {
     const user = userEvent.setup();

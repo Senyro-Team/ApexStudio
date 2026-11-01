@@ -544,19 +544,19 @@ export default function Projects({
               New project
             </button>
           </header>
-          <section className="content-section">
+          <section className="content-section recent-projects-card">
             <h2>Recent projects</h2>
             {loading ? (
               <p role="status">Opening projects…</p>
             ) : active.length ? (
               rows(active.slice(0, 3))
             ) : (
-              <div className="empty-state">
-                <FolderOpen size={26} />
-                <h3>No projects</h3>
-
+              <div className="empty-state recent-projects-empty">
+                <FolderOpen size={27} aria-hidden="true" />
+                <h3>No projects yet</h3>
+                <p>Your projects will appear here. Create one to get started.</p>
                 <button
-                  className="text-button"
+                  className="primary recent-projects-cta"
                   disabled={!desktopAvailable}
                   onClick={create}
                 >
