@@ -137,6 +137,29 @@ it("resumes paused native queues without changing their account", async () => {
   expect(startUploadBatch).not.toHaveBeenCalled();
 });
 
+it("deletes a cancelled upload batch after confirmation", async () => {
+  const user = userEvent.setup();
+  const cancelled: UploadSnapshot = {
+    ...empty,
+    revision: 1,
+    queue: {
+      batches: [{ id: "batch", accountId: "123", state: "cancelled", createdAt: "2026-10-27T12:00:00Z" }],
+      jobs: [{ id: "job", accountId: "123", hash: "hash", name: "Left.png", state: "cancelled", pass: 1, nextAt: 0, message: "", operation: null, firstId: null, secondId: null, moderation: "unknown", generation: 1 }],
+      items: [{ batchId: "batch", jobId: "job", folderId: "a", side: "Left 1" }],
+    },
+  };
+  vi.mocked(uploadSnapshot).mockResolvedValueOnce(cancelled).mockResolvedValue({ ...empty, revision: 2 });
+  render(<Roblox focus={{}} onSettings={() => {}} />);
+  await screen.findByText("EMS");
+  await user.click(screen.getByText(/0\/1 textures · cancelled/));
+  await user.click(screen.getByRole("button", { name: "Delete batch" }));
+  const confirmation = screen.getByRole("group", { name: "Confirm batch deletion" });
+  expect(controlUploadBatch).not.toHaveBeenCalled();
+  await user.click(within(confirmation).getByRole("button", { name: "Delete batch" }));
+  await vi.waitFor(() => expect(controlUploadBatch).toHaveBeenCalledWith("batch", "delete"));
+  expect(await screen.findByText("No upload batches.")).toBeTruthy();
+});
+
 it("copies several selected liveries with fresh saved decal IDs without uploading", async () => {
   const user = userEvent.setup();
   const clipboard = vi

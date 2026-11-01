@@ -380,7 +380,9 @@ impl Workspace {
     }
     pub fn control_upload_batch(&self, id: Option<&str>, action: &str) -> Result<(), Error> {
         let mut db = self.connection()?;
-        let tx = db.transaction().map_err(storage)?;
+        let tx = db
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(storage)?;
         match action {
             "pause" | "resume" => {
                 tx.execute("UPDATE upload_batches SET state=?2 WHERE (?1 IS NULL OR id=?1) AND state IN ('running','paused')",params![id,if action=="pause"{"paused"}else{"running"}]).map_err(storage)?;
@@ -392,6 +394,55 @@ impl Workspace {
             "retry" => {
                 tx.execute("UPDATE upload_jobs SET state=CASE WHEN EXISTS(SELECT 1 FROM upload_passes p WHERE p.job_id=upload_jobs.id AND p.pass=upload_jobs.pass AND p.operation IS NOT NULL AND p.state!='failed') THEN 'processing' ELSE 'queued' END,next_at=0,message='' WHERE state='failed' AND id IN(SELECT job_id FROM upload_batch_items WHERE enabled=1 AND (?1 IS NULL OR batch_id=?1))",[id]).map_err(storage)?;
                 tx.execute("UPDATE upload_batches SET state='running' WHERE (?1 IS NULL OR id=?1) AND state='paused'",[id]).map_err(storage)?;
+            }
+            "delete" => {
+                let batch_id = id.ok_or_else(|| {
+                    Error::InvalidContent("Choose an upload batch to delete.".into())
+                })?;
+                let state: Option<String> = tx
+                    .query_row(
+                        "SELECT state FROM upload_batches WHERE id=?1",
+                        [batch_id],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(storage)?;
+                if !matches!(state.as_deref(), Some("complete" | "cancelled")) {
+                    return Err(Error::InvalidContent(
+                        "Cancel or finish the batch before deleting it.".into(),
+                    ));
+                }
+                let unfinished: i64 = tx
+                    .query_row("SELECT count(*) FROM upload_batch_items i JOIN upload_jobs j ON j.id=i.job_id WHERE i.batch_id=?1 AND j.state NOT IN ('complete','cancelled')", [batch_id], |row| row.get(0))
+                    .map_err(storage)?;
+                if unfinished > 0 {
+                    return Err(Error::InvalidContent(
+                        "Wait for in-flight uploads to finish before deleting this batch.".into(),
+                    ));
+                }
+                tx.execute(
+                    "DELETE FROM upload_batch_items WHERE batch_id=?1",
+                    [batch_id],
+                )
+                .map_err(storage)?;
+                tx.execute("DELETE FROM upload_batches WHERE id=?1", [batch_id])
+                    .map_err(storage)?;
+                let orphan_jobs = "SELECT j.id FROM upload_jobs j WHERE j.state IN ('complete','cancelled') AND NOT EXISTS(SELECT 1 FROM upload_batch_items i WHERE i.job_id=j.id)";
+                tx.execute(
+                    &format!("DELETE FROM upload_attempts WHERE job_id IN ({orphan_jobs})"),
+                    [],
+                )
+                .map_err(storage)?;
+                tx.execute(
+                    &format!("DELETE FROM upload_passes WHERE job_id IN ({orphan_jobs})"),
+                    [],
+                )
+                .map_err(storage)?;
+                tx.execute(
+                    &format!("DELETE FROM upload_jobs WHERE id IN ({orphan_jobs})"),
+                    [],
+                )
+                .map_err(storage)?;
             }
             _ => return Err(Error::InvalidContent("Unknown upload action.".into())),
         }
@@ -562,6 +613,46 @@ mod tests {
         create(&ws, &f, "two", false);
         ws.control_upload_batch(Some("one"), "cancel").unwrap();
         assert_eq!(first(&ws).pass, 1);
+    }
+    #[test]
+    fn deleting_a_batch_requires_terminal_work_and_clears_its_queue_history() {
+        let (_d, ws, f, _) = fixture();
+        create(&ws, &f, "one", false);
+        assert!(ws.control_upload_batch(Some("one"), "delete").is_err());
+        ws.control_upload_batch(Some("one"), "cancel").unwrap();
+        ws.control_upload_batch(Some("one"), "delete").unwrap();
+        let snapshot = ws.upload_snapshot().unwrap();
+        assert!(snapshot.batches.is_empty());
+        assert!(snapshot.items.is_empty());
+        assert!(snapshot.jobs.is_empty());
+        let jobs: i64 = ws
+            .connection()
+            .unwrap()
+            .query_row("SELECT count(*) FROM upload_jobs", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(jobs, 0);
+    }
+    #[test]
+    fn deleting_completed_history_keeps_saved_decal_ids() {
+        let (_d, ws, f, _) = fixture();
+        create(&ws, &f, "one", false);
+        let first_pass = first(&ws);
+        ws.upload_pass_complete(&first_pass, "111", "approved")
+            .unwrap();
+        let second_pass = first(&ws);
+        ws.upload_pass_complete(&second_pass, "222", "approved")
+            .unwrap();
+        ws.control_upload_batch(Some("one"), "delete").unwrap();
+        assert!(ws.upload_snapshot().unwrap().batches.is_empty());
+        assert_eq!(
+            ws.livery_uploads(&f, "123").unwrap().textures[0]
+                .upload
+                .as_ref()
+                .unwrap()
+                .asset_id
+                .as_deref(),
+            Some("222")
+        );
     }
     #[test]
     fn backup_restores_queue_paused_and_discards_validation_trust() {

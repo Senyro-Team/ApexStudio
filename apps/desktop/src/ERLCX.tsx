@@ -1,4 +1,5 @@
 import { useEffect, useState, lazy, Suspense } from "react";
+import { ArrowUpRight, FilePenLine } from "lucide-react";
 import {
   listPosts,
   createPost,
@@ -94,14 +95,16 @@ export default function ERLCX({
           {rows.map((r) => (
             <li key={r.id}>
               <button className="post-draft-row" onClick={() => setId(r.id)}>
-                <span>
+                <span className="post-draft-icon" aria-hidden="true"><FilePenLine size={22} /></span>
+                <span className="post-draft-copy">
                   <strong>{r.title || "Untitled post"}</strong>
                   <small>
-                    {r.liveries} liveries ·{" "}
-                    {new Date(r.updatedAt).toLocaleString()}
+                    <span>{r.liveries} {r.liveries === 1 ? "livery" : "liveries"}</span>
+                    <span aria-hidden="true">·</span>
+                    <time dateTime={r.updatedAt}>{new Date(r.updatedAt).toLocaleString()}</time>
                   </small>
                 </span>
-                <span>Open</span>
+                <span className="post-draft-open">Open <ArrowUpRight size={17} aria-hidden="true" /></span>
               </button>
             </li>
           ))}

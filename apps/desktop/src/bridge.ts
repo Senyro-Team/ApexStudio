@@ -463,7 +463,7 @@ export const startUploadBatch = (
 ) => invoke<string>("start_upload_batch", { requestId, folderIds, force });
 export const controlUploadBatch = (
   batchId: string | null,
-  action: "pause" | "resume" | "cancel" | "retry",
+  action: "pause" | "resume" | "cancel" | "retry" | "delete",
 ) => invoke<void>("control_upload_batch", { batchId, action });
 export const setEditLock = (locked: boolean) =>
   invoke<void>("set_edit_lock", { locked });

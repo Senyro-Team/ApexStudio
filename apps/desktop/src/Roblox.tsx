@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { liveryCodesMarkdown } from "./liveryCodesMarkdown";
 import { listen } from "@tauri-apps/api/event";
+import { Trash2 } from "lucide-react";
 import {
   robloxLiveries,
   robloxLivery,
@@ -59,6 +60,7 @@ export default function Roblox({
     ),
     [now, setNow] = useState(Date.now()),
     [notice, setNotice] = useState(""),
+    [confirmDeleteBatch, setConfirmDeleteBatch] = useState<string | null>(null),
     [jobPages, setJobPages] = useState<Record<string, number>>({});
   const dialog = useRef<HTMLDialogElement>(null),
     requestId = useRef<string | null>(null);
@@ -249,14 +251,21 @@ export default function Roblox({
   }
   async function action(
     id: string | null,
-    kind: "pause" | "resume" | "cancel" | "retry",
+    kind: "pause" | "resume" | "cancel" | "retry" | "delete",
   ) {
     setError("");
+    setBusy(true);
     try {
       await controlUploadBatch(id, kind);
       setSnapshot(await uploadSnapshot());
+      if (kind === "delete") {
+        setConfirmDeleteBatch(null);
+        setNotice("Upload batch deleted from the queue.");
+      }
     } catch (e) {
       setError(errorMessage(e));
+    } finally {
+      setBusy(false);
     }
   }
   async function expand(id: string) {
@@ -486,6 +495,8 @@ export default function Roblox({
             .map((id) => jobsById.get(id))
             .filter((j) => !!j);
           const done = jobs.filter((j) => j.state === "complete").length;
+          const canDelete = ["complete", "cancelled"].includes(b.state)
+            && jobs.every((j) => ["complete", "cancelled"].includes(j.state));
           return (
             <details key={b.id} className="roblox-batch">
               <summary>
@@ -522,7 +533,24 @@ export default function Roblox({
                 >
                   Cancel pending
                 </button>
+                <button
+                  className="text-button queue-delete-button"
+                  disabled={!canDelete || busy}
+                  title={canDelete ? "Remove this batch from the queue" : "Finish or cancel pending uploads before deleting this batch"}
+                  onClick={() => setConfirmDeleteBatch(b.id)}
+                >
+                  <Trash2 size={16} aria-hidden="true" /> Delete batch
+                </button>
               </div>
+              {confirmDeleteBatch === b.id && (
+                <div className="confirm-panel queue-delete-confirm" role="group" aria-label="Confirm batch deletion">
+                  <p>Delete this batch from the queue? Uploaded decals and saved IDs will remain available.</p>
+                  <div className="button-row">
+                    <button className="danger" disabled={busy} onClick={() => void action(b.id, "delete")}>Delete batch</button>
+                    <button className="secondary" disabled={busy} onClick={() => setConfirmDeleteBatch(null)}>Keep batch</button>
+                  </div>
+                </div>
+              )}
               <ul className="roblox-job-list">
                 {jobs
                   .slice(
