@@ -9,6 +9,7 @@ import {
   syncDisconnect,
   syncInitialSetup,
   syncSignIn,
+  syncProjects,
   type SyncConnectionStatus,
   type SyncInvitation,
   type SyncInvitationRole,
@@ -45,6 +46,12 @@ export default function TeamSyncSettings({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [syncBusy, setSyncBusy] = useState(false);
+  useEffect(() => {
+    const failed = (event: Event) => setError(String((event as CustomEvent).detail));
+    window.addEventListener("apex-project-sync-error", failed);
+    return () => window.removeEventListener("apex-project-sync-error", failed);
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [invitationToken, setInvitationToken] = useState("");
@@ -149,6 +156,7 @@ export default function TeamSyncSettings({
     } catch {
       // The selected team remains available for this session.
     }
+    window.dispatchEvent(new Event("apex-project-sync-request"));
   }
 
   function checkServer(event: FormEvent) {
@@ -327,6 +335,18 @@ export default function TeamSyncSettings({
               This account is not a member of a team on this server.
             </p>
           )}
+          {selectedTeam && <section className="project-sync-options" aria-label="Team project synchronization">
+            <h3>Project synchronization</h3>
+            <p className="field-hint">Shared projects download automatically. Choose “Synchronize with team server” when creating a project or in its Details to share it.</p>
+            <button className="secondary" type="button" disabled={busy || syncBusy} onClick={() => {
+              setSyncBusy(true); setError(""); setNotice("");
+              void syncProjects(serverUrl, selectedTeam.id).then((report) => {
+                setNotice(`${report.uploaded} uploaded · ${report.downloaded} downloaded`);
+                if (report.errors.length) setError(report.errors.join("\n"));
+                window.dispatchEvent(new CustomEvent("apex-projects-synced", {detail: report}));
+              }).catch((reason: unknown) => setError(errorText(reason))).finally(() => setSyncBusy(false));
+            }}>{syncBusy ? "Synchronizing…" : "Sync projects now"}</button>
+          </section>}
           {selectedTeam && canInvite && (
             <section className="team-sync-invitations" aria-labelledby="team-sync-invite-title">
               <h3 id="team-sync-invite-title">Invite a member</h3>

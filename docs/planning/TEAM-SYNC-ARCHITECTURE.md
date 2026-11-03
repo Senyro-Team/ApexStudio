@@ -1,6 +1,6 @@
 # Apex Studio team sync — architecture proposal
 
-Status: server API implementation in progress, 2026-10-30. The Rust service now includes account setup and sign-in, invitations, role management, revisioned project records, tombstones, and content-addressed file transfer. The desktop sign-in and sync client, production operations, and backup/restore workflow remain future work.
+Status: server API implementation in progress, 2026-10-30. The Rust service now includes account setup and sign-in, invitations, role management, revisioned project records, tombstones, and content-addressed file transfer. Desktop sign-in and opt-in project synchronization are implemented. Production operations and deployment backup/restore validation remain outstanding.
 
 ## Product shape
 
@@ -32,7 +32,7 @@ Status: server API implementation in progress, 2026-10-30. The Rust service now 
 1. **Contract and server foundation:** implemented; see [server API contract](../TEAM-SYNC-API.md).
 2. **Team access:** initial implementation includes one-time bootstrap, Argon2id password hashes, bearer sessions, 72-hour invitations, membership and role checks. Account recovery and email delivery are not implemented.
 3. **Project sync:** initial API includes revisioned records, change cursors, tombstones, blob manifests, direct small-file upload, and resumable chunked uploads. Client conflict resolution and end-to-end audit/retention operations remain outstanding.
-4. **Desktop connection:** Settings supports server checks, sign-in, invitation code creation and acceptance, first-team setup, session storage and team selection. The actual project sync worker, local/server project mapping and explicit conflict-resolution UI remain outstanding.
+4. **Desktop connection:** Settings supports server checks, sign-in, invitation code creation and acceptance, first-team setup, session storage and team selection. The desktop now stores per-device project bindings and synchronizes project snapshots and missing blobs. Conflicts require an explicit version choice.
 5. **Operations:** tested consistent backups/restores, upgrades, retention, logs without secrets, and a documented manual update path.
 
 ## Identity decision
@@ -41,4 +41,4 @@ Version 1 uses server-managed accounts and one-time invitations. An OIDC provide
 
 ## Foundation implementation
 
-The Rust service exposes liveness, database readiness, public server information, one-time initial setup, login, and invitation acceptance. Authenticated endpoints provide session identity, logout, team membership, invitation creation, role changes, member removal, project records, change feeds, and content-addressed blob transfer. The desktop Settings surface checks the server, signs in, accepts invitations or initializes the first team, and displays the account and team role. Session tokens are stored in Windows Credential Manager and bound to the server origin and instance ID. The project sync worker and conflict-resolution UI are not implemented yet. Do not rely on this for production team data until rate limiting, tested database/blob backups, restore validation, and upgrade operations are complete.
+The Rust service exposes liveness, database readiness, public server information, one-time initial setup, login, and invitation acceptance. Authenticated endpoints provide session identity, logout, team membership, invitation creation, role changes, member removal, project records, change feeds, and content-addressed blob transfer. The desktop Settings surface checks the server, signs in, accepts invitations or initializes the first team, and displays the account and team role. Session tokens are stored in Windows Credential Manager and bound to the server origin and instance ID. The project sync worker, per-project opt-in controls, automatic team downloads, and conflict-resolution UI are implemented; see PROJECT-SYNC.md. Do not rely on this for production team data until rate limiting, tested database/blob backups, restore validation, and upgrade operations are complete.

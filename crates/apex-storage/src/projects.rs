@@ -101,6 +101,11 @@ impl Workspace {
             .map_err(storage)?;
         tx.execute_batch("PRAGMA defer_foreign_keys=ON")
             .map_err(storage)?;
+        tx.execute(
+            "UPDATE project_sync SET enabled=0,message='Local project deleted' WHERE project_id=?1",
+            [id],
+        )
+        .map_err(storage)?;
         tx.execute("DELETE FROM upload_batch_items WHERE folder_id IN (SELECT id FROM asset_folders WHERE project_id=?1)", [id]).map_err(storage)?;
         tx.execute("DELETE FROM asset_versions WHERE asset_id IN (SELECT id FROM assets WHERE project_id=?1)", [id]).map_err(storage)?;
         tx.execute("DELETE FROM asset_placements WHERE asset_id IN (SELECT id FROM assets WHERE project_id=?1)", [id]).map_err(storage)?;

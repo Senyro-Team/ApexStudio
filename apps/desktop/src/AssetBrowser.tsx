@@ -45,12 +45,14 @@ const empty: AssetBoard = { assets: [], folders: [], placements: [] };
 export default function AssetBrowser({
   project,
   initialAssetId = null,
+  syncRefresh = 0,
   catalogue,
   onBusy,
   onChange,
 }: {
   project: Project;
   initialAssetId?: string | null;
+  syncRefresh?: number;
   catalogue: Catalogue | null;
   onBusy: (value: boolean) => void;
   onChange: () => void;
@@ -216,6 +218,10 @@ export default function AssetBrowser({
       .then((value) => {
         if (active) {
           setBoard(value);
+          if (syncRefresh && !initialAssetId) {
+            setFolderId((id) => id && value.folders.some((folder) => folder.id === id) ? id : null);
+            setSelected((id) => id && value.assets.some((asset) => asset.id === id) ? id : null);
+          }
           if (initialAssetId) {
             setFolderId(
               value.placements.find((p) => p.assetId === initialAssetId)
@@ -238,7 +244,7 @@ export default function AssetBrowser({
     return () => {
       active = false;
     };
-  }, [project.id, initialAssetId]);
+  }, [project.id, initialAssetId, syncRefresh]);
   useEffect(() => {
     if (!selected) {
       setVersions([]);

@@ -25,10 +25,38 @@ pub async fn list_projects(
 pub async fn save_project(
     id: Option<String>,
     fields: ProjectInput,
+    sync: Option<super::team_sync::ProjectSyncChoice>,
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<Project, CommandError> {
+    let destination = if let Some(choice) = &sync {
+        super::team_sync::validate_sync_choice(choice)
+            .await
+            .map_err(|message| CommandError {
+                code: "sync_configuration".into(),
+                message,
+            })?
+    } else {
+        None
+    };
     let workspace = workspace.inner().clone();
-    work(move || workspace.save_project(id.as_deref(), fields)).await
+    work(move || {
+        if destination.is_some() && fields.name.trim().chars().count()<2 {
+            return Err(Error::InvalidProject("Use a project name with at least two characters to synchronize it.".into()));
+        }
+        // Check destination changes before saving metadata, so errors cannot create duplicate projects.
+        if let (Some(id),Some(destination)) = (id.as_deref(),destination.as_ref()) {
+            if let Some(old)=workspace.project_sync(id)? {
+                if old.origin!=destination.origin || old.server_instance!=destination.instance || old.team_id!=destination.team {
+                    return Err(Error::InvalidContent("This project is linked to another team. Keep its existing destination or create a project copy.".into()));
+                }
+            }
+        }
+        let project=workspace.save_project(id.as_deref(), fields)?;
+        if sync.is_some() {
+            workspace.configure_project_sync(&project.id,destination.as_ref().map(|d|(d.origin.as_str(),d.instance.as_str(),d.team.as_str())))?;
+        }
+        Ok(project)
+    }).await
 }
 #[tauri::command]
 pub async fn archive_project(

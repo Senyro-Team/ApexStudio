@@ -74,7 +74,7 @@ fn set_app_theme_icon(app: tauri::AppHandle, color: &str) -> Result<(), String> 
         tauri::image::Image::from_bytes(include_bytes!("../../public/brand/themes/violet.png"))
             .map_err(|error| error.to_string())?;
     let mut rgba = base.rgba().to_vec();
-    for pixel in rgba.chunks_exact_mut(4) {
+    for pixel in rgba.as_chunks_mut::<4>().0 {
         pixel[..3].copy_from_slice(&channels);
     }
     let icon = tauri::image::Image::new_owned(rgba, base.width(), base.height());
@@ -201,6 +201,10 @@ pub fn run() {
             team_sync::sync_create_invitation,
             team_sync::sync_initial_setup,
             team_sync::sync_disconnect,
+            team_sync::project_sync_settings,
+            team_sync::set_project_sync,
+            team_sync::sync_projects,
+            team_sync::resolve_project_sync,
             set_app_theme_icon,
             projects::list_projects,
             projects::save_project,

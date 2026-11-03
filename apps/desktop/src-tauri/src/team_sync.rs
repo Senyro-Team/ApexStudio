@@ -10,6 +10,8 @@ use serde_json::json;
 use tauri::State;
 use tokio::sync::Mutex;
 use zeroize::{Zeroize, Zeroizing};
+mod project_sync;
+pub use project_sync::*;
 
 const CREDENTIAL_SERVICE: &str = "studio.apexdesigns.apexstudio";
 const CREDENTIAL_ACCOUNT: &str = "team-sync-session";

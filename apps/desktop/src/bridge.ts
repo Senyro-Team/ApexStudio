@@ -91,6 +91,17 @@ export const syncInitialSetup = (
   password,
 });
 export const syncDisconnect = () => invoke<void>("sync_disconnect");
+export interface ProjectSyncChoice { enabled: boolean; serverUrl: string; teamId: string }
+export interface ProjectSyncSettings {
+  projectId: string; origin: string; serverInstance: string; teamId: string;
+  enabled: boolean; localHash: string | null; revision: number; cursor: number;
+  message: string; syncedAt: string | null;
+}
+export interface SyncReport { uploaded: number; downloaded: number; errors: string[] }
+export const projectSyncSettings = (projectId: string) => invoke<ProjectSyncSettings | null>("project_sync_settings", { projectId });
+export const setProjectSync = (projectId: string, choice: ProjectSyncChoice) => invoke<ProjectSyncSettings | null>("set_project_sync", { projectId, choice });
+export const syncProjects = (serverUrl: string, teamId: string) => invoke<SyncReport>("sync_projects", { serverUrl, teamId });
+export const resolveProjectSync = (projectId: string, useServer: boolean) => invoke<void>("resolve_project_sync", {projectId, useServer});
 
 export interface WorkspaceInfo {
   name: string;
@@ -135,8 +146,8 @@ export interface ImportReport {
   failed: string[];
 }
 export const listProjects = () => invoke<Project[]>("list_projects");
-export const saveProject = (id: string | null, fields: ProjectFields) =>
-  invoke<Project>("save_project", { id, fields });
+export const saveProject = (id: string | null, fields: ProjectFields, sync?: ProjectSyncChoice) =>
+  invoke<Project>("save_project", { id, fields, ...(sync ? {sync} : {}) });
 export const archiveProject = (id: string, archived: boolean) =>
   invoke<Project>("archive_project", { id, archived });
 export const deleteArchivedProject = (id: string) =>

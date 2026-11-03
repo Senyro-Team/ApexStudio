@@ -4,6 +4,8 @@ import AssetBrowser from "./AssetBrowser";
 import { lazy, Suspense } from "react";
 const Notes = lazy(() => import("./Notes"));
 import { ArchiveImport, ProjectExport } from "./Packages";
+import { savedSyncDestination } from "./useTeamProjectSync";
+import ProjectSyncStatus from "./ProjectSyncStatus";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
@@ -29,6 +31,8 @@ import {
   saveAssetCopy,
   vehicleCatalogue,
   errorMessage,
+  projectSyncSettings,
+  type ProjectSyncSettings,
   type RobloxFocus,
   type Project,
   type ProjectFields,
@@ -92,17 +96,32 @@ function Editor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [discard, setDiscard] = useState(false);
+  const [syncEnabled, setSyncEnabled] = useState(false);
+  const [syncInitial, setSyncInitial] = useState(false);
+  const [syncBinding, setSyncBinding] = useState<ProjectSyncSettings | null>(null);
+  const [syncLoading, setSyncLoading] = useState(Boolean(project && desktopAvailable));
+  const [syncError, setSyncError] = useState("");
+  const destination = savedSyncDestination();
+  useEffect(() => {
+    if (!project || !desktopAvailable) return;
+    let active = true;
+    void projectSyncSettings(project.id).then((binding) => {
+      if (!active) return;
+      setSyncBinding(binding); setSyncEnabled(binding?.enabled ?? false); setSyncInitial(binding?.enabled ?? false);
+    }).catch(() => { if (active) setSyncError("Could not load this project's sync setting. Reopen the editor to try again."); })
+      .finally(() => { if (active) setSyncLoading(false); });
+    return () => { active = false; };
+  }, [project]);
   const dirty =
     JSON.stringify(fields) !== JSON.stringify(fieldsOf(project)) ||
     tags !== (project?.tags ?? []).join(", ") ||
-    links !== (project?.referenceLinks ?? []).join("\n");
+    links !== (project?.referenceLinks ?? []).join("\n") || syncEnabled !== syncInitial;
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
     setBusy(true);
     try {
-      onSave(
-        await saveProject(project?.id ?? null, {
+      const values = {
           ...fields,
           tags: tags
             .split(",")
@@ -112,8 +131,14 @@ function Editor({
             .split("\n")
             .map((value) => value.trim())
             .filter(Boolean),
-        }),
-      );
+        };
+      const sync = syncEnabled !== syncInitial ? {
+        enabled: syncEnabled,
+        serverUrl: syncBinding?.origin ?? destination.serverUrl,
+        teamId: syncBinding?.teamId ?? destination.teamId,
+      } : undefined;
+      onSave(sync ? await saveProject(project?.id ?? null, values, sync) : await saveProject(project?.id ?? null, values));
+      window.dispatchEvent(new Event("apex-project-sync-request"));
     } catch (error) {
       setError(errorMessage(error));
     } finally {
@@ -274,6 +299,21 @@ function Editor({
             value={links}
             onChange={(e) => setLinks(e.target.value)}
           />
+          <div className="project-sync-options">
+            <label className="check-label">
+              <input type="checkbox" checked={syncEnabled}
+                disabled={syncLoading || Boolean(syncError) || (!syncEnabled && !(syncBinding?.origin && syncBinding.teamId) && !(destination.serverUrl && destination.teamId))}
+                onChange={(e) => setSyncEnabled(e.target.checked)} />
+              Synchronize with team server
+            </label>
+            <p className="field-hint">
+              {syncEnabled ? "Share this project's files, folders, notes and details with your team. Changes sync automatically." : "Keep this project on this device. Turning sync off keeps existing copies on the server and other devices."}
+            </p>
+            {(syncBinding?.origin || destination.serverUrl) && <p className="field-hint">Server: {syncBinding?.origin ?? destination.serverUrl}</p>}
+            {!syncBinding && (!destination.serverUrl || !destination.teamId) && <p className="field-hint">Sign in and choose a team in Settings → Team sync to enable sharing.</p>}
+            {syncLoading && <p role="status">Loading sync setting…</p>}
+            {syncError && <p role="alert" className="inline-error">{syncError}</p>}
+          </div>
         </fieldset>
         {error && (
           <p role="alert" className="inline-error">
@@ -320,6 +360,7 @@ export default function Projects({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [noteDirty, setNoteDirty] = useState(false);
+  const [syncRefresh, setSyncRefresh] = useState(0);
   useEffect(() => {
     onEditingChange(Boolean(editor) || busy || noteDirty);
   }, [editor, busy, noteDirty, onEditingChange]);
@@ -342,6 +383,18 @@ export default function Projects({
   useEffect(() => {
     if (desktopAvailable) void refresh();
   }, []);
+  useEffect(() => {
+    const updated = (event: Event) => {
+      if (!editor && !noteDirty && !busy) {
+        void listProjects().then(setProjects).catch(() => {});
+        if (selected) void listAssets(selected).then(setAssets).catch(() => {});
+        const report = (event as CustomEvent<{downloaded?: number}>).detail;
+        if (!report || (report.downloaded ?? 0) > 0) setSyncRefresh((value) => value + 1);
+      }
+    };
+    window.addEventListener("apex-projects-synced", updated);
+    return () => window.removeEventListener("apex-projects-synced", updated);
+  }, [editor, noteDirty, busy, selected]);
   useEffect(() => {
     if (section !== "Projects") {
       setSelected(null);
@@ -736,6 +789,7 @@ export default function Projects({
           {tab === "Notes" ? (
             <Suspense fallback={<p role="status">Loading editor…</p>}>
               <Notes
+                key={`${project.id}:${syncRefresh}`}
                 projectId={project.id}
                 onEditingChange={setNoteDirty}
                 readOnly={project.archived}
@@ -744,6 +798,7 @@ export default function Projects({
           ) : tab === "Assets" ? (
             <AssetBrowser
               project={project}
+              syncRefresh={syncRefresh}
               initialAssetId={assetToOpen}
               catalogue={catalogue}
               onBusy={setNoteDirty}
@@ -752,6 +807,7 @@ export default function Projects({
           ) : tab === "Details" ? (
             <section className="project-metadata">
               <h2>Project details</h2>
+              <ProjectSyncStatus projectId={project.id} />
               <dl>
                 <dt>Created</dt>
                 <dd>{date(project.createdAt)}</dd>

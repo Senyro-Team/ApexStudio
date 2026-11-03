@@ -49,6 +49,9 @@ vi.mock("./bridge", () => ({
   vehicleCatalogue: vi.fn(),
   listAssets: vi.fn(),
   saveProject: vi.fn(),
+  projectSyncSettings: vi.fn().mockResolvedValue(null),
+  setProjectSync: vi.fn().mockResolvedValue(null),
+  syncProjects: vi.fn().mockResolvedValue({uploaded: 0, downloaded: 0, errors: []}),
   archiveProject: vi.fn(),
   statisticsProfile: vi.fn().mockResolvedValue(null),
   statisticsHistory: vi.fn().mockResolvedValue([]),
@@ -164,6 +167,25 @@ it("edits only writable project fields and retains the creation metadata", async
   const fields = vi.mocked(saveProject).mock.calls[0][1];
   expect(fields).not.toHaveProperty("id");
   expect(fields).not.toHaveProperty("createdAt");
+});
+
+it("lets a new project opt into the selected team's sync destination", async () => {
+  localStorage.setItem("apex-studio.team-sync.server-url", "https://sync.example.test");
+  localStorage.setItem("apex-studio.team-sync.active-team", "team-id");
+  vi.mocked(saveProject).mockResolvedValue(project);
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("My workspace");
+  await user.click(screen.getByRole("button", {name: /^New project$/}));
+  const toggle = screen.getByRole("checkbox", {name: "Synchronize with team server"});
+  expect(toggle).toHaveProperty("checked", false);
+  await user.click(toggle);
+  await user.type(screen.getByLabelText("Project name"), "Harbor project");
+  await user.click(screen.getByRole("button", {name: "Save project"}));
+  await screen.findByRole("heading", {name: "Harbor project"});
+  expect(saveProject).toHaveBeenCalledWith(null, expect.objectContaining({name: "Harbor project"}), {
+    enabled: true, serverUrl: "https://sync.example.test", teamId: "team-id",
+  });
 });
 afterEach(cleanup);
 

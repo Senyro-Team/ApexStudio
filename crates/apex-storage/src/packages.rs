@@ -278,6 +278,7 @@ fn checked(path: &Path) -> Result<Checked, Error> {
             ));
         }
         let allowed = HashSet::from([
+            "project_sync",
             "trash_entries",
             "content_leases",
             "workspace_settings",
