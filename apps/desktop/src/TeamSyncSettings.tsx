@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { autoSyncEnabled, setAutoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
 import { Check, CircleAlert, Copy, LogOut, RefreshCw, Server } from "lucide-react";
 import {
   desktopAvailable,
@@ -47,6 +48,7 @@ export default function TeamSyncSettings({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [syncBusy, setSyncBusy] = useState(false);
+  const automaticSync = useSyncExternalStore(subscribeAutoSync, autoSyncEnabled, () => true);
   useEffect(() => {
     const failed = (event: Event) => setError(String((event as CustomEvent).detail));
     window.addEventListener("apex-project-sync-error", failed);
@@ -89,9 +91,7 @@ export default function TeamSyncSettings({
       try {
         const result = await syncConnectionStatus(url);
         if (!active) return;
-        setConnection(result);
-        setServerUrl(result.server.origin);
-        initialUrl.current = result.server.origin;
+        acceptConnection(result);
       } catch (reason) {
         if (active) setError(errorText(reason));
       }
@@ -337,6 +337,16 @@ export default function TeamSyncSettings({
           )}
           {selectedTeam && <section className="project-sync-options" aria-label="Team project synchronization">
             <h3>Project synchronization</h3>
+            <label className="check-label">
+              <input type="checkbox" checked={automaticSync} onChange={(event) => {
+                try {
+                  setAutoSyncEnabled(event.target.checked);
+                  setNotice(event.target.checked ? "Automatic synchronization enabled." : "Automatic synchronization disabled. Use Sync projects now to synchronize manually.");
+                } catch { setError("The automatic sync setting could not be saved on this device."); }
+              }} />
+              Automatically synchronize projects
+            </label>
+            <p className="field-hint">Sync saved changes shortly after editing and check for team updates every 2 seconds.</p>
             <p className="field-hint">Shared projects download automatically. Choose “Synchronize with team server” when creating a project or in its Details to share it.</p>
             <button className="secondary" type="button" disabled={busy || syncBusy} onClick={() => {
               setSyncBusy(true); setError(""); setNotice("");

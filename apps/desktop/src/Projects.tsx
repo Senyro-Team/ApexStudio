@@ -307,7 +307,7 @@ function Editor({
               Synchronize with team server
             </label>
             <p className="field-hint">
-              {syncEnabled ? "Share this project's files, folders, notes and details with your team. Changes sync automatically." : "Keep this project on this device. Turning sync off keeps existing copies on the server and other devices."}
+              {syncEnabled ? "Share this project's files, folders, notes and details with your team." : "Keep this project on this device. Turning sync off keeps existing copies on the server and other devices."}
             </p>
             {(syncBinding?.origin || destination.serverUrl) && <p className="field-hint">Server: {syncBinding?.origin ?? destination.serverUrl}</p>}
             {!syncBinding && (!destination.serverUrl || !destination.teamId) && <p className="field-hint">Sign in and choose a team in Settings → Team sync to enable sharing.</p>}

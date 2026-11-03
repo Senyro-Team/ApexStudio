@@ -6,7 +6,8 @@ Implemented 2026-11-03. Server connection settings previously provided authentic
 
 - New/Edit Project: **Synchronize with team server**. New projects default to local-only. The destination is the team selected in Settings → Team sync.
 - Project Details → Synchronization: enable/disable sync, see the last result and sync time, retry immediately, or resolve a conflict.
-- Settings → Team sync → **Sync projects now** performs a team exchange. Otherwise the desktop checks after startup, when an editor closes, on focus, and every 30 seconds while not editing.
+- Settings → Team sync → **Automatically synchronize projects** enables/disables background transfers on this device. The choice persists immediately; devices configured before the switch existed retain automatic sync by default. **Sync projects now** remains available when automatic sync is off.
+- With automatic sync enabled, startup, saved changes, the end of editing, focus, and restored connectivity trigger a 250 ms debounced exchange. Remote checks run two seconds after the previous exchange completes while not editing. Slow transfers never accumulate overlapping automatic runs; failures back off up to 32 seconds. Actual transfer latency also depends on network and file size.
 - Shared team projects download automatically to a newly connected device. A persisted disabled binding suppresses future downloads for that project on this device.
 - Disabling sync retains local and server data. Deleting a local archived project disables its binding; it does not delete the team copy or cause an automatic re-download.
 

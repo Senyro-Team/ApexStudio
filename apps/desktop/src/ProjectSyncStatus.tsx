@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { autoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
 import {
   desktopAvailable,
   projectSyncSettings,
@@ -26,6 +27,11 @@ export default function ProjectSyncStatus({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [resolution, setResolution] = useState<"server" | "local" | null>(null);
+  const automaticSync = useSyncExternalStore(
+    subscribeAutoSync,
+    autoSyncEnabled,
+    () => true,
+  );
   useEffect(() => {
     if (!desktopAvailable) {
       setLoading(false);
@@ -126,6 +132,11 @@ export default function ProjectSyncStatus({
           ? binding.message
           : "Local only on this device. Existing server copies are kept when you turn sync off."}
       </p>
+      {binding?.enabled && !automaticSync && (
+        <p className="field-hint">
+          Automatic sync is off. Use Sync now to send and receive changes.
+        </p>
+      )}
       {binding?.origin && (
         <p className="field-hint">
           {binding.origin}
