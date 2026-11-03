@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Notes from "./Notes";
-import { listNotes, saveNote, type Note } from "./bridge";
+import { deleteArchivedNote, listNotes, saveNote, type Note } from "./bridge";
 vi.mock("./bridge", () => ({
   desktopAvailable: true,
   listNotes: vi.fn(),
   createNote: vi.fn(),
   saveNote: vi.fn(),
   archiveNote: vi.fn(),
+  deleteArchivedNote: vi.fn(),
   attachNoteImage: vi.fn(),
   noteImage: vi.fn(),
   errorMessage: (e: unknown) => (e instanceof Error ? e.message : "Failed"),
@@ -37,6 +38,21 @@ beforeEach(() => {
   vi.mocked(listNotes).mockResolvedValue([note]);
 });
 afterEach(cleanup);
+it("deletes an archived note only after confirmation", async () => {
+  const user = userEvent.setup();
+  const archivedNote = { ...note, archived: true };
+  vi.mocked(listNotes).mockResolvedValue([archivedNote]);
+  vi.mocked(deleteArchivedNote).mockResolvedValue(undefined);
+  render(<Notes onEditingChange={() => {}} />);
+  await user.click(await screen.findByRole("button", { name: "Archived notes" }));
+  await user.click(screen.getByRole("button", { name: /Reference notes/ }));
+  await user.click(screen.getByRole("button", { name: "Delete permanently" }));
+  expect(deleteArchivedNote).not.toHaveBeenCalled();
+  const dialog = screen.getByRole("alertdialog", { name: "Delete note permanently" });
+  await user.click(within(dialog).getByRole("button", { name: "Delete permanently" }));
+  expect(deleteArchivedNote).toHaveBeenCalledWith(archivedNote);
+  expect(await screen.findByText("No archived notes.")).toBeTruthy();
+});
 it("saves formatted content with the current revision and clears unsaved state only after success", async () => {
   const user = userEvent.setup();
   const lock = vi.fn();

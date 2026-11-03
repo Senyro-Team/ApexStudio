@@ -40,6 +40,14 @@ pub async fn archive_project(
     work(move || workspace.archive_project(&id, archived)).await
 }
 #[tauri::command]
+pub async fn delete_archived_project(
+    id: String,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<(), CommandError> {
+    let workspace = workspace.inner().clone();
+    work(move || workspace.delete_archived_project(&id)).await
+}
+#[tauri::command]
 pub async fn list_assets(
     project_id: Option<String>,
     workspace: tauri::State<'_, Workspace>,

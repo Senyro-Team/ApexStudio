@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import {
   archiveNote,
+  deleteArchivedNote,
   attachNoteImage,
   createNote,
   desktopAvailable,
@@ -454,6 +455,7 @@ export default function Notes({
     [error, setError] = useState(""),
     [loading, setLoading] = useState(desktopAvailable),
     [pending, setPending] = useState<string | null>(null),
+    [confirmDelete, setConfirmDelete] = useState(false),
     [generation, setGeneration] = useState(0);
   useEffect(() => {
     onEditingChange(dirty || busy);
@@ -500,6 +502,7 @@ export default function Notes({
       return;
     }
     setSelected(id);
+    setConfirmDelete(false);
   }
   const selectedNote = notes.find((n) => n.id === selected);
   const update = (note: Note) =>
@@ -510,6 +513,21 @@ export default function Notes({
     try {
       update(await archiveNote(selectedNote, !selectedNote.archived));
       setSelected(null);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function deleteNote() {
+    if (!selectedNote?.archived) return;
+    setBusy(true);
+    setError("");
+    try {
+      await deleteArchivedNote(selectedNote);
+      setNotes((items) => items.filter((item) => item.id !== selectedNote.id));
+      setSelected(null);
+      setConfirmDelete(false);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -567,6 +585,7 @@ export default function Notes({
             onClick={() => {
               setArchived(!archived);
               setSelected(null);
+              setConfirmDelete(false);
             }}
           >
             {archived ? "Active notes" : "Archived notes"}
@@ -619,6 +638,28 @@ export default function Notes({
               >
                 {selectedNote.archived ? "Restore note" : "Archive note"}
               </button>
+              {selectedNote.archived && (
+                <>
+                  <button
+                    className="text-button note-archive"
+                    disabled={dirty || busy}
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    Delete permanently
+                  </button>
+                  {confirmDelete && (
+                    <div className="confirm-panel" role="alertdialog" aria-label="Delete note permanently">
+                      <p>Delete “{selectedNote.title}” permanently from this workspace? Existing backups are unchanged.</p>
+                      <button className="danger" disabled={busy} onClick={() => void deleteNote()}>
+                        Delete permanently
+                      </button>
+                      <button className="text-button" disabled={busy} onClick={() => setConfirmDelete(false)}>
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </>
           ) : (
             <div className="note-empty">Select a note.</div>

@@ -51,6 +51,15 @@ pub async fn archive_note(
     work(move || ws.archive_note(&id, revision, archived)).await
 }
 #[tauri::command]
+pub async fn delete_archived_note(
+    id: String,
+    revision: u32,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<(), CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || ws.delete_archived_note(&id, revision)).await
+}
+#[tauri::command]
 pub async fn attach_note_image(
     id: String,
     app: tauri::AppHandle,

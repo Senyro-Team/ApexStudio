@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LiveryFolderImport from "./LiveryFolderImport";
@@ -141,7 +142,7 @@ it("keeps per-folder edits when navigating and permits skipping a folder with no
   result.unmount();
   expect(cancelLivery).not.toHaveBeenCalled();
 });
-it("releases unimported staged folders when the review is closed", () => {
+it("releases unimported staged folders when the review is closed", async () => {
   const result = render(
     <LiveryFolderImport
       projectId="p"
@@ -152,6 +153,27 @@ it("releases unimported staged folders when the review is closed", () => {
     />,
   );
   result.unmount();
+  await Promise.resolve();
+  expect(cancelLivery).toHaveBeenCalledWith("token0");
+  expect(cancelLivery).toHaveBeenCalledWith("token1");
+});
+
+it("keeps staged folders during the StrictMode effect replay", async () => {
+  const result = render(
+    <StrictMode>
+      <LiveryFolderImport
+        projectId="p"
+        parentId={null}
+        folders={folders}
+        catalogue={catalogue}
+        onClose={() => {}}
+      />
+    </StrictMode>,
+  );
+  await Promise.resolve();
+  expect(cancelLivery).not.toHaveBeenCalled();
+  result.unmount();
+  await Promise.resolve();
   expect(cancelLivery).toHaveBeenCalledWith("token0");
   expect(cancelLivery).toHaveBeenCalledWith("token1");
 });

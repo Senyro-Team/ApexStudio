@@ -344,15 +344,16 @@ export default function Publishing({
       )}
       {notice && <p role="status">{notice}</p>}
       <nav className="publishing-steps" aria-label="Publishing sections">
-        {steps.map((s) => (
+        {steps.map((s, index) => (
           <button
             key={s}
-            className="text-button"
+            className="publishing-step"
             aria-current={step === s ? "step" : undefined}
             onClick={() => setStep(s)}
             disabled={busy}
           >
-            {s}
+            <span className="publishing-step-number" aria-hidden="true">{index + 1}</span>
+            <span>{s}</span>
           </button>
         ))}
       </nav>

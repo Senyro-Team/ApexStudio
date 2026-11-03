@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
+import { loadWallpaper, saveWallpaper } from "./wallpaper";
 import { invoke } from "@tauri-apps/api/core";
 import {
   assetBoard,
@@ -64,6 +65,10 @@ vi.mock("./bridge", () => ({
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("./wallpaper", () => ({
+  loadWallpaper: vi.fn().mockResolvedValue(null),
+  saveWallpaper: vi.fn().mockResolvedValue(undefined),
+}));
 it("opens the global ERLCX area with one page heading", async () => {
   render(<App />);
   await screen.findByText("My workspace");
@@ -82,6 +87,16 @@ const info = {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  vi.mocked(loadWallpaper).mockResolvedValue(null);
+  vi.mocked(saveWallpaper).mockResolvedValue(undefined);
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: vi.fn(() => "blob:wallpaper-test"),
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: vi.fn(),
+  });
   vi.mocked(assetBoard).mockResolvedValue({
     assets: [],
     folders: [],
@@ -153,6 +168,28 @@ it("edits only writable project fields and retains the creation metadata", async
 afterEach(cleanup);
 
 describe("workspace shell", () => {
+  it("saves a background image, restores its glass mode, and removes it", async () => {
+    let savedImage: Blob | null = null;
+    vi.mocked(loadWallpaper).mockImplementation(async () => savedImage);
+    vi.mocked(saveWallpaper).mockImplementation(async (image) => { savedImage = image; });
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    const image = new File(["image bytes"], "background.png", { type: "image/png" });
+    expect(screen.getByRole("button", { name: /Upload background image/ })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Background image file"), { target: { files: [image] } });
+    await waitFor(() => expect(document.documentElement.dataset.wallpaper).toBe("true"));
+    expect(savedImage).toBe(image);
+    expect(document.documentElement.style.getPropertyValue("--wallpaper-image")).toContain("blob:wallpaper-test");
+    view.unmount();
+    render(<App />);
+    await waitFor(() => expect(document.documentElement.dataset.wallpaper).toBe("true"));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Remove background image" }));
+    await waitFor(() => expect(document.documentElement.dataset.wallpaper).toBeUndefined());
+    expect(savedImage).toBeNull();
+  });
   it("saves the selected theme and updates the app logo and desktop icon", async () => {
     const user = userEvent.setup();
     const view = render(<App />);
@@ -309,7 +346,7 @@ describe("workspace shell", () => {
   it("shows empty local records and no mockup projects", async () => {
     render(<App />);
     await screen.findByText("My workspace");
-    expect(screen.getByText("No projects")).toBeTruthy();
+    expect(screen.getByText("No projects yet")).toBeTruthy();
     expect(screen.queryByText("NYPD Christmas 2019")).toBeNull();
   });
   it("edits dashboard widgets on a grid only after confirmation and keeps the layout", async () => {
@@ -414,6 +451,47 @@ describe("workspace shell", () => {
     render(<App />);
     await screen.findByText("My workspace");
     expect(screen.getByRole("img", { name: /Round clock/ })).toBeTruthy();
+  });
+  it("offers equally many digital and round clock looks and saves the chosen dial", async () => {
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    await user.click(screen.getByRole("button", { name: "Live clock" }));
+    const designs = screen.getByRole("group", { name: "Live clock designs" });
+    expect(within(designs).getAllByRole("button")).toHaveLength(8);
+    await user.click(within(designs).getByRole("button", { name: "Live clock design: Bold digital" }));
+    const clockCell = screen.getByRole("gridcell", { name: /Live clock, 1 by 1/ });
+    expect(clockCell.querySelector(".dashboard-digital-bold")).toBeTruthy();
+    await user.click(within(designs).getByRole("button", { name: "Live clock design: Roman dial" }));
+    expect(within(clockCell).getByRole("img", { name: /Roman dial/ })).toBeTruthy();
+    expect(within(clockCell).getByText("XII")).toBeTruthy();
+    await user.click(within(designs).getByRole("button", { name: "Live clock design: Glow dial" }));
+    expect(within(clockCell).getByRole("img", { name: /Glow dial/ })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").clock.design).toBe("accent");
+    view.unmount();
+    render(<App />);
+    await screen.findByText("My workspace");
+    expect(screen.getByRole("img", { name: /Glow dial/ })).toBeTruthy();
+  });
+  it("previews and saves calendar and split date designs", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("My workspace");
+    await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    await user.click(screen.getByRole("button", { name: "Date" }));
+    await user.click(screen.getByRole("button", { name: "Date design: Calendar" }));
+    const dateCell = screen.getByRole("gridcell", { name: /Date, 1 by 1/ });
+    expect(within(dateCell).getByRole("img", { name: /Calendar date/ })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").date.design).toBe("calendar");
+    await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
+    await user.click(screen.getByRole("button", { name: "Date" }));
+    await user.click(screen.getByRole("button", { name: "Date design: Split date" }));
+    expect(screen.getByRole("gridcell", { name: /Date, 1 by 1/ }).querySelector(".dashboard-split-date")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+    expect(JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}").date.design).toBe("split");
   });
   it("applies a selected design when adding a new widget", async () => {
     const user = userEvent.setup();

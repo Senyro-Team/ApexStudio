@@ -139,6 +139,8 @@ export const saveProject = (id: string | null, fields: ProjectFields) =>
   invoke<Project>("save_project", { id, fields });
 export const archiveProject = (id: string, archived: boolean) =>
   invoke<Project>("archive_project", { id, archived });
+export const deleteArchivedProject = (id: string) =>
+  invoke<void>("delete_archived_project", { id });
 export const listAssets = (projectId: string | null) =>
   invoke<Asset[]>("list_assets", { projectId });
 export const importAssets = (
@@ -201,6 +203,8 @@ export const archiveNote = (note: Note, archived: boolean) =>
     revision: note.revision,
     archived,
   });
+export const deleteArchivedNote = (note: Note) =>
+  invoke<void>("delete_archived_note", { id: note.id, revision: note.revision });
 export const attachNoteImage = (id: string) =>
   invoke<string | null>("attach_note_image", { id });
 export const noteImage = (id: string, hash: string) =>
@@ -470,7 +474,7 @@ export const startUploadBatch = (
 ) => invoke<string>("start_upload_batch", { requestId, folderIds, force });
 export const controlUploadBatch = (
   batchId: string | null,
-  action: "pause" | "resume" | "cancel" | "retry",
+  action: "pause" | "resume" | "cancel" | "retry" | "delete",
 ) => invoke<void>("control_upload_batch", { batchId, action });
 export const setEditLock = (locked: boolean) =>
   invoke<void>("set_edit_lock", { locked });
