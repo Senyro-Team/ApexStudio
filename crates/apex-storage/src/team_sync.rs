@@ -116,14 +116,26 @@ mod tests {
             "Unsynced local change"
         );
         assert!(ws.project(&other.id).is_ok());
-        let mut foreign_note=incoming.clone();
+        let mut foreign_note = incoming.clone();
         foreign_note.tables[6].push(vec![
-            Value::from("foreign-note"),Value::from(other.id.clone()),Value::from("Do not insert"),
-            Value::from("{}"),Value::from(""),Value::from(1),Value::from(0),Value::from("2026-11-03"),Value::from("2026-11-03"),
+            Value::from("foreign-note"),
+            Value::from(other.id.clone()),
+            Value::from("Do not insert"),
+            Value::from("{}"),
+            Value::from(""),
+            Value::from(1),
+            Value::from(0),
+            Value::from("2026-11-03"),
+            Value::from("2026-11-03"),
         ]);
-        assert!(ws.apply_project_snapshot(&foreign_note,Some(&current),DEST,2).is_err());
+        assert!(ws
+            .apply_project_snapshot(&foreign_note, Some(&current), DEST, 2)
+            .is_err());
         assert!(ws.notes(Some(&other.id)).unwrap().is_empty());
-        assert_eq!(ws.project(&p.id).unwrap().fields.description,"Unsynced local change");
+        assert_eq!(
+            ws.project(&p.id).unwrap().fields.description,
+            "Unsynced local change"
+        );
         ws.configure_project_sync(&p.id, None).unwrap();
         assert!(ws
             .apply_project_snapshot(&incoming, Some(&current), DEST, 2)
