@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppSelect from "./AppSelect";
 import { liveryCodesMarkdown } from "./liveryCodesMarkdown";
 import { listen } from "@tauri-apps/api/event";
-import { Trash2 } from "lucide-react";
+import { CheckCheck, CloudUpload, FileCode2, Gamepad2, Layers3, ListTodo, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
 import {
   robloxLiveries,
   robloxLivery,
+  saveLiveryCodesMarkdown,
   robloxSettings,
   uploadSnapshot,
   previewUploadBatch,
@@ -62,9 +63,13 @@ export default function Roblox({
     ),
     [now, setNow] = useState(Date.now()),
     [notice, setNotice] = useState(""),
+    [codesPreview, setCodesPreview] = useState<{ title: string; markdown: string; codes: number; missing: number; liveries: number } | null>(null),
+    [codesNotice, setCodesNotice] = useState(""),
+    [codesError, setCodesError] = useState(""),
     [confirmDeleteBatch, setConfirmDeleteBatch] = useState<string | null>(null),
     [jobPages, setJobPages] = useState<Record<string, number>>({});
   const dialog = useRef<HTMLDialogElement>(null),
+    codesDialog = useRef<HTMLDialogElement>(null),
     requestId = useRef<string | null>(null);
   const load = useCallback(async () => {
     const [rows, settings] = await Promise.all([
@@ -121,6 +126,9 @@ export default function Roblox({
   useEffect(() => {
     if (review) dialog.current?.showModal();
   }, [review]);
+  useEffect(() => {
+    if (codesPreview && !codesDialog.current?.open) codesDialog.current?.showModal();
+  }, [codesPreview]);
   useEffect(() => setPage(0), [project, search]);
   const projects = useMemo(
     () => [
@@ -186,7 +194,7 @@ export default function Roblox({
       return next;
     });
   }
-  async function copyCodes() {
+  async function previewCodes() {
     const rows = liveries.filter((l) => selected.has(l.id));
     setBusy(true);
     setError("");
@@ -210,12 +218,40 @@ export default function Roblox({
         throw new Error(
           "No usable saved decal IDs. Upload the selected textures to Roblox first.",
         );
-      await navigator.clipboard.writeText(result.markdown);
-      setNotice(
-        `Copied ${result.codes} decal IDs from ${rows.length} ${rows.length === 1 ? "livery" : "liveries"} as Markdown.${result.missing ? ` ${result.missing} unavailable ${result.missing === 1 ? "texture is" : "textures are"} marked in the list.` : ""}`,
-      );
+      const projectNames = [...new Set(rows.map((row) => row.projectName))];
+      setCodesNotice("");
+      setCodesError("");
+      setCodesPreview({
+        title: projectNames.length === 1 ? `Codes for ${projectNames[0]}` : "Livery codes",
+        markdown: result.markdown,
+        codes: result.codes,
+        missing: result.missing,
+        liveries: rows.length,
+      });
     } catch (reason) {
       setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function copyPreviewCodes() {
+    if (!codesPreview) return;
+    setCodesError("");
+    try {
+      await navigator.clipboard.writeText(codesPreview.markdown);
+      setCodesNotice(`${codesPreview.codes} decal IDs copied as Markdown.`);
+    } catch (reason) {
+      setCodesError(errorMessage(reason));
+    }
+  }
+  async function savePreviewCodes() {
+    if (!codesPreview) return;
+    setBusy(true);
+    setCodesError("");
+    try {
+      if (await saveLiveryCodesMarkdown(codesPreview.markdown)) setCodesNotice("Markdown file saved.");
+    } catch (reason) {
+      setCodesError(errorMessage(reason));
     } finally {
       setBusy(false);
     }
@@ -290,35 +326,40 @@ export default function Roblox({
       )}
       {notice && <p role="status">{notice}</p>}
       <div className="roblox-account">
-        <span>
-          {account
-            ? `Roblox account ${account}`
-            : "Configure your Roblox account before uploading."}
-        </span>
-        <button className="text-button" onClick={onSettings}>
-          Roblox settings
+        <div className="roblox-account-info">
+          <span className="roblox-account-icon"><Gamepad2 size={22} aria-hidden="true" /></span>
+          <div>
+            <small>{account ? "Connected account" : "Account needed"}</small>
+            <strong>{account ? `Roblox account ${account}` : "Connect Roblox to start uploading"}</strong>
+          </div>
+        </div>
+        <button className="secondary" onClick={onSettings}>
+          <Settings2 size={16} aria-hidden="true" /> Roblox settings
         </button>
       </div>
-      <div className="roblox-tabs">
+      <nav className="roblox-tabs" aria-label="Roblox sections">
         <button
-          className="text-button"
+          className="roblox-tab"
           onClick={() =>
             document.getElementById("roblox-liveries")?.scrollIntoView()
           }
         >
-          Liveries
+          <Layers3 size={17} aria-hidden="true" /> Liveries
         </button>
         <button
-          className="text-button"
+          className="roblox-tab"
           onClick={() =>
             document.getElementById("roblox-queue")?.scrollIntoView()
           }
         >
-          Upload queue
+          <ListTodo size={17} aria-hidden="true" /> Upload queue
         </button>
-      </div>
+      </nav>
       <section id="roblox-liveries">
-        <h2>Select liveries</h2>
+        <div className="roblox-section-heading">
+          <div><span className="roblox-section-icon"><Layers3 size={21} aria-hidden="true" /></span><div><h2>Select liveries</h2><p>Choose the designs you want to upload or export codes for.</p></div></div>
+          <span className="roblox-section-count">{filtered.length} liveries</span>
+        </div>
         <div className="roblox-filters">
           <label>
             Project
@@ -337,12 +378,13 @@ export default function Roblox({
           </label>
           <label>
             Search
-            <input
-              aria-label="Search liveries"
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <span className="roblox-search-field"><Search size={17} aria-hidden="true" /><input
+                aria-label="Search liveries"
+                type="search"
+                placeholder="Find a livery"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              /></span>
           </label>
         </div>
         <div className="roblox-selection">
@@ -373,21 +415,21 @@ export default function Roblox({
             disabled={busy || !account || !selected.size}
             onClick={() => void prepare(false)}
           >
-            Upload missing/changed
+            <CloudUpload size={17} aria-hidden="true" /> Upload missing/changed
           </button>
           <button
             className="secondary"
             disabled={busy || !account || !selected.size}
             onClick={() => void prepare(true)}
           >
-            Re-upload selected
+            <RefreshCw size={16} aria-hidden="true" /> Re-upload selected
           </button>
           <button
             className="secondary"
             disabled={busy || !selected.size}
-            onClick={() => void copyCodes()}
+            onClick={() => void previewCodes()}
           >
-            Copy codes (Markdown)
+            <FileCode2 size={17} aria-hidden="true" /> Preview codes
           </button>
         </div>
         <ul className="roblox-livery-rows">
@@ -465,12 +507,9 @@ export default function Roblox({
         </p>
       </section>
       <section id="roblox-queue" className="roblox-queue">
-        <div className="publishing-section-actions">
-          <h2>Upload queue</h2>
-          <span>
-            {snapshot.activeTransfers} transferring · limit{" "}
-            {snapshot.concurrency}
-          </span>
+        <div className="roblox-section-heading">
+          <div><span className="roblox-section-icon"><ListTodo size={21} aria-hidden="true" /></span><div><h2>Upload queue</h2><p>Track the progress of your textures.</p></div></div>
+          <span className="roblox-section-count">{snapshot.activeTransfers} transferring · limit {snapshot.concurrency}</span>
         </div>
         {wait > 0 && (
           <p role="status">Waiting for Roblox rate limit · {wait}s</p>
@@ -493,7 +532,7 @@ export default function Roblox({
             Resume all
           </button>
         </div>
-        {!snapshot.queue.batches.length && <p>No upload batches.</p>}
+        {!snapshot.queue.batches.length && <p className="roblox-empty-state"><CheckCheck size={22} aria-hidden="true" /> No upload batches.</p>}
         {snapshot.queue.batches.map((b) => {
           const jobs = [...(jobsByBatch.get(b.id) ?? [])]
             .map((id) => jobsById.get(id))
@@ -672,6 +711,22 @@ export default function Roblox({
             >
               Cancel
             </button>
+          </div>
+        </dialog>
+      )}
+      {codesPreview && (
+        <dialog ref={codesDialog} className="roblox-dialog roblox-codes-dialog" aria-labelledby="livery-codes-title" onCancel={(event) => { if (busy) event.preventDefault(); else setCodesPreview(null); }}>
+          <div className="roblox-codes-heading">
+            <div><span className="roblox-codes-icon"><FileCode2 size={22} aria-hidden="true" /></span><h2 id="livery-codes-title">{codesPreview.title}</h2></div>
+            <p>{codesPreview.codes} codes from {codesPreview.liveries} {codesPreview.liveries === 1 ? "livery" : "liveries"}{codesPreview.missing ? ` · ${codesPreview.missing} unavailable` : ""}</p>
+          </div>
+          <pre className="roblox-codes-content" aria-label="Markdown preview">{codesPreview.markdown}</pre>
+          {codesError && <p className="error" role="alert">{codesError}</p>}
+          {codesNotice && <p role="status">{codesNotice}</p>}
+          <div className="button-row roblox-codes-actions">
+            <button className="primary" disabled={busy} onClick={() => void copyPreviewCodes()}>Copy all</button>
+            <button className="secondary" disabled={busy} onClick={() => void savePreviewCodes()}>Save as Markdown</button>
+            <button className="text-button" disabled={busy} onClick={() => setCodesPreview(null)}>Close</button>
           </div>
         </dialog>
       )}

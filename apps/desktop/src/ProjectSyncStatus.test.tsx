@@ -23,6 +23,7 @@ const binding: ProjectSyncSettings = {
   serverInstance: "instance",
   teamId: "team",
   enabled: true,
+  receivedFromTeam: false,
   localHash: "hash",
   revision: 2,
   cursor: 2,

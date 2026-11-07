@@ -423,7 +423,7 @@ mod tests {
         ws.save_publishing(&p.id, 0, d).unwrap();
         ws.connection()
             .unwrap()
-            .execute_batch("DROP TABLE post_media;DROP TABLE posts;PRAGMA user_version=8;")
+            .execute_batch("DROP TABLE post_media;DROP TABLE posts;DROP TABLE project_sync;ALTER TABLE upload_jobs DROP COLUMN passes_required;PRAGMA user_version=8;")
             .unwrap();
         let reopened = Workspace::open(dir.path().join("ws")).unwrap();
         assert_eq!(reopened.post(&p.id).unwrap().data.title, "Old post");

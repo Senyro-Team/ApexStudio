@@ -972,7 +972,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::open(dir.path().join("old")).unwrap();
         ws.rename("Old studio").unwrap();
-        ws.connection().unwrap().execute_batch("DROP TABLE post_media;DROP TABLE posts;DROP INDEX assets_trash;ALTER TABLE assets DROP COLUMN trash_id;DROP TABLE content_leases;DROP TABLE upload_attempts;DROP TABLE upload_batch_items;DROP TABLE upload_passes;DROP TABLE upload_jobs;DROP TABLE upload_batches;DROP TABLE image_validation;DROP TABLE roblox_uploads;DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;DROP TABLE trash_entries;PRAGMA user_version=3;").unwrap();
+        ws.connection().unwrap().execute_batch("DROP TABLE post_media;DROP TABLE posts;DROP TABLE project_sync;DROP INDEX assets_trash;ALTER TABLE assets DROP COLUMN trash_id;DROP TABLE content_leases;DROP TABLE upload_attempts;DROP TABLE upload_batch_items;DROP TABLE upload_passes;DROP TABLE upload_jobs;DROP TABLE upload_batches;DROP TABLE image_validation;DROP TABLE roblox_uploads;DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;DROP TABLE trash_entries;PRAGMA user_version=3;").unwrap();
         ws.connection()
             .unwrap()
             .execute_batch("DROP TABLE statistics_snapshots; DROP TABLE statistics_sales;")

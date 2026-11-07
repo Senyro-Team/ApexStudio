@@ -259,6 +259,12 @@ pub async fn project_sync_settings(
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
+pub async fn list_project_sync_settings(
+    workspace: State<'_, Workspace>,
+) -> Result<Vec<ProjectSync>, String> {
+    workspace.project_sync_bindings().map_err(|e| e.to_string())
+}
+#[tauri::command]
 pub async fn set_project_sync(
     project_id: String,
     choice: ProjectSyncChoice,
