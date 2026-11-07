@@ -2619,6 +2619,67 @@ button:disabled:hover {
   padding-top: 22px;
   border-top: 1px solid var(--card-border);
 }
+.team-sync-members {
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--card-border);
+}
+.team-sync-members-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.team-sync-members-heading h3,
+.team-sync-members-heading p {
+  margin: 0;
+}
+.team-sync-members-heading .field-hint {
+  margin-top: 6px;
+}
+.team-sync-members-heading button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.team-sync-member-list {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+  overflow: hidden;
+}
+.team-sync-member-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 16px;
+  background: var(--surface);
+}
+.team-sync-member-list li + li {
+  border-top: 1px solid var(--card-border);
+}
+.team-sync-member-list li > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.team-sync-member-list li > div span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.team-sync-member-role {
+  flex: none;
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--muted);
+  background: var(--surface-raised);
+  font-size: .85rem;
+  text-transform: capitalize;
+}
 .team-sync-invitations h3 {
   margin: 0 0 8px;
 }

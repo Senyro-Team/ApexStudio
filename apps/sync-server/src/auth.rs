@@ -74,6 +74,21 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if self.status.is_server_error() {
+            tracing::error!(
+                event = "api_error",
+                status = self.status.as_u16(),
+                code = self.code,
+                "Sync API operation failed"
+            );
+        } else {
+            tracing::warn!(
+                event = "api_error",
+                status = self.status.as_u16(),
+                code = self.code,
+                "Sync API request rejected"
+            );
+        }
         (self.status, Json(ErrorResponse { error: self.code })).into_response()
     }
 }

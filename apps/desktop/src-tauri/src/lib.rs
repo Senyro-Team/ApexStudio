@@ -200,6 +200,7 @@ pub fn run() {
             team_sync::sync_sign_in,
             team_sync::sync_accept_invitation,
             team_sync::sync_create_invitation,
+            team_sync::sync_list_members,
             team_sync::sync_initial_setup,
             team_sync::sync_disconnect,
             team_sync::project_sync_settings,

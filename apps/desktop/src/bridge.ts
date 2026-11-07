@@ -39,6 +39,12 @@ export interface SyncUser {
   displayName: string;
   teams: SyncTeam[];
 }
+export interface SyncTeamMember {
+  id: string;
+  email: string;
+  displayName: string;
+  role: "owner" | "admin" | "designer" | "read_only";
+}
 export interface SyncConnectionStatus {
   server: SyncServerInfo;
   user: SyncUser | null;
@@ -75,6 +81,8 @@ export const syncCreateInvitation = (
   teamId: string,
   role: SyncInvitationRole,
 ) => invoke<SyncInvitation>("sync_create_invitation", { serverUrl, teamId, role });
+export const syncListMembers = (serverUrl: string, teamId: string) =>
+  invoke<SyncTeamMember[]>("sync_list_members", { serverUrl, teamId });
 export const syncInitialSetup = (
   serverUrl: string,
   bootstrapToken: string,

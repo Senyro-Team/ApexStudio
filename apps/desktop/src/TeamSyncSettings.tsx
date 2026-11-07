@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { autoSyncEnabled, setAutoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
-import { Check, CircleAlert, Copy, LogOut, RefreshCw, Server } from "lucide-react";
+import { Check, CircleAlert, Copy, LogOut, RefreshCw, Server, Users } from "lucide-react";
 import {
   desktopAvailable,
   syncAcceptInvitation,
@@ -11,9 +11,11 @@ import {
   syncInitialSetup,
   syncSignIn,
   syncProjects,
+  syncListMembers,
   type SyncConnectionStatus,
   type SyncInvitation,
   type SyncInvitationRole,
+  type SyncTeamMember,
 } from "./bridge";
 
 const SERVER_URL_KEY = "apex-studio.team-sync.server-url";
@@ -48,6 +50,10 @@ export default function TeamSyncSettings({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [syncBusy, setSyncBusy] = useState(false);
+  const [members, setMembers] = useState<SyncTeamMember[]>([]);
+  const [membersBusy, setMembersBusy] = useState(false);
+  const [membersError, setMembersError] = useState("");
+  const [membersRefresh, setMembersRefresh] = useState(0);
   const automaticSync = useSyncExternalStore(subscribeAutoSync, autoSyncEnabled, () => true);
   useEffect(() => {
     const failed = (event: Event) => setError(String((event as CustomEvent).detail));
@@ -171,6 +177,31 @@ export default function TeamSyncSettings({
   const connectedUser = connection?.user;
   const selectedTeam = connectedUser?.teams.find((team) => team.id === activeTeam);
   const canInvite = selectedTeam?.role === "owner" || selectedTeam?.role === "admin";
+
+  useEffect(() => {
+    if (!connectedUser || !selectedTeam) {
+      setMembers([]);
+      setMembersError("");
+      setMembersBusy(false);
+      return;
+    }
+    let active = true;
+    setMembersBusy(true);
+    setMembersError("");
+    void syncListMembers(serverUrl, selectedTeam.id)
+      .then((rows) => {
+        if (active) setMembers(rows);
+      })
+      .catch((reason) => {
+        if (active) setMembersError(errorText(reason));
+      })
+      .finally(() => {
+        if (active) setMembersBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [connectedUser?.id, selectedTeam?.id, serverUrl, membersRefresh]);
 
   async function createInvitation(event: FormEvent) {
     event.preventDefault();
@@ -357,6 +388,49 @@ export default function TeamSyncSettings({
               }).catch((reason: unknown) => setError(errorText(reason))).finally(() => setSyncBusy(false));
             }}>{syncBusy ? "Synchronizing…" : "Sync projects now"}</button>
           </section>}
+          {selectedTeam && (
+            <section className="team-sync-members" aria-labelledby="team-sync-members-title">
+              <div className="team-sync-members-heading">
+                <div>
+                  <h3 id="team-sync-members-title">Team members</h3>
+                  <p className="field-hint">People who have joined {selectedTeam.name}.</p>
+                </div>
+                <button
+                  className="secondary"
+                  type="button"
+                  disabled={membersBusy}
+                  onClick={() => setMembersRefresh((revision) => revision + 1)}
+                >
+                  <RefreshCw size={16} className={membersBusy ? "team-sync-spinning" : undefined} />
+                  {membersBusy ? "Refreshing…" : "Refresh"}
+                </button>
+              </div>
+              {membersError ? (
+                <p className="team-sync-message team-sync-error" role="alert">
+                  <CircleAlert size={17} aria-hidden="true" />
+                  {membersError}
+                </p>
+              ) : membersBusy && !members.length ? (
+                <p className="field-hint" role="status">Loading team members…</p>
+              ) : members.length ? (
+                <ul className="team-sync-member-list">
+                  {members.map((member) => (
+                    <li key={member.id}>
+                      <div>
+                        <strong>{member.displayName}</strong>
+                        <span>{member.email}</span>
+                      </div>
+                      <span className="team-sync-member-role">{member.role.replace("_", " ")}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="field-hint" role="status">
+                  <Users size={16} aria-hidden="true" /> No members found for this team.
+                </p>
+              )}
+            </section>
+          )}
           {selectedTeam && canInvite && (
             <section className="team-sync-invitations" aria-labelledby="team-sync-invite-title">
               <h3 id="team-sync-invite-title">Invite a member</h3>

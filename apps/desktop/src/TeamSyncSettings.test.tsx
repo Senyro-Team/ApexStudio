@@ -1,9 +1,10 @@
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TeamSyncSettings from "./TeamSyncSettings";
 import {
   syncConnectionStatus,
+  syncListMembers,
   syncProjects,
   type SyncConnectionStatus,
 } from "./bridge";
@@ -18,6 +19,7 @@ vi.mock("./bridge", () => ({
   syncDisconnect: vi.fn(),
   syncInitialSetup: vi.fn(),
   syncSignIn: vi.fn(),
+  syncListMembers: vi.fn(),
 }));
 const connection: SyncConnectionStatus = {
   server: {
@@ -50,6 +52,10 @@ beforeEach(() => {
     downloaded: 0,
     errors: [],
   });
+  vi.mocked(syncListMembers).mockResolvedValue([
+    { id: "owner", email: "owner@example.test", displayName: "Studio Owner", role: "owner" },
+    { id: "user", email: "designer@example.test", displayName: "Designer", role: "designer" },
+  ]);
 });
 afterEach(cleanup);
 
@@ -79,4 +85,16 @@ it("keeps the auto-sync choice when Settings is reopened and allows manual synch
   await user.click(screen.getByRole("button", { name: "Sync projects now" }));
   await screen.findByText("1 uploaded · 0 downloaded");
   expect(syncProjects).toHaveBeenCalledWith(connection.server.origin, "team");
+});
+
+it("lists the selected team's members and can refresh them", async () => {
+  const user = userEvent.setup();
+  render(<TeamSyncSettings onBusy={vi.fn()} />);
+  expect(await screen.findByText("Studio Owner")).toBeTruthy();
+  const memberList = document.querySelector(".team-sync-member-list");
+  expect(memberList).toBeTruthy();
+  expect(within(memberList as HTMLElement).getByText("owner@example.test")).toBeTruthy();
+  expect(within(memberList as HTMLElement).getByText("designer@example.test")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Refresh" }));
+  expect(syncListMembers).toHaveBeenLastCalledWith(connection.server.origin, "team");
 });

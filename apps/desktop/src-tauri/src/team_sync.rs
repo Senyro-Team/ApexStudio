@@ -48,6 +48,15 @@ pub struct SyncUser {
     pub teams: Vec<SyncTeam>,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncTeamMember {
+    pub id: String,
+    pub email: String,
+    pub display_name: String,
+    pub role: String,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncConnectionStatus {
@@ -420,6 +429,34 @@ pub async fn sync_create_invitation(
         ));
     }
     Ok(invitation)
+}
+
+#[tauri::command]
+pub async fn sync_list_members(
+    server_url: String,
+    team_id: String,
+    state: State<'_, TeamSyncState>,
+) -> Result<Vec<SyncTeamMember>, String> {
+    let _guard = state.0.lock().await;
+    let team_id = uuid::Uuid::parse_str(&team_id)
+        .map_err(|_| error("Select a valid team before viewing its members."))?;
+    let base = origin(&server_url)?;
+    let server = server_info(&base).await?;
+    let Some(saved) = load_session()? else {
+        return Err(error("Sign in to the team server to view its members."));
+    };
+    if saved.server_origin != server.origin || saved.server_instance_id != server.server_instance_id
+    {
+        return Err(error("Sign in to this team server before viewing members."));
+    }
+
+    let response = client()?
+        .get(api_url(&base, &format!("api/v1/teams/{team_id}/members"))?)
+        .headers(auth_headers(&saved.access_token)?)
+        .send()
+        .await
+        .map_err(|_| error("Could not reach the team server. Check your connection."))?;
+    response_json(response).await
 }
 
 #[tauri::command]

@@ -3,10 +3,15 @@
 mod auth;
 mod sync;
 
-use std::{env, error::Error, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{env, error::Error, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
 
 use axum::{
-    extract::DefaultBodyLimit, extract::State, http::StatusCode, routing::get, Json, Router,
+    extract::{DefaultBodyLimit, MatchedPath, Request, State},
+    http::StatusCode,
+    middleware::{self, Next},
+    response::Response,
+    routing::get,
+    Json, Router,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -92,6 +97,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .merge(auth::public_routes())
         .merge(auth::private_routes(state.clone()))
         .merge(auth::protect(sync::private_routes(), state.clone()))
+        .layer(middleware::from_fn(log_failed_requests))
         .with_state(state);
 
     let listener = TcpListener::bind(bind_address).await?;
@@ -101,6 +107,38 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .await?;
 
     Ok(())
+}
+
+async fn log_failed_requests(request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let path = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map(|matched| matched.as_str().to_owned())
+        .unwrap_or_else(|| request.uri().path().to_owned());
+    let started = Instant::now();
+    let response = next.run(request).await;
+    let status = response.status();
+    if status.is_server_error() {
+        tracing::error!(
+            event = "http_request_failed",
+            method = %method,
+            path = %path,
+            status = status.as_u16(),
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "Sync API request failed"
+        );
+    } else if status.is_client_error() {
+        tracing::warn!(
+            event = "http_request_failed",
+            method = %method,
+            path = %path,
+            status = status.as_u16(),
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "Sync API request was rejected"
+        );
+    }
+    response
 }
 
 fn init_logging() {

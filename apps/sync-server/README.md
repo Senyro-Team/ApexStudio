@@ -1,6 +1,6 @@
 # Apex Sync Server
 
-This Docker deployment runs the Apex Sync Server API for team access and project synchronization. The API supports first-owner setup, password sign-in, one-time invitation codes, team roles, revisioned project records, tombstones, and content-addressed file transfer. Apex Studio Settings can check the server, sign in, create and accept invitation codes, and show team membership. Project sync execution and production backup/restore remain future work. Review the [API contract](../../docs/planning/TEAM-SYNC-API.md) before integrating a client.
+This Docker deployment runs the Apex Sync Server API for team access and project synchronization. The API supports first-owner setup, password sign-in, one-time invitation codes, team roles, revisioned project records, tombstones, and content-addressed file transfer. Apex Studio Settings can check the server, sign in, list team members, create and accept invitation codes, and synchronize projects. Production backup/restore remains future work. Review the [API contract](../../docs/planning/TEAM-SYNC-API.md) before integrating a client.
 
 ## Requirements
 
@@ -30,6 +30,16 @@ curl https://YOUR_DOMAIN/api/v1/server-info
 ```
 
 The server binds only inside the Compose network; Caddy is the only service publishing internet-facing ports. PostgreSQL and its persistent volume are not exposed to desktop clients. Keep `.env` private and outside backups that are shared with designers.
+
+## Sync logs
+
+The API writes compact structured events and request failures to stdout/stderr. With Docker Compose, follow them with:
+
+```sh
+docker compose logs -f --tail=100 api
+```
+
+Events identify team, project, actor, record/revision or blob size, and the operation result. Successful empty change polls are omitted. Rejected requests include the matched route, HTTP status, and duration. Logs never include credentials, invitation codes, request bodies, project content, or file contents. The Compose JSON log rotation is limited to 10 MB across three files; retain or export logs separately if longer history is needed.
 
 ## Data volumes
 

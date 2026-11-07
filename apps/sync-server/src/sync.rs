@@ -200,6 +200,7 @@ async fn create_project(
     )
     .await?;
     transaction.commit().await?;
+    tracing::info!(event = "project_created", team_id = %team_id, project_id = %input.id, actor_id = %user.id, revision, "Project record synchronized");
     Ok(Json(RecordRevision { revision }))
 }
 
@@ -255,6 +256,10 @@ async fn update_record(
             "deleted_record_must_not_include_data",
         ));
     }
+    let payload_bytes = input
+        .data
+        .as_ref()
+        .map_or(0, |value| value.to_string().len());
     let data = if input.deleted {
         None
     } else {
@@ -266,6 +271,8 @@ async fn update_record(
         )?)
     };
 
+    let deleted = input.deleted;
+    let logged_record_type = record_type.clone();
     let mut transaction = state.database.begin().await?;
     let revision = save_record(
         &mut transaction,
@@ -282,6 +289,7 @@ async fn update_record(
     )
     .await?;
     transaction.commit().await?;
+    tracing::info!(event = "project_record_synced", team_id = %team_id, project_id = %project_id, record_id = %record_id, record_type = %logged_record_type, actor_id = %user.id, revision, deleted, payload_bytes, "Project record synchronized");
     Ok(Json(RecordRevision { revision }))
 }
 
@@ -321,6 +329,9 @@ async fn list_changes(
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
     let next_cursor = changes.last().map_or(query.cursor, |change| change.cursor);
+    if !changes.is_empty() {
+        tracing::info!(event = "project_changes_served", team_id = %team_id, project_id = %project_id, actor_id = %user.id, change_count = changes.len(), from_cursor = query.cursor, next_cursor, "Project changes served");
+    }
     Ok(Json(ChangesPage {
         changes,
         next_cursor,
@@ -527,6 +538,7 @@ async fn upload_blob(
         .execute(&state.database)
         .await?;
 
+    tracing::info!(event = "project_blob_uploaded", team_id = %team_id, project_id = %project_id, actor_id = %user.id, byte_size, transfer = "direct", "Project blob upload completed");
     Ok(Json(BlobReceipt {
         content_hash,
         byte_size,
@@ -559,6 +571,7 @@ async fn download_blob(
     let file = File::open(path)
         .await
         .map_err(|_| ApiError::not_found("blob_not_found"))?;
+    tracing::info!(event = "project_blob_download_started", team_id = %team_id, project_id = %project_id, actor_id = %user.id, byte_size, "Project blob download started");
     let mut response = Response::new(Body::from_stream(ReaderStream::new(file)));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -874,6 +887,7 @@ async fn complete_blob_upload(
     transaction.commit().await?;
     let _ = fs::remove_dir_all(upload_dir).await;
 
+    tracing::info!(event = "project_blob_uploaded", team_id = %team_id, project_id = %project_id, actor_id = %user.id, byte_size = upload.total_bytes, transfer = "chunked", "Project blob upload completed");
     Ok(Json(BlobReceipt {
         content_hash: upload.content_hash.trim().to_owned(),
         byte_size: upload.total_bytes,
