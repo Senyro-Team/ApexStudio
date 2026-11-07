@@ -4,6 +4,7 @@ import {
   saveRobloxSettings,
   testRobloxConnection,
   clearRobloxSettings,
+  setRobloxDoubleUpload,
   errorMessage,
   type RobloxSettings as Settings,
 } from "./bridge";
@@ -51,6 +52,20 @@ export default function RobloxSettings({
       setBusy(false);
     }
   }
+  async function toggleDoubleUpload(enabled: boolean) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await setRobloxDoubleUpload(enabled);
+      setSettings((current) => current && { ...current, doubleUpload: enabled });
+      setNotice("Roblox upload preference saved.");
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <section className="roblox-settings" id="settings-roblox">
       <h2>Roblox</h2>
@@ -64,6 +79,24 @@ export default function RobloxSettings({
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
+      <div className="roblox-upload-preference">
+        <label htmlFor="roblox-double-upload">
+          <input
+            id="roblox-double-upload"
+            type="checkbox"
+            checked={settings?.doubleUpload ?? true}
+            onChange={(e) => void toggleDoubleUpload(e.target.checked)}
+            disabled={busy || settings === null}
+          />
+          Upload each texture twice
+        </label>
+        <p className="field-hint">
+          When enabled, Apex waits for the first upload to finish processing,
+          uploads the same image again, and uses the second Decal ID. Roblox may
+          produce a different result; this does not guarantee higher resolution.
+          When disabled, one upload is made and its Decal ID is used.
+        </p>
+      </div>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -133,7 +166,11 @@ export default function RobloxSettings({
               onClick={() =>
                 void act(async () => {
                   await clearRobloxSettings();
-                  setSettings({ configured: false, accountId: null });
+                  setSettings({
+                    configured: false,
+                    accountId: null,
+                    doubleUpload: settings?.doubleUpload ?? true,
+                  });
                   setKey("");
                   setAccount("");
                 }, "Roblox credentials removed.")

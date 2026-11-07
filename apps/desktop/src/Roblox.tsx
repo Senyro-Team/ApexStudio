@@ -50,6 +50,7 @@ export default function Roblox({
     [page, setPage] = useState(0),
     [snapshot, setSnapshot] = useState(initial),
     [account, setAccount] = useState<string | null>(null),
+    [doubleUpload, setDoubleUpload] = useState(true),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [review, setReview] = useState<
@@ -71,6 +72,7 @@ export default function Roblox({
     ]);
     setLiveries(rows);
     setAccount(settings.accountId);
+    setDoubleUpload(settings.doubleUpload);
   }, []);
   useEffect(() => {
     let active = true;
@@ -456,8 +458,9 @@ export default function Roblox({
           </div>
         )}
         <p className="field-hint">
-          New textures upload twice. The second decal ID is used for ERLCX; both
-          IDs remain in history.
+          {doubleUpload
+            ? "New textures upload twice. The second decal ID is used for ERLCX; both IDs remain in history."
+            : "New textures upload once. Its decal ID is used for ERLCX and remains in upload history."}
         </p>
       </section>
       <section id="roblox-queue" className="roblox-queue">
@@ -561,7 +564,8 @@ export default function Roblox({
                     <li key={j.id}>
                       <strong>{j.name}</strong>
                       <span>
-                        {stateLabel[j.state] ?? j.state} · pass {j.pass}/2
+                        {stateLabel[j.state] ?? j.state} · pass {j.pass}/
+                        {j.passesRequired}
                       </span>
                       {j.message && <p>{j.message}</p>}
                       <details>
@@ -633,9 +637,10 @@ export default function Roblox({
             IDs reused
           </p>
           <p>
-            {review.creates} new Roblox decals will be created in two sequential
-            passes per texture. The second ID is selected after processing
-            succeeds.
+            {review.creates} upload submissions will be sent. Each new texture
+            {review.doubleUpload
+              ? " uses two sequential passes; the second Decal ID is selected after processing succeeds."
+              : " is uploaded once; its Decal ID is selected after processing succeeds."}
           </p>
           {review.queued > 0 && (
             <p>

@@ -643,6 +643,7 @@ pub struct UploadReview {
     reused: usize,
     queued: usize,
     creates: usize,
+    double_upload: bool,
 }
 #[tauri::command]
 pub async fn preview_upload_batch(
@@ -653,6 +654,7 @@ pub async fn preview_upload_batch(
     let ws = ws.inner().clone();
     work(move || {
         let c = roblox::required()?;
+        let double_upload = ws.roblox_double_upload()?;
         if folder_ids.is_empty() || folder_ids.len() > 500 {
             return Err(Error::InvalidContent("Select up to 500 liveries.".into()));
         }
@@ -706,7 +708,8 @@ pub async fn preview_upload_batch(
             unique_textures: unique.len(),
             reused,
             queued,
-            creates: additional * 2,
+            creates: additional * if double_upload { 2 } else { 1 },
+            double_upload,
         })
     })
     .await

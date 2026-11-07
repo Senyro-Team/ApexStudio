@@ -2452,6 +2452,30 @@ button:disabled:hover {
   margin: 16px 0 24px;
   line-height: 1.6;
 }
+.roblox-upload-preference {
+  margin: 24px 0 30px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.roblox-upload-preference label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.roblox-upload-preference input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.roblox-upload-preference .field-hint {
+  margin: 12px 0 0;
+  line-height: 1.55;
+}
 .roblox-settings form > label {
   display: block;
   margin: 24px 0 10px;

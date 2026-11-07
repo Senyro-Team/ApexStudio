@@ -39,7 +39,7 @@ vi.mock("./bridge", () => ({
   }),
   robloxSettings: vi
     .fn()
-    .mockResolvedValue({ configured: false, accountId: null }),
+    .mockResolvedValue({ configured: false, accountId: null, doubleUpload: true }),
   setEditLock: vi.fn().mockResolvedValue(undefined),
   desktopAvailable: true,
   assetBoard: vi.fn(),

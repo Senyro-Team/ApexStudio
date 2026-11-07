@@ -376,6 +376,7 @@ export const exportPublishing = (projectId: string) =>
 export interface RobloxSettings {
   configured: boolean;
   accountId: string | null;
+  doubleUpload: boolean;
 }
 export interface DecalUpload {
   accountId: string;
@@ -402,6 +403,8 @@ export interface LiveryUploads {
 export const robloxSettings = () => invoke<RobloxSettings>("roblox_settings");
 export const saveRobloxSettings = (accountId: string, apiKey: string) =>
   invoke<void>("save_roblox_settings", { accountId, apiKey });
+export const setRobloxDoubleUpload = (enabled: boolean) =>
+  invoke<void>("set_roblox_double_upload", { enabled });
 export const testRobloxConnection = () =>
   invoke<void>("test_roblox_connection");
 export const clearRobloxSettings = () => invoke<void>("clear_roblox_settings");
@@ -443,6 +446,7 @@ export interface UploadJob {
   name: string;
   state: string;
   pass: number;
+  passesRequired: number;
   nextAt: number;
   message: string;
   operation: string | null;
@@ -472,6 +476,7 @@ export interface UploadReview {
   reused: number;
   queued: number;
   creates: number;
+  doubleUpload: boolean;
 }
 export const robloxLiveries = () =>
   invoke<RobloxLiverySummary[]>("roblox_liveries");

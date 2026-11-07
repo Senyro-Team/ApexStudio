@@ -26,6 +26,7 @@ pub struct UploadJob {
     pub name: String,
     pub state: String,
     pub pass: u8,
+    pub passes_required: u8,
     pub next_at: i64,
     pub message: String,
     pub operation: Option<String>,
@@ -69,18 +70,40 @@ fn job_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<UploadJob> {
         name: r.get(3)?,
         state: r.get(4)?,
         pass: r.get(5)?,
-        next_at: r.get(6)?,
-        message: r.get(7)?,
-        operation: r.get(8)?,
-        first_id: r.get(9)?,
-        second_id: r.get(10)?,
-        moderation: r.get(11)?,
-        generation: r.get(12)?,
-        poll_attempts: r.get(13)?,
+        passes_required: r.get(6)?,
+        next_at: r.get(7)?,
+        message: r.get(8)?,
+        operation: r.get(9)?,
+        first_id: r.get(10)?,
+        second_id: r.get(11)?,
+        moderation: r.get(12)?,
+        generation: r.get(13)?,
+        poll_attempts: r.get(14)?,
     })
 }
-const JOB_SELECT:&str="SELECT j.id,j.account_id,j.hash,j.name,j.state,j.pass,j.next_at,j.message,p.operation,p1.asset_id,p2.asset_id,COALESCE(p2.moderation,p1.moderation,'unknown'),j.generation,COALESCE(p.polls,0) FROM upload_jobs j LEFT JOIN upload_passes p ON p.job_id=j.id AND p.pass=j.pass LEFT JOIN upload_passes p1 ON p1.job_id=j.id AND p1.pass=1 LEFT JOIN upload_passes p2 ON p2.job_id=j.id AND p2.pass=2";
+const JOB_SELECT:&str="SELECT j.id,j.account_id,j.hash,j.name,j.state,j.pass,j.passes_required,j.next_at,j.message,p.operation,p1.asset_id,p2.asset_id,COALESCE(p2.moderation,p1.moderation,'unknown'),j.generation,COALESCE(p.polls,0) FROM upload_jobs j LEFT JOIN upload_passes p ON p.job_id=j.id AND p.pass=j.pass LEFT JOIN upload_passes p1 ON p1.job_id=j.id AND p1.pass=1 LEFT JOIN upload_passes p2 ON p2.job_id=j.id AND p2.pass=2";
 impl Workspace {
+    pub fn roblox_double_upload(&self) -> Result<bool, Error> {
+        let value: Option<String> = self
+            .connection()?
+            .query_row(
+                "SELECT value FROM workspace_settings WHERE key='roblox_double_upload'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(storage)?;
+        Ok(value.as_deref() != Some("false"))
+    }
+    pub fn set_roblox_double_upload(&self, enabled: bool) -> Result<(), Error> {
+        self.connection()?
+            .execute(
+                "INSERT INTO workspace_settings(key,value) VALUES('roblox_double_upload',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                [if enabled { "true" } else { "false" }],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
     pub fn roblox_liveries(&self, account: &str) -> Result<Vec<RobloxLiverySummary>, Error> {
         let db = self.connection()?;
         let mut q=db.prepare("SELECT f.id,f.project_id,json_extract(pr.metadata,'$.name'),f.name,f.vehicle_id,count(p.asset_id),sum(CASE WHEN u.asset_id IS NOT NULL AND u.moderation!='rejected' THEN 1 ELSE 0 END) FROM asset_folders f JOIN projects pr ON pr.id=f.project_id LEFT JOIN asset_placements p ON p.folder_id=f.id AND p.slot IS NOT NULL LEFT JOIN assets a ON a.id=p.asset_id LEFT JOIN roblox_uploads u ON u.account_id=?1 AND u.hash=a.hash WHERE f.kind='livery' AND f.trash_id IS NULL AND a.trash_id IS NULL AND pr.archived=0 GROUP BY f.id ORDER BY pr.updated_at DESC,f.name COLLATE NOCASE").map_err(storage)?;
@@ -151,6 +174,15 @@ impl Workspace {
             params![id, account],
         )
         .map_err(storage)?;
+        let passes_required = tx
+            .query_row(
+                "SELECT CASE WHEN value='false' THEN 1 ELSE 2 END FROM workspace_settings WHERE key='roblox_double_upload'",
+                [],
+                |row| row.get::<_, u8>(0),
+            )
+            .optional()
+            .map_err(storage)?
+            .unwrap_or(2);
         let mut linked = HashMap::<String, String>::new();
         for (folder, name, t) in all {
             let active:Option<String>=tx.query_row("SELECT id FROM upload_jobs WHERE account_id=?1 AND hash=?2 AND state NOT IN ('complete','cancelled')",params![account,t.hash],|r|r.get(0)).optional().map_err(storage)?;
@@ -183,7 +215,7 @@ impl Workspace {
                     .chars()
                     .take(50)
                     .collect::<String>();
-                tx.execute("INSERT INTO upload_jobs(id,account_id,hash,name,state,generation,message)VALUES(?1,?2,?3,?4,?5,?6,?7)",params![job,account,t.hash,display,state,generation,if uncertain{"Earlier upload has an unknown result. Check Creator Dashboard before retrying."}else{""}]).map_err(storage)?;
+                tx.execute("INSERT INTO upload_jobs(id,account_id,hash,name,state,generation,message,passes_required)VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",params![job,account,t.hash,display,state,generation,if uncertain{"Earlier upload has an unknown result. Check Creator Dashboard before retrying."}else{""},passes_required]).map_err(storage)?;
                 tx.execute(
                     "INSERT INTO upload_passes(job_id,pass,state,operation)VALUES(?1,1,?2,?3)",
                     params![job, state, operation],
@@ -345,7 +377,7 @@ impl Workspace {
         tx.execute("UPDATE upload_attempts SET asset_id=?3,state='complete' WHERE job_id=?1 AND pass=?2 AND attempt=(SELECT attempts FROM upload_passes WHERE job_id=?1 AND pass=?2)",params![job.id,job.pass,id]).map_err(storage)?;
         if moderation == "rejected" {
             tx.execute("UPDATE upload_jobs SET state='failed',message='Roblox rejected this decal in moderation.' WHERE id=?1",[&job.id]).map_err(storage)?;
-        } else if job.pass == 1 {
+        } else if job.pass == 1 && job.passes_required == 2 {
             tx.execute(
                 "INSERT OR IGNORE INTO upload_passes(job_id,pass,state)VALUES(?1,2,'queued')",
                 [&job.id],

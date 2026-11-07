@@ -29,6 +29,7 @@ impl Drop for Credentials {
 pub struct RobloxSettings {
     configured: bool,
     account_id: Option<String>,
+    double_upload: bool,
 }
 fn bad(message: &str) -> Error {
     Error::InvalidContent(message.into())
@@ -144,21 +145,30 @@ async fn check(c: &Credentials) -> Result<(), Error> {
 #[tauri::command]
 pub async fn roblox_settings(
     state: tauri::State<'_, RobloxState>,
+    workspace: tauri::State<'_, Workspace>,
 ) -> Result<RobloxSettings, CommandError> {
     let _guard = state.0.lock().await;
-    work(|| {
-        Ok(match load()? {
-            Some(c) => RobloxSettings {
-                configured: true,
-                account_id: Some(c.account_id.clone()),
-            },
-            None => RobloxSettings {
-                configured: false,
-                account_id: None,
-            },
+    let ws = workspace.inner().clone();
+    work(move || {
+        let (configured, account_id) = match load()? {
+            Some(c) => (true, Some(c.account_id.clone())),
+            None => (false, None),
+        };
+        Ok(RobloxSettings {
+            configured,
+            account_id,
+            double_upload: ws.roblox_double_upload()?,
         })
     })
     .await
+}
+#[tauri::command]
+pub async fn set_roblox_double_upload(
+    enabled: bool,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<(), CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || ws.set_roblox_double_upload(enabled)).await
 }
 #[tauri::command]
 pub async fn save_roblox_settings(

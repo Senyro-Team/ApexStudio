@@ -60,6 +60,7 @@ beforeEach(() => {
   vi.mocked(robloxSettings).mockResolvedValue({
     configured: true,
     accountId: "123",
+    doubleUpload: true,
   });
   vi.mocked(uploadSnapshot).mockResolvedValue(structuredClone(empty));
   vi.mocked(previewUploadBatch).mockResolvedValue({
@@ -70,6 +71,7 @@ beforeEach(() => {
     reused: 1,
     queued: 0,
     creates: 4,
+    doubleUpload: true,
   });
   vi.mocked(startUploadBatch).mockResolvedValue("batch");
   vi.mocked(controlUploadBatch).mockResolvedValue();
@@ -91,7 +93,7 @@ it("preselects project shortcuts and requires review before starting", async () 
   );
   const dialog = await screen.findByRole("dialog");
   expect(previewUploadBatch).toHaveBeenCalledWith(["a"], false);
-  expect(within(dialog).getByText(/4 new Roblox decals/)).toBeTruthy();
+  expect(within(dialog).getByText(/4 upload submissions/)).toBeTruthy();
   await user.click(within(dialog).getByRole("button", { name: "Start batch" }));
   await vi.waitFor(() =>
     expect(startUploadBatch).toHaveBeenCalledWith(
@@ -144,7 +146,7 @@ it("deletes a cancelled upload batch after confirmation", async () => {
     revision: 1,
     queue: {
       batches: [{ id: "batch", accountId: "123", state: "cancelled", createdAt: "2026-10-27T12:00:00Z" }],
-      jobs: [{ id: "job", accountId: "123", hash: "hash", name: "Left.png", state: "cancelled", pass: 1, nextAt: 0, message: "", operation: null, firstId: null, secondId: null, moderation: "unknown", generation: 1 }],
+      jobs: [{ id: "job", accountId: "123", hash: "hash", name: "Left.png", state: "cancelled", pass: 1, passesRequired: 2, nextAt: 0, message: "", operation: null, firstId: null, secondId: null, moderation: "unknown", generation: 1 }],
       items: [{ batchId: "batch", jobId: "job", folderId: "a", side: "Left 1" }],
     },
   };

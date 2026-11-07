@@ -43,6 +43,7 @@ beforeEach(() => {
   vi.mocked(robloxSettings).mockResolvedValue({
     configured: false,
     accountId: null,
+    doubleUpload: true,
   });
 });
 afterEach(cleanup);
@@ -74,6 +75,7 @@ it("keeps an API key hidden and clears the field after a verified secure save", 
   vi.mocked(robloxSettings).mockResolvedValue({
     configured: true,
     accountId: "123",
+    doubleUpload: true,
   });
   await user.click(screen.getByRole("button", { name: "Verify and save" }));
   await screen.findByText("Roblox connection verified and saved.");

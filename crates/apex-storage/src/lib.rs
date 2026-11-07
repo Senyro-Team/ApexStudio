@@ -31,7 +31,7 @@ pub use posts::*;
 pub use statistics::*;
 pub use team_sync::*;
 pub use trash::*;
-const SCHEMA_VERSION: u32 = 12;
+const SCHEMA_VERSION: u32 = 13;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
@@ -209,6 +209,17 @@ impl Workspace {
         if version < 12 {
             connection
                 .execute_batch(include_str!("schema12.sql"))
+                .map_err(storage)?;
+        }
+        if version < 13 {
+            if version > 0 {
+                workspace.backup(&workspace.root.join("backups").join(format!(
+                    "before-schema-13-{}.apexbackup",
+                    uuid::Uuid::now_v7()
+                )))?;
+            }
+            connection
+                .execute_batch(include_str!("schema13.sql"))
                 .map_err(storage)?;
         }
         *workspace

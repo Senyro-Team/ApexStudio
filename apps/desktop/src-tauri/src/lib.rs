@@ -155,6 +155,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             roblox::roblox_settings,
+            roblox::set_roblox_double_upload,
             roblox::save_roblox_settings,
             roblox::test_roblox_connection,
             roblox::clear_roblox_settings,
