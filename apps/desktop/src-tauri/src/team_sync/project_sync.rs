@@ -31,6 +31,58 @@ struct SharedDecalCode {
     content_hash: String,
     decal_asset_id: String,
 }
+const SHARED_DECAL_CODE_ATTEMPTS: usize = 3;
+
+async fn get_shared_decal_code(
+    http: &Client,
+    url: Url,
+    headers: HeaderMap,
+) -> Result<Option<SharedDecalCode>, String> {
+    for attempt in 0..SHARED_DECAL_CODE_ATTEMPTS {
+        let response = match http.get(url.clone()).headers(headers.clone()).send().await {
+            Ok(response) => response,
+            Err(network_error)
+                if attempt + 1 < SHARED_DECAL_CODE_ATTEMPTS
+                    && (network_error.is_timeout() || network_error.is_connect()) =>
+            {
+                tokio::time::sleep(Duration::from_millis(250 * (attempt as u64 + 1))).await;
+                continue;
+            }
+            Err(network_error) => {
+                let reason = if network_error.is_timeout() {
+                    "timed out"
+                } else if network_error.is_connect() {
+                    "could not connect"
+                } else {
+                    "request failed"
+                };
+                return Err(error(&format!(
+                    "Could not check team-shared Roblox decal codes: {reason} after {} attempt(s).",
+                    attempt + 1
+                )));
+            }
+        };
+
+        if attempt + 1 < SHARED_DECAL_CODE_ATTEMPTS
+            && matches!(
+                response.status(),
+                StatusCode::BAD_GATEWAY
+                    | StatusCode::SERVICE_UNAVAILABLE
+                    | StatusCode::GATEWAY_TIMEOUT
+            )
+        {
+            tokio::time::sleep(Duration::from_millis(250 * (attempt as u64 + 1))).await;
+            continue;
+        }
+
+        return response_json(response).await;
+    }
+
+    Err(error(
+        "Could not check team-shared Roblox decal codes after retrying.",
+    ))
+}
+
 fn transfer_client() -> Result<Client, String> {
     Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -86,17 +138,12 @@ async fn sync_shared_decal_codes(
     let codes = ws
         .livery_decal_codes(project_id, &account_id)
         .map_err(|error| error.to_string())?;
+    // Reuse connections for the many per-texture lookups in larger projects.
+    let http = client()?;
     for (hash, local_id) in codes {
         let endpoint = format!("api/v1/teams/{}/decal-codes/{hash}", c.team.id);
-        let remote: Option<SharedDecalCode> = response_json(
-            client()?
-                .get(c.url(&endpoint)?)
-                .headers(c.headers()?)
-                .send()
-                .await
-                .map_err(|_| error("Could not check team-shared Roblox decal codes."))?,
-        )
-        .await?;
+        let remote: Option<SharedDecalCode> =
+            get_shared_decal_code(&http, c.url(&endpoint)?, c.headers()?).await?;
         let shared = if let Some(remote) = remote {
             if local_id
                 .as_deref()
@@ -107,8 +154,7 @@ async fn sync_shared_decal_codes(
             remote
         } else if let Some(decal_asset_id) = local_id {
             response_json(
-                client()?
-                    .put(c.url(&endpoint)?)
+                http.put(c.url(&endpoint)?)
                     .headers(c.headers()?)
                     .json(&serde_json::json!({ "decalAssetId": decal_asset_id }))
                     .send()
@@ -292,21 +338,40 @@ pub async fn reconnect_project_sync(
     choice: ProjectSyncChoice,
     state: State<'_, TeamSyncState>,
     workspace: State<'_, Workspace>,
+    app: tauri::AppHandle,
 ) -> Result<Option<ProjectSync>, String> {
     if !choice.enabled {
         return Err(error("Choose a team before reconnecting this project."));
     }
     let _worker = worker_lock().lock().await;
-    let _guard = state.0.lock().await;
-    let destination = validate_sync_choice(&choice)
-        .await?
-        .ok_or_else(|| error("Choose a team before reconnecting this project."))?;
+    let mut c = {
+        let _guard = state.0.lock().await;
+        context(&choice.server_url, &choice.team_id).await?
+    };
+    if c.team.role == "read_only" {
+        return Err(error("Read-only members cannot reconnect shared projects."));
+    }
+    c.app = Some(app);
+    if !c.can_apply() {
+        return Err(error("Finish editing before reconnecting this project."));
+    }
+    let projects: Vec<RemoteProject> = sync_json(
+        client()?
+            .get(c.url(&format!("api/v1/teams/{}/projects", c.team.id))?)
+            .headers(c.headers()?)
+            .send()
+            .await
+            .map_err(|_| error("The sync server could not be reached."))?,
+    )
+    .await?;
+    let server_has_project = projects.iter().any(|project| project.id == project_id);
     workspace
         .reconnect_project_sync(
             &project_id,
-            &destination.origin,
-            &destination.instance,
-            &destination.team,
+            &origin_text(&c.base),
+            &c.server.server_instance_id,
+            &c.team.id,
+            server_has_project,
         )
         .map_err(|e| e.to_string())?;
     workspace
@@ -675,11 +740,11 @@ async fn sync_one(
                 report.downloaded += 1;
                 return Ok(SyncOutcome::Downloaded);
             }
-        } else if binding.is_none() {
+        } else {
             return Ok(SyncOutcome::Skipped(
                 "The server project has no compatible Apex snapshot.",
             ));
-        } // Another client format: leave it alone.
+        } // Another client format: leave it alone, even after an explicit reconnect.
     }
     let Some(local) = local else {
         return Ok(SyncOutcome::Skipped(
@@ -817,14 +882,6 @@ pub async fn sync_projects(
     }
     for id in ids {
         let binding = bindings.iter().find(|b| b.project_id == id);
-        if binding.is_some_and(|b| {
-            !b.enabled
-                || b.origin != origin
-                || b.server_instance != c.server.server_instance_id
-                || b.team_id != c.team.id
-        }) {
-            continue;
-        }
         let name = ws.project(&id).map(|p| p.fields.name).unwrap_or_else(|_| {
             projects
                 .iter()
@@ -832,6 +889,27 @@ pub async fn sync_projects(
                 .map(|project| project.name.clone())
                 .unwrap_or_else(|| id.clone())
         });
+        let mismatch = binding.and_then(|binding| {
+            if binding.origin != origin || binding.team_id != c.team.id {
+                Some("This local project is linked to a different team or server instance. Use Reconnect to current team if this copy should join the selected team.")
+            } else if binding.server_instance != c.server.server_instance_id {
+                Some("This local project is linked to an older server instance. Use Reconnect to current team to check the current team copy.")
+            } else if !binding.enabled {
+                Some("Synchronization is disabled for this local project. It was left unchanged.")
+            } else {
+                None
+            }
+        });
+        if let Some(message) = mismatch {
+            ws.sync_message(&id, message).map_err(|e| e.to_string())?;
+            report.entries.push(SyncEntry {
+                project_id: id,
+                project_name: name,
+                status: "skipped",
+                message: message.into(),
+            });
+            continue;
+        }
         report.checked += 1;
         match sync_one(&c, &ws, &id, binding, &mut report).await {
             Ok(outcome) => {

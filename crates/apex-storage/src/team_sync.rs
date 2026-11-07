@@ -509,6 +509,7 @@ impl Workspace {
         origin: &str,
         instance: &str,
         team: &str,
+        server_has_project: bool,
     ) -> Result<(), Error> {
         let project = self.project(id)?;
         if project.fields.name.chars().count() < 2 {
@@ -516,28 +517,31 @@ impl Workspace {
                 "Use a project name with at least two characters to synchronize it.".into(),
             ));
         }
+        let local_hash = self.project_snapshot(id)?.fingerprint().map_err(storage)?;
         let mut db = self.connection()?;
         let tx = db.transaction().map_err(storage)?;
-        let old: Option<(String, String, String, bool)> = tx
+        let old: Option<(String, String, String, bool, Option<String>)> = tx
             .query_row(
-                "SELECT origin,server_instance,team_id,received_from_team FROM project_sync WHERE project_id=?1",
+                "SELECT origin,server_instance,team_id,received_from_team,local_hash FROM project_sync WHERE project_id=?1",
                 [id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
             )
             .optional()
             .map_err(storage)?;
-        if old.as_ref().is_some_and(|binding| binding.3) {
-            return Err(Error::InvalidContent(
-                "Projects received from a team cannot be moved to another team.".into(),
-            ));
+        if let Some(binding) = old.as_ref().filter(|binding| binding.3) {
+            if binding.4.as_deref() != Some(local_hash.as_str()) {
+                return Err(Error::InvalidContent(
+                    "This shared project has local changes or no saved sync baseline. Resolve or preserve those changes before reconnecting.".into(),
+                ));
+            }
         }
         let destination_changed = old.as_ref().is_some_and(|binding| {
             binding.0 != origin || binding.1 != instance || binding.2 != team
         });
         if destination_changed {
             tx.execute(
-                "UPDATE project_sync SET origin=?2,server_instance=?3,team_id=?4,enabled=1,local_hash=NULL,revision=0,cursor=0,message='Waiting to sync',synced_at=NULL WHERE project_id=?1",
-                params![id, origin, instance, team],
+                "UPDATE project_sync SET origin=?2,server_instance=?3,team_id=?4,enabled=1,local_hash=?5,revision=0,cursor=0,message='Waiting to sync',synced_at=NULL WHERE project_id=?1",
+                params![id, origin, instance, team, if old.as_ref().is_some_and(|binding| binding.3 && server_has_project) { Some(local_hash.as_str()) } else { None }],
             )
             .map_err(storage)?;
         } else {

@@ -14,14 +14,20 @@ const key = (serverUrl: string, teamId: string) =>
 
 export function syncSummary(report: SyncReport) {
   if (report.errors.length) return `${report.errors.length} project error${report.errors.length === 1 ? "" : "s"} · ${report.uploaded} uploaded · ${report.downloaded} downloaded`;
+  const skipped = report.entries?.filter((entry) => entry.status === "skipped").length ?? 0;
   if (report.uploaded || report.downloaded) {
-    return `${report.uploaded} uploaded · ${report.downloaded} downloaded · ${report.upToDate ?? 0} already current`;
+    const completed = `${report.uploaded} uploaded · ${report.downloaded} downloaded · ${report.upToDate ?? 0} already current`;
+    return skipped ? `${completed} · ${skipped} need attention` : completed;
+  }
+  if (skipped) {
+    return `${skipped} project${skipped === 1 ? "" : "s"} need attention · ${report.remoteProjects ?? 0} team project${report.remoteProjects === 1 ? "" : "s"} available`;
   }
   if (report.sharedLocal === 0 && report.remoteProjects === 0) {
     return "No shared projects yet. Enable “Synchronize with team server” for a project.";
   }
-  const skipped = report.entries?.filter((entry) => entry.status === "skipped").length ?? 0;
-  if (skipped) return `${skipped} project${skipped === 1 ? "" : "s"} skipped. See the sync log for details.`;
+  if ((report.remoteProjects ?? 0) > 0 && report.checked === 0) {
+    return `${report.remoteProjects} team project${report.remoteProjects === 1 ? "" : "s"} found, but none were synchronized. See the sync log for details.`;
+  }
   if (report.checked !== undefined) return `${report.upToDate ?? 0} of ${report.checked} projects already up to date.`;
   return `${report.uploaded} uploaded · ${report.downloaded} downloaded`;
 }

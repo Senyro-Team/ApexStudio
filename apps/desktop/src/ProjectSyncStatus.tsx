@@ -65,7 +65,9 @@ export default function ProjectSyncStatus({
   }, []);
   const needsReconnect = [error, binding?.message ?? ""].some((message) =>
     message.includes("not available to this account") ||
-    message.includes("no longer belong to this team"),
+    message.includes("no longer belong to this team") ||
+    message.includes("different team or server instance") ||
+    message.includes("older server instance"),
   );
   async function toggle(enabled: boolean) {
     setBusy(true);
@@ -116,12 +118,14 @@ export default function ProjectSyncStatus({
       setError("Sign in and choose your current team in Settings → Team sync first.");
       return;
     }
-    if (binding.origin === destination.serverUrl && binding.teamId === destination.teamId) {
+    const sameTeam = binding.origin === destination.serverUrl && binding.teamId === destination.teamId;
+    const serverInstanceMismatch = binding.message.includes("older server instance");
+    if (sameTeam && !serverInstanceMismatch && !error.includes("not available to this account")) {
       setError("The selected team is the same as this project's saved team. Refresh your Team sync connection and select the team you currently belong to.");
       return;
     }
     if (!window.confirm(
-      "Reconnect this local project to the currently selected team? The existing server copy will remain with the previous team.",
+      "Reconnect this local project to the currently selected team? Apex will keep the previous server copy. If this project was shared with you, it will only be replaced when its local copy has no unsynced changes.",
     )) return;
     setBusy(true);
     setError("");
@@ -207,7 +211,7 @@ export default function ProjectSyncStatus({
           {busy ? "Synchronizing…" : "Sync now"}
         </button>
       )}
-      {needsReconnect && binding && !binding.receivedFromTeam && (
+      {needsReconnect && binding && (
         <button
           type="button"
           className="secondary"
