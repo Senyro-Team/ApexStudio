@@ -224,7 +224,7 @@ async fn context(server_url: &str, team_id: &str) -> Result<Context, String> {
         .teams
         .into_iter()
         .find(|t| t.id == team_id)
-        .ok_or_else(|| error("The project is linked to a team that is not available to this account. Select your current team in Settings → Team sync, then turn project sync off and back on to reconnect it. The existing server copy will be kept."))?;
+        .ok_or_else(|| error("The project is linked to a team that is not available to this account. Check Settings → Team sync, then use Reconnect to current team in the project details. The existing server copy will be kept."))?;
     Ok(Context {
         base,
         server,
