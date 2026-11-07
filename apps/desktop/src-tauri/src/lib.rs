@@ -1,6 +1,6 @@
 use apex_core::{WorkspaceInfo, WorkspaceRepository};
 use apex_storage::Workspace;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 mod assets;
 mod browser_bridge;
 #[allow(dead_code)] // Shared framing module is also compiled into the standalone Chrome host.
@@ -18,6 +18,146 @@ mod upload_queue;
 struct CommandError {
     code: String,
     message: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceStartupStatus {
+    state: String,
+    message: String,
+}
+
+struct WorkspaceStartupState(std::sync::Mutex<WorkspaceStartupStatus>);
+
+impl Default for WorkspaceStartupState {
+    fn default() -> Self {
+        Self(std::sync::Mutex::new(WorkspaceStartupStatus {
+            state: "starting".into(),
+            message: "Preparing workspace…".into(),
+        }))
+    }
+}
+
+fn set_workspace_startup(app: &tauri::AppHandle, state: &str, message: &str) {
+    let Some(startup) = app.try_state::<WorkspaceStartupState>() else {
+        return;
+    };
+    let snapshot = WorkspaceStartupStatus {
+        state: state.into(),
+        message: message.into(),
+    };
+    if let Ok(mut current) = startup.0.lock() {
+        *current = snapshot.clone();
+    }
+    let _ = app.emit("workspace-startup", snapshot);
+}
+
+fn start_workspace_initialization(app: tauri::AppHandle, root: std::path::PathBuf) {
+    set_workspace_startup(&app, "starting", "Preparing workspace…");
+    tauri::async_runtime::spawn(async move {
+        let progress_app = app.clone();
+        let initialized = tauri::async_runtime::spawn_blocking(move || {
+            let workspace = Workspace::open_with_progress(root, |message| {
+                set_workspace_startup(&progress_app, "starting", message);
+            })
+            .map_err(|error| error.to_string())?;
+            set_workspace_startup(
+                &progress_app,
+                "starting",
+                "Recovering pending workspace operations…",
+            );
+            workspace
+                .recover_queue()
+                .map_err(|error| error.to_string())?;
+            let runtime = upload_queue::UploadRuntime::new().map_err(|error| error.to_string())?;
+            Ok::<_, String>((workspace, runtime))
+        })
+        .await;
+
+        let (workspace, runtime) = match initialized {
+            Ok(Ok(value)) => value,
+            Ok(Err(error)) => {
+                set_workspace_startup(&app, "failed", &error);
+                return;
+            }
+            Err(error) => {
+                set_workspace_startup(&app, "failed", &error.to_string());
+                return;
+            }
+        };
+
+        set_workspace_startup(&app, "starting", "Starting background services…");
+        let bridge_app = app.clone();
+        let bridge_workspace = workspace.clone();
+        match tauri::async_runtime::spawn_blocking(move || {
+            browser_bridge::setup(&bridge_app, bridge_workspace)
+        })
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                set_workspace_startup(&app, "failed", &error.to_string());
+                return;
+            }
+            Err(error) => {
+                set_workspace_startup(&app, "failed", &error.to_string());
+                return;
+            }
+        }
+        if !app.manage(workspace.clone()) || !app.manage(runtime.clone()) {
+            set_workspace_startup(
+                &app,
+                "failed",
+                "Workspace services could not be registered. Restart Apex Studio to try again.",
+            );
+            return;
+        }
+        if let Err(error) = upload_queue::setup_tray(&app, runtime.clone(), workspace.clone()) {
+            set_workspace_startup(&app, "failed", &error.to_string());
+            return;
+        }
+        runtime.start(app.clone(), workspace);
+        set_workspace_startup(&app, "ready", "Workspace ready");
+    });
+}
+
+#[tauri::command]
+fn workspace_startup_status(
+    startup: tauri::State<'_, WorkspaceStartupState>,
+) -> Result<WorkspaceStartupStatus, String> {
+    startup
+        .0
+        .lock()
+        .map(|status| status.clone())
+        .map_err(|_| "Workspace startup status is unavailable.".into())
+}
+
+#[tauri::command]
+fn retry_workspace_startup(app: tauri::AppHandle) -> Result<(), String> {
+    if app.try_state::<Workspace>().is_some() {
+        return Err("Restart Apex Studio to retry workspace initialization.".into());
+    }
+    let startup = app
+        .try_state::<WorkspaceStartupState>()
+        .ok_or_else(|| "Workspace startup status is unavailable.".to_string())?;
+    {
+        let mut status = startup
+            .0
+            .lock()
+            .map_err(|_| "Workspace startup status is unavailable.".to_string())?;
+        if status.state != "failed" {
+            return Err("Workspace initialization is already running.".into());
+        }
+        status.state = "starting".into();
+        status.message = "Preparing workspace…".into();
+    }
+    let root = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("workspace");
+    start_workspace_initialization(app, root);
+    Ok(())
 }
 impl From<apex_core::Error> for CommandError {
     fn from(error: apex_core::Error) -> Self {
@@ -143,16 +283,10 @@ pub fn run() {
         .manage(team_sync::TeamSyncState::default())
         .manage(notes::PendingArchives::default())
         .manage(assets::LiveryDrafts::default())
+        .manage(WorkspaceStartupState::default())
         .setup(|app| {
             let root = app.path().app_local_data_dir()?.join("workspace");
-            let ws = Workspace::open(root)?;
-            ws.recover_queue()?;
-            let runtime = upload_queue::UploadRuntime::new()?;
-            browser_bridge::setup(app.handle(), ws.clone())?;
-            app.manage(ws.clone());
-            app.manage(runtime.clone());
-            upload_queue::setup_tray(app.handle(), runtime.clone(), ws.clone())?;
-            runtime.start(app.handle().clone(), ws);
+            start_workspace_initialization(app.handle().clone(), root);
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -206,6 +340,8 @@ pub fn run() {
             publishing::pick_publishing_images,
             publishing::export_publishing,
             workspace_info,
+            workspace_startup_status,
+            retry_workspace_startup,
             rename_workspace,
             statistics::statistics_profile,
             statistics::set_statistics_profile,

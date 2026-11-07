@@ -68,7 +68,11 @@ vi.mock("./bridge", () => ({
     error instanceof Error ? error.message : "Workspace error",
 }));
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn().mockResolvedValue(undefined),
+  invoke: vi.fn((command: string) =>
+    command === "workspace_startup_status"
+      ? Promise.resolve({ state: "ready", message: "Workspace ready" })
+      : Promise.resolve(undefined),
+  ),
 }));
 vi.mock("./wallpaper", () => ({
   loadWallpaper: vi.fn().mockResolvedValue(null),

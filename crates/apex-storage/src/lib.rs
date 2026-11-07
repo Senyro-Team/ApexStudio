@@ -53,18 +53,38 @@ pub struct Workspace {
 impl Workspace {
     /// Create the managed layout and migrate atomically. Existing files are never removed.
     pub fn open(root: impl AsRef<Path>) -> Result<Self, Error> {
+        Self::open_with_progress(root, |_| {})
+    }
+
+    /// Open a workspace while reporting long-running initialization work.
+    /// The caller is responsible for running this on a worker thread.
+    pub fn open_with_progress(
+        root: impl AsRef<Path>,
+        mut progress: impl FnMut(&str),
+    ) -> Result<Self, Error> {
+        progress("Opening workspace…");
         fs::create_dir_all(root.as_ref()).map_err(storage)?;
         let root = fs::canonicalize(root.as_ref()).map_err(storage)?;
         let workspace = Self {
             root,
             anchor: Arc::new(Mutex::new(None)),
         };
+        for directory in ["files", "staging", "backups", "thumbnails"] {
+            fs::create_dir_all(workspace.root.join(directory)).map_err(storage)?;
+        }
         let mut connection = workspace.connection()?;
         let version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .map_err(storage)?;
         if version > SCHEMA_VERSION {
             return Err(Error::NewerSchema);
+        }
+        if version > 0 && version < SCHEMA_VERSION {
+            progress("Creating a safety backup before workspace updates…");
+            workspace.backup(&workspace.root.join("backups").join(format!(
+                "before-schema-update-{}.apexbackup",
+                uuid::Uuid::now_v7()
+            )))?;
         }
         if version == 0 {
             let transaction = connection.transaction().map_err(storage)?;
@@ -102,16 +122,8 @@ impl Workspace {
                 CREATE TABLE note_images(note_id TEXT NOT NULL REFERENCES notes(id),hash TEXT NOT NULL REFERENCES managed_files(hash),PRIMARY KEY(note_id,hash));
                 PRAGMA user_version=3; COMMIT;").map_err(storage)?;
         }
-        for directory in ["files", "staging", "backups", "thumbnails"] {
-            fs::create_dir_all(workspace.root.join(directory)).map_err(storage)?;
-        }
         if version < 4 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-4-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
+            progress("Updating workspace schema…");
             connection.execute_batch("BEGIN IMMEDIATE;
               DROP INDEX assets_project;
               ALTER TABLE assets RENAME TO assets_v3;
@@ -127,41 +139,18 @@ impl Workspace {
               PRAGMA user_version=4; COMMIT;").map_err(storage)?;
         }
         if version < 5 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-5-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
+            progress("Updating workspace schema…");
             connection.execute_batch("BEGIN IMMEDIATE;CREATE TABLE publishing_drafts(project_id TEXT PRIMARY KEY REFERENCES projects(id),data TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1);CREATE TABLE publishing_media(project_id TEXT NOT NULL REFERENCES publishing_drafts(project_id),hash TEXT NOT NULL REFERENCES managed_files(hash),name TEXT NOT NULL,ordinal INTEGER NOT NULL,PRIMARY KEY(project_id,hash));PRAGMA user_version=5;COMMIT;").map_err(storage)?;
         }
         if version < 6 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-6-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
             connection.execute_batch("BEGIN IMMEDIATE; CREATE TABLE roblox_uploads(account_id TEXT NOT NULL,hash TEXT NOT NULL REFERENCES managed_files(hash),state TEXT NOT NULL,operation TEXT,asset_id TEXT,moderation TEXT NOT NULL DEFAULT 'unknown',message TEXT NOT NULL DEFAULT '',PRIMARY KEY(account_id,hash)); PRAGMA user_version=6; COMMIT;").map_err(storage)?;
         }
         if version < 7 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-7-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
             connection
                 .execute_batch(include_str!("schema7.sql"))
                 .map_err(storage)?;
         }
         if version < 8 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-8-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
             connection
                 .execute_batch(include_str!("schema8.sql"))
                 .map_err(storage)?;
@@ -174,34 +163,16 @@ impl Workspace {
             }
         }
         if version < 9 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-9-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
             connection
                 .execute_batch(include_str!("schema9.sql"))
                 .map_err(storage)?;
         }
         if version < 10 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-10-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
             connection
                 .execute_batch(include_str!("schema10.sql"))
                 .map_err(storage)?;
         }
         if version < 11 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-11-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
             connection
                 .execute_batch(include_str!("schema11.sql"))
                 .map_err(storage)?;
@@ -212,45 +183,22 @@ impl Workspace {
                 .map_err(storage)?;
         }
         if version < 13 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-13-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
             connection
                 .execute_batch(include_str!("schema13.sql"))
                 .map_err(storage)?;
         }
         if version < 14 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-14-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
             connection
                 .execute_batch(include_str!("schema14.sql"))
                 .map_err(storage)?;
         }
         if version < 15 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-15-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
             connection
                 .execute_batch(include_str!("schema15.sql"))
                 .map_err(storage)?;
         }
         if version < 16 {
-            if version > 0 {
-                workspace.backup(&workspace.root.join("backups").join(format!(
-                    "before-schema-16-{}.apexbackup",
-                    uuid::Uuid::now_v7()
-                )))?;
-            }
+            progress("Updating workspace schema…");
             connection
                 .execute_batch(include_str!("schema16.sql"))
                 .map_err(storage)?;

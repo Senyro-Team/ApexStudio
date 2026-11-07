@@ -93,7 +93,75 @@ function highlightSettingsCategory(id: string) {
   });
 }
 
+type WorkspaceStartupStatus = { state: "starting" | "ready" | "failed"; message: string };
+
 export default function App() {
+  if (!desktopAvailable) return <AppContent />;
+  return <WorkspaceStartup />;
+}
+
+function WorkspaceStartup() {
+  const [status, setStatus] = useState<WorkspaceStartupStatus>({
+    state: "starting",
+    message: "Preparing workspace…",
+  });
+  const [retrying, setRetrying] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    void import("@tauri-apps/api/event").then(({ listen }) =>
+      listen<WorkspaceStartupStatus>("workspace-startup", (event) => {
+        if (active) setStatus(event.payload);
+      }).then((stop) => {
+        if (active) unlisten = stop;
+        else stop();
+      }),
+    ).catch(() => {});
+    void invoke<WorkspaceStartupStatus>("workspace_startup_status")
+      .then((next) => { if (active) setStatus(next); })
+      .catch((error: unknown) => {
+        if (active) setStatus({ state: "failed", message: errorMessage(error) });
+      });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, []);
+
+  if (status.state === "ready") return <AppContent />;
+
+  async function retry() {
+    setRetrying(true);
+    try {
+      await invoke("retry_workspace_startup");
+      setStatus({ state: "starting", message: "Preparing workspace…" });
+    } catch (error) {
+      setStatus({ state: "failed", message: errorMessage(error) });
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <main className="workspace-startup" role="status" aria-live="polite">
+      <div className="workspace-startup-card">
+        {status.state === "starting" ? <span className="workspace-startup-spinner" aria-hidden="true" /> : null}
+        <h1>Apex Studio</h1>
+        <p>{status.message}</p>
+        {status.state === "starting" ? (
+          <span className="workspace-startup-hint">The workspace is initializing in the background.</span>
+        ) : (
+          <button type="button" className="primary" disabled={retrying} onClick={() => void retry()}>
+            {retrying ? "Retrying…" : "Retry"}
+          </button>
+        )}
+      </div>
+    </main>
+  );
+}
+
+function AppContent() {
   const [section, setSection] = useState<Section>("Dashboard");
   const [dashboardLayout, setDashboardLayout] = useState<DashboardLayout>(loadDashboardLayout);
   const [dashboardEditing, setDashboardEditing] = useState(false);
