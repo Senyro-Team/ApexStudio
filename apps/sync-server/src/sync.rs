@@ -136,6 +136,10 @@ fn default_page_size() -> i64 {
 pub fn private_routes() -> Router<AppState> {
     Router::new()
         .route(
+            "/api/v1/teams/{team_id}/decal-codes/{content_hash}",
+            get(get_team_decal_code).put(save_team_decal_code),
+        )
+        .route(
             "/api/v1/teams/{team_id}/projects",
             get(list_projects).post(create_project),
         )
@@ -171,6 +175,92 @@ pub fn private_routes() -> Router<AppState> {
             "/api/v1/teams/{team_id}/projects/{project_id}/blob-uploads/{upload_id}/complete",
             post(complete_blob_upload),
         )
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TeamDecalCode {
+    content_hash: String,
+    decal_asset_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SaveTeamDecalCodeRequest {
+    decal_asset_id: String,
+}
+
+async fn get_team_decal_code(
+    State(state): State<AppState>,
+    axum::extract::Extension(user): axum::extract::Extension<AuthUser>,
+    Path((team_id, content_hash)): Path<(Uuid, String)>,
+) -> Result<Json<Option<TeamDecalCode>>, ApiError> {
+    membership_role(&state, team_id, user.id).await?;
+    validate_hash(&content_hash)?;
+    let row = sqlx::query_as::<_, (String, String)>(
+        "SELECT content_hash,decal_asset_id FROM team_decal_codes WHERE team_id=$1 AND content_hash=$2",
+    )
+    .bind(team_id)
+    .bind(&content_hash)
+    .fetch_optional(&state.database)
+    .await?;
+    Ok(Json(row.map(|(content_hash, decal_asset_id)| {
+        TeamDecalCode {
+            content_hash: content_hash.trim().to_owned(),
+            decal_asset_id,
+        }
+    })))
+}
+
+async fn save_team_decal_code(
+    State(state): State<AppState>,
+    axum::extract::Extension(user): axum::extract::Extension<AuthUser>,
+    Path((team_id, content_hash)): Path<(Uuid, String)>,
+    Json(input): Json<SaveTeamDecalCodeRequest>,
+) -> Result<Json<TeamDecalCode>, ApiError> {
+    let role = membership_role(&state, team_id, user.id).await?;
+    if !role.can_write() {
+        return Err(ApiError::forbidden());
+    }
+    validate_hash(&content_hash)?;
+    if input.decal_asset_id.is_empty()
+        || input.decal_asset_id.len() > 20
+        || input.decal_asset_id.starts_with('0')
+        || !input
+            .decal_asset_id
+            .bytes()
+            .all(|byte| byte.is_ascii_digit())
+    {
+        return Err(ApiError::bad_request("invalid_decal_asset_id"));
+    }
+    let inserted = sqlx::query_scalar::<_, String>(
+        "INSERT INTO team_decal_codes(team_id,content_hash,decal_asset_id,uploaded_by) VALUES($1,$2,$3,$4) ON CONFLICT(team_id,content_hash) DO NOTHING RETURNING decal_asset_id",
+    )
+    .bind(team_id)
+    .bind(&content_hash)
+    .bind(&input.decal_asset_id)
+    .bind(user.id)
+    .fetch_optional(&state.database)
+    .await?;
+    let selected =
+        match inserted {
+            Some(id) => id,
+            None => sqlx::query_scalar::<_, String>(
+                "SELECT decal_asset_id FROM team_decal_codes WHERE team_id=$1 AND content_hash=$2",
+            )
+            .bind(team_id)
+            .bind(&content_hash)
+            .fetch_one(&state.database)
+            .await?,
+        };
+    if selected != input.decal_asset_id {
+        return Err(ApiError::conflict("team_decal_code_conflict"));
+    }
+    tracing::info!(event = "team_decal_code_shared", team_id = %team_id, actor_id = %user.id, "Roblox decal code shared with team");
+    Ok(Json(TeamDecalCode {
+        content_hash: content_hash.trim().to_owned(),
+        decal_asset_id: selected,
+    }))
 }
 
 async fn create_project(

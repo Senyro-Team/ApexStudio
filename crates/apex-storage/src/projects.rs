@@ -146,22 +146,23 @@ impl Workspace {
         let rows = query
             .query_map([project_id], |row| {
                 Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, i64>(4)?,
-                    row.get(5)?,
+                    row.get::<_, String>(5)?,
                 ))
             })
             .map_err(storage)?;
         rows.map(|row| {
             let (id, project_id, name, hash, size, imported_at) = row.map_err(storage)?;
+            let preview = self.thumbnail_for_project(&hash, &project_id);
             Ok(Asset {
                 id,
                 project_id,
                 name,
-                preview: self.thumbnail(&hash),
+                preview,
                 hash,
                 size: u64::try_from(size).map_err(storage)?,
                 imported_at,
@@ -171,6 +172,10 @@ impl Workspace {
     }
     pub(super) fn thumbnail(&self, hash: &str) -> Option<String> {
         apex_core::valid_hash(hash).then(|| format!("http://apex-thumb.localhost/{hash}"))
+    }
+    pub(super) fn thumbnail_for_project(&self, hash: &str, project_id: &str) -> Option<String> {
+        (apex_core::valid_hash(hash) && !project_id.chars().any(|c| matches!(c, '?' | '#' | '&')))
+            .then(|| format!("http://apex-thumb.localhost/{hash}?projectId={project_id}"))
     }
     pub fn import_project_files(
         &self,

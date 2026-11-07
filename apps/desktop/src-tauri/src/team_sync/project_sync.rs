@@ -25,6 +25,12 @@ struct Context {
     team: SyncTeam,
     app: Option<tauri::AppHandle>,
 }
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SharedDecalCode {
+    content_hash: String,
+    decal_asset_id: String,
+}
 fn transfer_client() -> Result<Client, String> {
     Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -65,6 +71,139 @@ impl Context {
             .and_then(|app| app.try_state::<std::sync::Arc<crate::upload_queue::UploadRuntime>>())
             .is_none_or(|runtime| !runtime.editing.load(std::sync::atomic::Ordering::Relaxed))
     }
+}
+
+async fn sync_shared_decal_codes(
+    c: &Context,
+    ws: &Workspace,
+    project_id: &str,
+) -> Result<(), String> {
+    let account_id = crate::roblox::load()
+        .ok()
+        .flatten()
+        .map(|credentials| credentials.account_id.clone())
+        .unwrap_or_default();
+    let codes = ws
+        .livery_decal_codes(project_id, &account_id)
+        .map_err(|error| error.to_string())?;
+    for (hash, local_id) in codes {
+        let endpoint = format!("api/v1/teams/{}/decal-codes/{hash}", c.team.id);
+        let remote: Option<SharedDecalCode> = response_json(
+            client()?
+                .get(c.url(&endpoint)?)
+                .headers(c.headers()?)
+                .send()
+                .await
+                .map_err(|_| error("Could not check team-shared Roblox decal codes."))?,
+        )
+        .await?;
+        let shared = if let Some(remote) = remote {
+            if local_id
+                .as_deref()
+                .is_some_and(|id| id != remote.decal_asset_id)
+            {
+                return Err(error("This image already has a different Roblox decal ID in the team catalog. Resolve the existing code before syncing."));
+            }
+            remote
+        } else if let Some(decal_asset_id) = local_id {
+            response_json(
+                client()?
+                    .put(c.url(&endpoint)?)
+                    .headers(c.headers()?)
+                    .json(&serde_json::json!({ "decalAssetId": decal_asset_id }))
+                    .send()
+                    .await
+                    .map_err(|_| error("Could not share the Roblox decal code with the team."))?,
+            )
+            .await?
+        } else {
+            continue;
+        };
+        if shared.content_hash != hash {
+            return Err(error(
+                "The team server returned a decal code for different image data.",
+            ));
+        }
+        ws.save_shared_decal_code(
+            project_id,
+            &c.team.id,
+            &hash,
+            &shared.decal_asset_id,
+        )
+        .map_err(|e| match e {
+            apex_core::Error::Conflict => error("A different Roblox decal code is already shared for this image. Review the team code before continuing."),
+            other => other.to_string(),
+        })?;
+    }
+    Ok(())
+}
+
+pub async fn remote_livery_thumbnail(
+    ws: &Workspace,
+    project_id: &str,
+    hash: &str,
+) -> Result<Vec<u8>, String> {
+    if !apex_core::valid_hash(hash)
+        || !ws
+            .remote_livery_blob(project_id, hash)
+            .map_err(|e| e.to_string())?
+    {
+        return Err(error(
+            "This image is not an eligible team-shared livery asset.",
+        ));
+    }
+    let binding = ws
+        .project_sync(project_id)
+        .map_err(|e| e.to_string())?
+        .filter(|binding| binding.enabled)
+        .ok_or_else(|| error("This project is not connected to its team server."))?;
+    let context = context(&binding.origin, &binding.team_id).await?;
+    let response = transfer_client()?
+        .get(context.url(&format!(
+            "api/v1/teams/{}/projects/{project_id}/blobs/{hash}",
+            context.team.id
+        ))?)
+        .headers(context.headers()?)
+        .send()
+        .await
+        .map_err(|_| error("Could not stream the team livery preview."))?;
+    if !response.status().is_success()
+        || response
+            .content_length()
+            .is_some_and(|size| size > 80 * 1024 * 1024)
+    {
+        return Err(error(
+            "The team livery preview is unavailable or too large.",
+        ));
+    }
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|_| error("The team livery preview stream was interrupted."))?;
+    if bytes.len() > 80 * 1024 * 1024 || format!("{:x}", Sha256::digest(&bytes)) != hash {
+        return Err(error(
+            "The streamed team livery preview failed its integrity check.",
+        ));
+    }
+    let reader = image::ImageReader::new(std::io::Cursor::new(&bytes))
+        .with_guessed_format()
+        .map_err(|_| error("The team livery preview is not a supported image."))?;
+    let (width, height) = reader
+        .into_dimensions()
+        .map_err(|_| error("The team livery preview is not a supported image."))?;
+    if width > 8000 || height > 8000 || u64::from(width) * u64::from(height) > 64_000_000 {
+        return Err(error(
+            "The streamed livery preview exceeds the image size limit.",
+        ));
+    }
+    let decoded = image::load_from_memory(&bytes)
+        .map_err(|_| error("The team livery preview is not a supported image."))?;
+    let preview = decoded.thumbnail(480, 320);
+    let mut output = std::io::Cursor::new(Vec::new());
+    preview
+        .write_to(&mut output, image::ImageFormat::Png)
+        .map_err(|_| error("Could not prepare the streamed livery preview."))?;
+    Ok(output.into_inner())
 }
 async fn context(server_url: &str, team_id: &str) -> Result<Context, String> {
     let team_id = uuid::Uuid::parse_str(team_id)
@@ -384,6 +523,9 @@ async fn download_files(
 ) -> Result<(), String> {
     snapshot.validate().map_err(|e| e.to_string())?;
     for blob in &snapshot.blobs {
+        if blob.remote_only {
+            continue;
+        }
         if blob.size > 512 * 1024 * 1024 {
             return Err(error("A server project file exceeds the 512 MB limit."));
         }
@@ -464,6 +606,7 @@ async fn sync_one(
             }
             let hash = snapshot.fingerprint().map_err(|e| e.to_string())?;
             if local_hash.as_deref() == Some(&hash) {
+                sync_shared_decal_codes(c, ws, id).await?;
                 ws.acknowledge_project_sync(id, &hash, r.revision, cursor)
                     .map_err(|e| e.to_string())?;
                 return Ok(SyncOutcome::UpToDate);
@@ -475,12 +618,14 @@ async fn sync_one(
                 {
                     return Err(error("Conflict: both this device and the server changed. Local edits have been kept. Resolve the conflict in project settings."));
                 }
-                download_files(c, ws, snapshot).await?;
+                let mut incoming = snapshot.clone();
+                incoming.classify_server_only_liveries();
+                download_files(c, ws, &incoming).await?;
                 if !c.can_apply() {
                     return Err(error("Finish editing before applying team updates."));
                 }
                 ws.apply_project_snapshot(
-                    snapshot,
+                    &incoming,
                     local_hash.as_deref(),
                     (
                         &origin_text(&c.base),
@@ -490,6 +635,7 @@ async fn sync_one(
                     r.revision,
                 )
                 .map_err(|e| e.to_string())?;
+                sync_shared_decal_codes(c, ws, id).await?;
                 ws.acknowledge_project_sync(id, &hash, r.revision, cursor)
                     .map_err(|e| e.to_string())?;
                 report.downloaded += 1;
@@ -508,6 +654,7 @@ async fn sync_one(
     };
     let hash = local_hash.ok_or_else(|| error("Local project is unavailable."))?;
     if binding.and_then(|b| b.local_hash.as_ref()) == Some(&hash) {
+        sync_shared_decal_codes(c, ws, id).await?;
         return Ok(SyncOutcome::UpToDate);
     }
     if c.team.role == "read_only" {
@@ -516,6 +663,7 @@ async fn sync_one(
         ));
     }
     upload_files(c, ws, &local).await?;
+    sync_shared_decal_codes(c, ws, id).await?;
     ensure_enabled(ws, id)?;
     let data = json!({"name":local.name().map_err(|e|e.to_string())?,"apexSnapshot":local});
     if serde_json::to_vec(&data)
@@ -556,15 +704,23 @@ pub async fn sync_projects(
     app: tauri::AppHandle,
 ) -> Result<SyncReport, String> {
     let _worker = worker_lock().lock().await;
+    let ws = workspace.inner().clone();
     let mut c = {
         let _guard = state.0.lock().await;
-        context(&server_url, &team_id).await?
+        match context(&server_url, &team_id).await {
+            Ok(context) => context,
+            Err(message) => {
+                if message.contains("no longer belong") || message.contains("session has expired") {
+                    let _ = ws.clear_shared_decal_codes(&team_id);
+                }
+                return Err(message);
+            }
+        }
     };
     c.app = Some(app);
     if !c.can_apply() {
         return Err(error("Finish editing before synchronizing projects."));
     }
-    let ws = workspace.inner().clone();
     let bindings = ws.project_sync_bindings().map_err(|e| e.to_string())?;
     let origin = origin_text(&c.base);
     let projects: Vec<RemoteProject> = sync_json(

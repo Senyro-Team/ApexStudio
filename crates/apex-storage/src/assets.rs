@@ -57,7 +57,10 @@ impl Workspace {
             .map_err(storage)?
             .map(|r| {
                 let mut f = r.map_err(storage)?;
-                f.preview = f.cover_hash.as_deref().and_then(|h| self.thumbnail(h));
+                f.preview = f
+                    .cover_hash
+                    .as_deref()
+                    .and_then(|h| self.thumbnail_for_project(h, project));
                 Ok(f)
             })
             .collect();
@@ -65,7 +68,10 @@ impl Workspace {
     }
     pub fn folder(&self, id: &str) -> Result<AssetFolder, Error> {
         let mut f=self.connection()?.query_row("SELECT id,project_id,parent_id,name,kind,vehicle_id,cover_hash FROM asset_folders WHERE id=?1 AND trash_id IS NULL",[id],|r|Ok(AssetFolder{id:r.get(0)?,project_id:r.get(1)?,parent_id:r.get(2)?,name:r.get(3)?,kind:r.get(4)?,vehicle_id:r.get(5)?,cover_hash:r.get(6)?,preview:None})).optional().map_err(storage)?.ok_or(Error::NotFound)?;
-        f.preview = f.cover_hash.as_deref().and_then(|h| self.thumbnail(h));
+        f.preview = f
+            .cover_hash
+            .as_deref()
+            .and_then(|h| self.thumbnail_for_project(h, &f.project_id));
         Ok(f)
     }
     pub fn board(&self, project: &str) -> Result<AssetBoard, Error> {

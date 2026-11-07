@@ -2758,6 +2758,26 @@ button:disabled:hover {
   font-size: .85rem;
   text-transform: capitalize;
 }
+.team-sync-member-list .danger-quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, #d47b84 45%, var(--card-border));
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: #e59aa1;
+  font-size: .9rem;
+}
+.team-sync-member-list .danger-quiet:hover:not(:disabled) {
+  border-color: #d47b84;
+  background: color-mix(in srgb, #703039 45%, transparent);
+}
+.team-sync-member-list .danger-quiet:disabled {
+  opacity: .55;
+  cursor: wait;
+}
 .team-sync-invitations h3 {
   margin: 0 0 8px;
 }

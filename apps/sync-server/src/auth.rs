@@ -548,8 +548,10 @@ async fn remove_member(
     Extension(user): Extension<AuthUser>,
     Path((team_id, target_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    let actor_role = membership_role(&state, team_id, user.id).await?;
-    let target_role = membership_role(&state, team_id, target_id).await?;
+    let mut transaction = state.database.begin().await?;
+    lock_team_membership_changes(&mut transaction, team_id).await?;
+    let actor_role = member_role_in_transaction(&mut transaction, team_id, user.id).await?;
+    let target_role = member_role_in_transaction(&mut transaction, team_id, target_id).await?;
     if !actor_role.can_manage_members()
         || target_role == TeamRole::Owner
         || (actor_role == TeamRole::Admin && target_role == TeamRole::Admin)
@@ -559,8 +561,17 @@ async fn remove_member(
     sqlx::query("DELETE FROM team_memberships WHERE team_id=$1 AND user_id=$2")
         .bind(team_id)
         .bind(target_id)
-        .execute(&state.database)
+        .execute(&mut *transaction)
         .await?;
+    // Revoke every active session so a kicked member is signed out immediately.
+    sqlx::query(
+        "UPDATE auth_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL",
+    )
+    .bind(target_id)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+    tracing::info!(event = "team_member_removed", team_id = %team_id, actor_id = %user.id, target_user_id = %target_id, "Team member removed and active sessions revoked");
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -570,8 +581,10 @@ async fn change_role(
     Path((team_id, target_id)): Path<(Uuid, Uuid)>,
     Json(input): Json<ChangeRoleRequest>,
 ) -> Result<StatusCode, ApiError> {
-    let actor_role = membership_role(&state, team_id, user.id).await?;
-    let target_role = membership_role(&state, team_id, target_id).await?;
+    let mut transaction = state.database.begin().await?;
+    lock_team_membership_changes(&mut transaction, team_id).await?;
+    let actor_role = member_role_in_transaction(&mut transaction, team_id, user.id).await?;
+    let target_role = member_role_in_transaction(&mut transaction, team_id, target_id).await?;
     if target_role == TeamRole::Owner
         || input.role == TeamRole::Owner
         || (actor_role != TeamRole::Owner
@@ -585,9 +598,37 @@ async fn change_role(
         .bind(input.role.as_str())
         .bind(team_id)
         .bind(target_id)
-        .execute(&state.database)
+        .execute(&mut *transaction)
         .await?;
+    transaction.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn lock_team_membership_changes(
+    transaction: &mut Transaction<'_, Postgres>,
+    team_id: Uuid,
+) -> Result<(), ApiError> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("team-members:{team_id}"))
+        .execute(&mut **transaction)
+        .await?;
+    Ok(())
+}
+
+async fn member_role_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    team_id: Uuid,
+    user_id: Uuid,
+) -> Result<TeamRole, ApiError> {
+    let role = sqlx::query_scalar::<_, String>(
+        "SELECT role FROM team_memberships WHERE team_id=$1 AND user_id=$2",
+    )
+    .bind(team_id)
+    .bind(user_id)
+    .fetch_optional(&mut **transaction)
+    .await?
+    .ok_or_else(|| ApiError::not_found("team_membership_not_found"))?;
+    TeamRole::from_str(&role)
 }
 
 pub(crate) async fn membership_role(

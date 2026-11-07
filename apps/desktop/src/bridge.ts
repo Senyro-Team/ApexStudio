@@ -83,6 +83,8 @@ export const syncCreateInvitation = (
 ) => invoke<SyncInvitation>("sync_create_invitation", { serverUrl, teamId, role });
 export const syncListMembers = (serverUrl: string, teamId: string) =>
   invoke<SyncTeamMember[]>("sync_list_members", { serverUrl, teamId });
+export const syncRemoveMember = (serverUrl: string, teamId: string, userId: string) =>
+  invoke<void>("sync_remove_member", { serverUrl, teamId, userId });
 export const syncInitialSetup = (
   serverUrl: string,
   bootstrapToken: string,

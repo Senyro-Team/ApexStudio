@@ -106,7 +106,7 @@ impl Workspace {
     }
     pub fn roblox_liveries(&self, account: &str) -> Result<Vec<RobloxLiverySummary>, Error> {
         let db = self.connection()?;
-        let mut q=db.prepare("SELECT f.id,f.project_id,json_extract(pr.metadata,'$.name'),f.name,f.vehicle_id,count(p.asset_id),sum(CASE WHEN u.asset_id IS NOT NULL AND u.moderation!='rejected' THEN 1 ELSE 0 END) FROM asset_folders f JOIN projects pr ON pr.id=f.project_id LEFT JOIN asset_placements p ON p.folder_id=f.id AND p.slot IS NOT NULL LEFT JOIN assets a ON a.id=p.asset_id LEFT JOIN roblox_uploads u ON u.account_id=?1 AND u.hash=a.hash WHERE f.kind='livery' AND f.trash_id IS NULL AND a.trash_id IS NULL AND pr.archived=0 GROUP BY f.id ORDER BY pr.updated_at DESC,f.name COLLATE NOCASE").map_err(storage)?;
+        let mut q=db.prepare("SELECT f.id,f.project_id,json_extract(pr.metadata,'$.name'),f.name,f.vehicle_id,count(p.asset_id),sum(CASE WHEN (u.asset_id IS NOT NULL AND u.moderation!='rejected') OR s.decal_asset_id IS NOT NULL THEN 1 ELSE 0 END) FROM asset_folders f JOIN projects pr ON pr.id=f.project_id LEFT JOIN asset_placements p ON p.folder_id=f.id AND p.slot IS NOT NULL LEFT JOIN assets a ON a.id=p.asset_id LEFT JOIN roblox_uploads u ON u.account_id=?1 AND u.hash=a.hash LEFT JOIN shared_decal_codes s ON s.project_id=f.project_id AND s.hash=a.hash AND s.team_id=(SELECT team_id FROM project_sync WHERE project_id=f.project_id AND enabled=1) WHERE f.kind='livery' AND f.trash_id IS NULL AND a.trash_id IS NULL AND pr.archived=0 GROUP BY f.id ORDER BY pr.updated_at DESC,f.name COLLATE NOCASE").map_err(storage)?;
         let result = q
             .query_map([account], |r| {
                 Ok(RobloxLiverySummary {

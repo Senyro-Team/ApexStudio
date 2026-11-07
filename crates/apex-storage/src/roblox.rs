@@ -182,7 +182,7 @@ impl Workspace {
             return Err(Error::InvalidContent("Choose a livery folder.".into()));
         }
         let db = self.connection()?;
-        let mut statement=db.prepare("SELECT a.id,a.name,a.hash,p.slot,u.state,u.operation,u.asset_id,u.moderation,u.message FROM assets a JOIN asset_placements p ON p.asset_id=a.id LEFT JOIN roblox_uploads u ON u.account_id=?2 AND u.hash=a.hash WHERE p.folder_id=?1 AND a.trash_id IS NULL AND p.slot IS NOT NULL ORDER BY p.slot").map_err(storage)?;
+        let mut statement=db.prepare("SELECT a.id,a.name,a.hash,p.slot,CASE WHEN s.decal_asset_id IS NOT NULL THEN 'uploaded' ELSE u.state END,u.operation,COALESCE(s.decal_asset_id,u.asset_id),u.moderation,u.message FROM assets a JOIN asset_placements p ON p.asset_id=a.id JOIN asset_folders f ON f.id=p.folder_id LEFT JOIN roblox_uploads u ON u.account_id=?2 AND u.hash=a.hash LEFT JOIN shared_decal_codes s ON s.project_id=f.project_id AND s.hash=a.hash AND s.team_id=(SELECT team_id FROM project_sync WHERE project_id=f.project_id AND enabled=1) WHERE p.folder_id=?1 AND a.trash_id IS NULL AND p.slot IS NOT NULL ORDER BY p.slot").map_err(storage)?;
         let textures = statement
             .query_map(params![folder, account], |r| {
                 let hash: String = r.get(2)?;

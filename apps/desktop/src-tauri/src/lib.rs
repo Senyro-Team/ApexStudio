@@ -97,12 +97,32 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("apex-thumb", |context, request, responder| {
             let ws = context.app_handle().state::<Workspace>().inner().clone();
             let hash = request.uri().path().trim_start_matches('/').to_owned();
-            tauri::async_runtime::spawn_blocking(move || {
-                let result = ws.thumbnail_bytes(&hash);
-                let mut response = tauri::http::Response::new(
-                    result.as_ref().map(|v| v.clone()).unwrap_or_default(),
-                );
-                *response.status_mut() = if result.is_ok() {
+            let project_id = request
+                .uri()
+                .query()
+                .and_then(|query| query.strip_prefix("projectId="))
+                .map(str::to_owned);
+            tauri::async_runtime::spawn(async move {
+                let local_ws = ws.clone();
+                let local_hash = hash.clone();
+                let local = tauri::async_runtime::spawn_blocking(move || {
+                    local_ws.thumbnail_bytes(&local_hash)
+                })
+                .await
+                .ok()
+                .and_then(Result::ok);
+                let bytes = if let Some(bytes) = local {
+                    Some(bytes)
+                } else if let Some(project_id) = project_id {
+                    team_sync::remote_livery_thumbnail(&ws, &project_id, &hash)
+                        .await
+                        .ok()
+                } else {
+                    None
+                };
+                let found = bytes.is_some();
+                let mut response = tauri::http::Response::new(bytes.unwrap_or_default());
+                *response.status_mut() = if found {
                     tauri::http::StatusCode::OK
                 } else {
                     tauri::http::StatusCode::NOT_FOUND
@@ -111,12 +131,10 @@ pub fn run() {
                     "content-type",
                     tauri::http::HeaderValue::from_static("image/png"),
                 );
-                if result.is_ok() {
-                    response.headers_mut().insert(
-                        "cache-control",
-                        tauri::http::HeaderValue::from_static("max-age=31536000, immutable"),
-                    );
-                }
+                response.headers_mut().insert(
+                    "cache-control",
+                    tauri::http::HeaderValue::from_static("no-store, max-age=0"),
+                );
                 responder.respond(response);
             });
         })
@@ -201,6 +219,7 @@ pub fn run() {
             team_sync::sync_accept_invitation,
             team_sync::sync_create_invitation,
             team_sync::sync_list_members,
+            team_sync::sync_remove_member,
             team_sync::sync_initial_setup,
             team_sync::sync_disconnect,
             team_sync::project_sync_settings,

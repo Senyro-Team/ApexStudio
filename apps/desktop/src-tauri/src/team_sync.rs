@@ -459,6 +459,48 @@ pub async fn sync_list_members(
 }
 
 #[tauri::command]
+pub async fn sync_remove_member(
+    server_url: String,
+    team_id: String,
+    user_id: String,
+    state: State<'_, TeamSyncState>,
+) -> Result<(), String> {
+    let _guard = state.0.lock().await;
+    let team_id = uuid::Uuid::parse_str(&team_id)
+        .map_err(|_| error("Select a valid team before removing a member."))?;
+    let user_id = uuid::Uuid::parse_str(&user_id)
+        .map_err(|_| error("Select a valid team member to remove."))?;
+    let base = origin(&server_url)?;
+    let server = server_info(&base).await?;
+    let Some(saved) = load_session()? else {
+        return Err(error(
+            "Sign in to the team server before removing a member.",
+        ));
+    };
+    if saved.server_origin != server.origin || saved.server_instance_id != server.server_instance_id
+    {
+        return Err(error(
+            "Sign in to this team server before removing a member.",
+        ));
+    }
+    let response = client()?
+        .delete(api_url(
+            &base,
+            &format!("api/v1/teams/{team_id}/members/{user_id}"),
+        )?)
+        .headers(auth_headers(&saved.access_token)?)
+        .send()
+        .await
+        .map_err(|_| error("Could not reach the team server. Check your connection."))?;
+    if response.status() == reqwest::StatusCode::NO_CONTENT {
+        Ok(())
+    } else {
+        let _: serde_json::Value = response_json(response).await?;
+        Err(error("The server returned an unexpected response."))
+    }
+}
+
+#[tauri::command]
 pub async fn sync_initial_setup(
     server_url: String,
     bootstrap_token: String,

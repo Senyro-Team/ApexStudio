@@ -1,6 +1,6 @@
 # Apex Sync Server
 
-This Docker deployment runs the Apex Sync Server API for team access and project synchronization. The API supports first-owner setup, password sign-in, one-time invitation codes, team roles, revisioned project records, tombstones, and content-addressed file transfer. Apex Studio Settings can check the server, sign in, list team members, create and accept invitation codes, and synchronize projects. Production backup/restore remains future work. Review the [API contract](../../docs/planning/TEAM-SYNC-API.md) before integrating a client.
+This Docker deployment runs the Apex Sync Server API for team access and project synchronization. The API supports first-owner setup, password sign-in, one-time invitation codes, team roles and member removal, revisioned project records, tombstones, content-addressed file transfer, and immutable team-shared Roblox decal codes. Apex Studio Settings can check the server, sign in, list/remove team members, create and accept invitation codes, and synchronize projects. Livery image blobs remain server-side for team sync and are streamed only when a member requests a preview; the preview is resized in memory by the desktop client. Production backup/restore remains future work. Review the [API contract](../../docs/planning/TEAM-SYNC-API.md) before integrating a client.
 
 ## Requirements
 

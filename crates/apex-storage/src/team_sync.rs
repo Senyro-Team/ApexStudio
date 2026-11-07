@@ -1,7 +1,7 @@
 //! Local-only sync bindings and atomic, project-scoped snapshots. Credentials never enter snapshots.
 use super::{storage, Workspace};
 use apex_core::Error;
-use rusqlite::{params, types::Value as SqlValue, Connection};
+use rusqlite::{params, types::Value as SqlValue, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -216,6 +216,8 @@ const TABLES: &[(&str, &str, &str)] = &[
 pub struct SyncBlob {
     pub hash: String,
     pub size: u64,
+    #[serde(default)]
+    pub remote_only: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -252,10 +254,76 @@ impl ProjectSnapshot {
         Ok(())
     }
     pub fn fingerprint(&self) -> Result<String, Error> {
+        // Delivery policy is transport metadata and must not turn an otherwise
+        // unchanged pre-policy snapshot into a user-edit conflict.
+        let mut canonical = self.clone();
+        canonical
+            .blobs
+            .iter_mut()
+            .for_each(|blob| blob.remote_only = false);
         Ok(format!(
             "{:x}",
-            Sha256::digest(serde_json::to_vec(self).map_err(storage)?)
+            Sha256::digest(serde_json::to_vec(&canonical).map_err(storage)?)
         ))
+    }
+    pub fn classify_server_only_liveries(&mut self) {
+        let mut livery_folders = std::collections::HashSet::new();
+        let mut livery_hashes = std::collections::HashSet::new();
+        if let Some(folders) = self.tables.get(2) {
+            for folder in folders {
+                if folder.get(4).and_then(Value::as_str) == Some("livery") {
+                    if let Some(id) = folder.first().and_then(Value::as_str) {
+                        livery_folders.insert(id.to_owned());
+                    }
+                    if let Some(hash) = folder.get(6).and_then(Value::as_str) {
+                        livery_hashes.insert(hash.to_owned());
+                    }
+                }
+            }
+        }
+        let mut livery_assets = std::collections::HashSet::new();
+        if let (Some(assets), Some(placements)) = (self.tables.get(3), self.tables.get(4)) {
+            let asset_folders = placements
+                .iter()
+                .filter_map(|row| {
+                    Some((
+                        row.first()?.as_str()?.to_owned(),
+                        row.get(1)?.as_str()?.to_owned(),
+                    ))
+                })
+                .collect::<std::collections::HashMap<_, _>>();
+            for asset in assets {
+                let (Some(id), Some(hash)) = (
+                    asset.first().and_then(Value::as_str),
+                    asset.get(3).and_then(Value::as_str),
+                ) else {
+                    continue;
+                };
+                if asset_folders
+                    .get(id)
+                    .is_some_and(|folder| livery_folders.contains(folder))
+                {
+                    livery_assets.insert(id.to_owned());
+                    livery_hashes.insert(hash.to_owned());
+                }
+            }
+        }
+        if let Some(versions) = self.tables.get(5) {
+            for version in versions {
+                if version
+                    .get(1)
+                    .and_then(Value::as_str)
+                    .is_some_and(|asset| livery_assets.contains(asset))
+                {
+                    if let Some(hash) = version.get(2).and_then(Value::as_str) {
+                        livery_hashes.insert(hash.to_owned());
+                    }
+                }
+            }
+        }
+        for blob in &mut self.blobs {
+            blob.remote_only = livery_hashes.contains(&blob.hash);
+        }
     }
     pub fn name(&self) -> Result<String, Error> {
         let metadata = self
@@ -299,7 +367,12 @@ fn snapshot(db: &Connection, id: &str) -> Result<ProjectSnapshot, Error> {
     if tables[0].len() != 1 {
         return Err(Error::NotFound);
     }
-    let mut query = db.prepare("SELECT hash,size FROM managed_files WHERE hash IN (
+    let mut query = db.prepare("SELECT hash,size,
+        CASE WHEN EXISTS (SELECT 1 FROM assets a JOIN asset_placements p ON p.asset_id=a.id JOIN asset_folders f ON f.id=p.folder_id WHERE a.hash=managed_files.hash AND f.kind='livery' AND a.trash_id IS NULL AND f.trash_id IS NULL)
+          OR EXISTS (SELECT 1 FROM asset_versions v JOIN assets a ON a.id=v.asset_id JOIN asset_placements p ON p.asset_id=a.id JOIN asset_folders f ON f.id=p.folder_id WHERE v.hash=managed_files.hash AND f.kind='livery' AND a.trash_id IS NULL AND f.trash_id IS NULL)
+          OR EXISTS (SELECT 1 FROM asset_folders f WHERE f.cover_hash=managed_files.hash AND f.kind='livery' AND f.trash_id IS NULL)
+        THEN 1 ELSE 0 END
+        FROM managed_files WHERE hash IN (
         SELECT hash FROM assets WHERE project_id=?1
         UNION SELECT v.hash FROM asset_versions v JOIN assets a ON a.id=v.asset_id WHERE a.project_id=?1
         UNION SELECT cover_hash FROM asset_folders WHERE project_id=?1
@@ -313,6 +386,7 @@ fn snapshot(db: &Connection, id: &str) -> Result<ProjectSnapshot, Error> {
                 hash: r.get(0)?,
                 size: u64::try_from(r.get::<_, i64>(1)?)
                     .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                remote_only: r.get::<_, bool>(2)?,
             })
         })
         .map_err(storage)?
@@ -407,6 +481,68 @@ impl Workspace {
         let tx = db.transaction().map_err(storage)?;
         snapshot(&tx, id)
     }
+    pub fn livery_decal_codes(
+        &self,
+        project_id: &str,
+        account_id: &str,
+    ) -> Result<Vec<(String, Option<String>)>, Error> {
+        let db = self.connection()?;
+        let mut query = db.prepare(
+            "SELECT DISTINCT a.hash,u.asset_id FROM assets a
+             JOIN asset_placements p ON p.asset_id=a.id
+             JOIN asset_folders f ON f.id=p.folder_id AND f.kind='livery'
+             LEFT JOIN roblox_uploads u ON u.hash=a.hash AND u.account_id=?2 AND u.state='uploaded' AND u.moderation!='rejected'
+             WHERE a.project_id=?1 AND a.trash_id IS NULL AND f.trash_id IS NULL ORDER BY a.hash",
+        ).map_err(storage)?;
+        let rows = query
+            .query_map(params![project_id, account_id], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)?;
+        Ok(rows)
+    }
+    pub fn save_shared_decal_code(
+        &self,
+        project_id: &str,
+        team_id: &str,
+        hash: &str,
+        decal_asset_id: &str,
+    ) -> Result<(), Error> {
+        if !apex_core::valid_hash(hash)
+            || decal_asset_id.is_empty()
+            || decal_asset_id.len() > 20
+            || decal_asset_id.starts_with('0')
+            || !decal_asset_id.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return Err(Error::InvalidContent("Invalid shared decal code.".into()));
+        }
+        let db = self.connection()?;
+        let transaction = db.unchecked_transaction().map_err(storage)?;
+        let existing = transaction.query_row(
+            "SELECT team_id,decal_asset_id FROM shared_decal_codes WHERE project_id=?1 AND hash=?2",
+            params![project_id, hash],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        ).optional().map_err(storage)?;
+        if let Some((existing_team, existing_id)) = existing {
+            if existing_team != team_id || existing_id != decal_asset_id {
+                return Err(Error::Conflict);
+            }
+        } else {
+            transaction.execute(
+                "INSERT INTO shared_decal_codes(project_id,team_id,hash,decal_asset_id) VALUES(?1,?2,?3,?4)",
+                params![project_id, team_id, hash, decal_asset_id],
+            ).map_err(storage)?;
+        }
+        transaction.commit().map_err(storage)
+    }
+    pub fn clear_shared_decal_codes(&self, team_id: &str) -> Result<(), Error> {
+        self.connection()?
+            .execute("DELETE FROM shared_decal_codes WHERE team_id=?1", [team_id])
+            .map_err(storage)?;
+        Ok(())
+    }
     pub fn sync_blob_path(&self, hash: &str) -> Result<PathBuf, Error> {
         if !apex_core::valid_hash(hash) {
             return Err(Error::InvalidContent("Invalid sync file hash.".into()));
@@ -429,6 +565,21 @@ impl Workspace {
         self.import_file(path)?;
         Ok(())
     }
+    pub fn remote_livery_blob(&self, project_id: &str, hash: &str) -> Result<bool, Error> {
+        self.connection()?.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM assets a JOIN asset_placements p ON p.asset_id=a.id JOIN asset_folders f ON f.id=p.folder_id
+                WHERE a.project_id=?1 AND a.hash=?2 AND f.kind='livery' AND a.trash_id IS NULL AND f.trash_id IS NULL
+             ) OR EXISTS (
+                SELECT 1 FROM asset_versions v JOIN assets a ON a.id=v.asset_id JOIN asset_placements p ON p.asset_id=a.id JOIN asset_folders f ON f.id=p.folder_id
+                WHERE a.project_id=?1 AND v.hash=?2 AND f.kind='livery' AND a.trash_id IS NULL AND f.trash_id IS NULL
+             ) OR EXISTS (
+                SELECT 1 FROM asset_folders f WHERE f.project_id=?1 AND f.cover_hash=?2 AND f.kind='livery' AND f.trash_id IS NULL
+             )",
+            params![project_id, hash],
+            |row| row.get(0),
+        ).map_err(storage)
+    }
     pub fn backup_before_sync_resolution(&self) -> Result<PathBuf, Error> {
         let path = self.root.join("backups").join(format!(
             "before-sync-resolution-{}.apexbackup",
@@ -447,10 +598,11 @@ impl Workspace {
     ) -> Result<(), Error> {
         incoming.validate()?;
         for blob in &incoming.blobs {
-            if std::fs::metadata(self.sync_blob_path(&blob.hash)?)
-                .map_err(storage)?
-                .len()
-                != blob.size
+            if !blob.remote_only
+                && std::fs::metadata(self.sync_blob_path(&blob.hash)?)
+                    .map_err(storage)?
+                    .len()
+                    != blob.size
             {
                 return Err(Error::InvalidContent(
                     "A project file is missing or incomplete.".into(),
@@ -486,6 +638,17 @@ impl Workspace {
         }
         tx.execute_batch("PRAGMA defer_foreign_keys=ON")
             .map_err(storage)?;
+        for blob in &incoming.blobs {
+            tx.execute(
+                "INSERT OR IGNORE INTO managed_files(hash,size,local_available) VALUES(?1,?2,?3)",
+                params![
+                    blob.hash,
+                    i64::try_from(blob.size).map_err(storage)?,
+                    if blob.remote_only { 0 } else { 1 }
+                ],
+            )
+            .map_err(storage)?;
+        }
         // Child selections must run before their owning rows are removed.
         for i in [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0] {
             let (table, _, filter) = TABLES[i];

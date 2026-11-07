@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { autoSyncEnabled, setAutoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
-import { Check, CircleAlert, Copy, LogOut, RefreshCw, Server, Users } from "lucide-react";
+import { Check, CircleAlert, Copy, LogOut, RefreshCw, Server, Trash2, Users } from "lucide-react";
 import AppSelect from "./AppSelect";
 import { readTeamSyncLog, recordTeamSyncError, recordTeamSyncReport, syncSummary } from "./teamSyncLog";
 import {
@@ -14,6 +14,7 @@ import {
   syncSignIn,
   syncProjects,
   syncListMembers,
+  syncRemoveMember,
   type SyncConnectionStatus,
   type SyncInvitation,
   type SyncInvitationRole,
@@ -55,6 +56,7 @@ export default function TeamSyncSettings({
   const [members, setMembers] = useState<SyncTeamMember[]>([]);
   const [membersBusy, setMembersBusy] = useState(false);
   const [membersError, setMembersError] = useState("");
+  const [removingMember, setRemovingMember] = useState("");
   const [membersRefresh, setMembersRefresh] = useState(0);
   const [syncLog, setSyncLog] = useState(() => readTeamSyncLog(initialUrl.current, ""));
   const automaticSync = useSyncExternalStore(subscribeAutoSync, autoSyncEnabled, () => true);
@@ -180,6 +182,32 @@ export default function TeamSyncSettings({
   const connectedUser = connection?.user;
   const selectedTeam = connectedUser?.teams.find((team) => team.id === activeTeam);
   const canInvite = selectedTeam?.role === "owner" || selectedTeam?.role === "admin";
+
+  function canRemoveMember(member: SyncTeamMember) {
+    if (!selectedTeam || member.role === "owner" || member.id === connectedUser?.id) return false;
+    return selectedTeam.role === "owner"
+      || (selectedTeam.role === "admin" && member.role !== "admin");
+  }
+
+  async function removeMember(member: SyncTeamMember) {
+    if (!selectedTeam || !canRemoveMember(member)) return;
+    const confirmed = window.confirm(
+      `Remove ${member.displayName} from ${selectedTeam.name}? Their active sessions will be signed out and they will lose access to this team's projects.`,
+    );
+    if (!confirmed) return;
+    setRemovingMember(member.id);
+    setError("");
+    setNotice("");
+    try {
+      await syncRemoveMember(serverUrl, selectedTeam.id, member.id);
+      setMembers((current) => current.filter((row) => row.id !== member.id));
+      setNotice(`${member.displayName} was removed from ${selectedTeam.name}.`);
+    } catch (reason) {
+      setMembersError(errorText(reason));
+    } finally {
+      setRemovingMember("");
+    }
+  }
 
   useEffect(() => {
     setSyncLog(readTeamSyncLog(serverUrl, selectedTeam?.id ?? ""));
@@ -457,6 +485,18 @@ export default function TeamSyncSettings({
                         <span>{member.email}</span>
                       </div>
                       <span className="team-sync-member-role">{member.role.replace("_", " ")}</span>
+                      {canRemoveMember(member) && (
+                        <button
+                          className="danger-quiet"
+                          type="button"
+                          aria-label={`Remove ${member.displayName}`}
+                          disabled={removingMember === member.id || Boolean(removingMember)}
+                          onClick={() => void removeMember(member)}
+                        >
+                          <Trash2 size={15} aria-hidden="true" />
+                          {removingMember === member.id ? "Removing…" : "Remove"}
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>

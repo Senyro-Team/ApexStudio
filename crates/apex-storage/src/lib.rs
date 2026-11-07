@@ -31,7 +31,7 @@ pub use posts::*;
 pub use statistics::*;
 pub use team_sync::*;
 pub use trash::*;
-const SCHEMA_VERSION: u32 = 13;
+const SCHEMA_VERSION: u32 = 15;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
@@ -222,6 +222,28 @@ impl Workspace {
                 .execute_batch(include_str!("schema13.sql"))
                 .map_err(storage)?;
         }
+        if version < 14 {
+            if version > 0 {
+                workspace.backup(&workspace.root.join("backups").join(format!(
+                    "before-schema-14-{}.apexbackup",
+                    uuid::Uuid::now_v7()
+                )))?;
+            }
+            connection
+                .execute_batch(include_str!("schema14.sql"))
+                .map_err(storage)?;
+        }
+        if version < 15 {
+            if version > 0 {
+                workspace.backup(&workspace.root.join("backups").join(format!(
+                    "before-schema-15-{}.apexbackup",
+                    uuid::Uuid::now_v7()
+                )))?;
+            }
+            connection
+                .execute_batch(include_str!("schema15.sql"))
+                .map_err(storage)?;
+        }
         *workspace
             .anchor
             .lock()
@@ -297,7 +319,7 @@ impl Workspace {
             }
             self.connection()?
                 .execute(
-                    "INSERT OR IGNORE INTO managed_files(hash,size) VALUES (?1,?2)",
+                    "INSERT INTO managed_files(hash,size,local_available) VALUES (?1,?2,1) ON CONFLICT(hash) DO UPDATE SET local_available=1,size=excluded.size",
                     params![hash, database_size],
                 )
                 .map_err(storage)?;
