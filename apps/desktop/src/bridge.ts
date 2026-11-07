@@ -105,7 +105,22 @@ export interface ProjectSyncSettings {
   enabled: boolean; localHash: string | null; revision: number; cursor: number;
   message: string; syncedAt: string | null;
 }
-export interface SyncReport { uploaded: number; downloaded: number; errors: string[] }
+export interface SyncEntry {
+  projectId: string;
+  projectName: string;
+  status: "uploaded" | "downloaded" | "up_to_date" | "skipped" | "error";
+  message: string;
+}
+export interface SyncReport {
+  uploaded: number;
+  downloaded: number;
+  errors: string[];
+  checked?: number;
+  upToDate?: number;
+  sharedLocal?: number;
+  remoteProjects?: number;
+  entries?: SyncEntry[];
+}
 export const projectSyncSettings = (projectId: string) => invoke<ProjectSyncSettings | null>("project_sync_settings", { projectId });
 export const setProjectSync = (projectId: string, choice: ProjectSyncChoice) => invoke<ProjectSyncSettings | null>("set_project_sync", { projectId, choice });
 export const syncProjects = (serverUrl: string, teamId: string) => invoke<SyncReport>("sync_projects", { serverUrl, teamId });

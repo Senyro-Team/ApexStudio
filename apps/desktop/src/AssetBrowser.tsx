@@ -1,4 +1,5 @@
 import AssetPreview from "./AssetPreview";
+import AppSelect from "./AppSelect";
 import usePreparation from "./usePreparation";
 import LiveryFolderImport from "./LiveryFolderImport";
 import useAssetDrag from "./useAssetDrag";
@@ -734,7 +735,7 @@ export default function AssetBrowser({
           </label>
           <label>
             Parent folder
-            <select
+            <AppSelect
               value={parent ?? ""}
               onChange={(e) => setParent(e.target.value || null)}
               disabled={busy}
@@ -751,7 +752,7 @@ export default function AssetBrowser({
                     {f.name}
                   </option>
                 ))}
-            </select>
+            </AppSelect>
           </label>
           <div className="button-row">
             <button className="primary" disabled={busy || !folderName.trim()}>
@@ -942,7 +943,7 @@ export default function AssetBrowser({
           </div>
           <label>
             Cover image
-            <select
+            <AppSelect
               aria-label="Livery cover"
               disabled={busy}
               value={cover ?? ""}
@@ -956,7 +957,7 @@ export default function AssetBrowser({
                   {f.name}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </label>
           {issues.length > 0 && (
             <p className="error pre-wrap" role="alert">
@@ -1255,7 +1256,7 @@ export default function AssetBrowser({
           </button>
           <label>
             Move to folder
-            <select
+            <AppSelect
               aria-label="Move file to"
               disabled={busy || project.archived}
               value={moveTo ?? ""}
@@ -1267,7 +1268,7 @@ export default function AssetBrowser({
                   {f.name}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </label>
           <button
             className="secondary"

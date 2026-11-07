@@ -83,7 +83,7 @@ it("keeps the auto-sync choice when Settings is reopened and allows manual synch
     }),
   ).toHaveProperty("checked", false);
   await user.click(screen.getByRole("button", { name: "Sync projects now" }));
-  await screen.findByText("1 uploaded · 0 downloaded");
+  await screen.findAllByText("1 uploaded · 0 downloaded · 0 already current");
   expect(syncProjects).toHaveBeenCalledWith(connection.server.origin, "team");
 });
 
@@ -97,4 +97,15 @@ it("lists the selected team's members and can refresh them", async () => {
   expect(within(memberList as HTMLElement).getByText("designer@example.test")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Refresh" }));
   expect(syncListMembers).toHaveBeenLastCalledWith(connection.server.origin, "team");
+});
+
+it("explains a zero transfer and records the manual sync", async () => {
+  vi.mocked(syncProjects).mockResolvedValue({
+    uploaded: 0, downloaded: 0, checked: 4, upToDate: 4,
+    sharedLocal: 4, remoteProjects: 4, errors: [], entries: [],
+  });
+  render(<TeamSyncSettings onBusy={vi.fn()} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Sync projects now" }));
+  await screen.findAllByText("4 of 4 projects already up to date.");
+  expect(screen.getByLabelText("Synchronization log").textContent).toContain("Manual");
 });

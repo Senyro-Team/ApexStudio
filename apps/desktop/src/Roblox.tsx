@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AppSelect from "./AppSelect";
 import { liveryCodesMarkdown } from "./liveryCodesMarkdown";
 import { listen } from "@tauri-apps/api/event";
 import { Trash2 } from "lucide-react";
@@ -321,7 +322,7 @@ export default function Roblox({
         <div className="roblox-filters">
           <label>
             Project
-            <select
+            <AppSelect
               aria-label="Roblox project"
               value={project}
               onChange={(e) => setProject(e.target.value)}
@@ -332,7 +333,7 @@ export default function Roblox({
                   {name}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </label>
           <label>
             Search

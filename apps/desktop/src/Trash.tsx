@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import AppSelect from "./AppSelect";
 import {
   listTrash,
   restoreTrash,
@@ -62,7 +63,7 @@ export default function Trash({
       {notice && <p role="status">{notice}</p>}
       <label>
         Project
-        <select value={project} onChange={(e) => setProject(e.target.value)}>
+        <AppSelect value={project} onChange={(e) => setProject(e.target.value)}>
           <option value="">All projects</option>
           {[
             ...new Map(rows.map((r) => [r.projectId, r.projectName])).entries(),
@@ -71,7 +72,7 @@ export default function Trash({
               {name}
             </option>
           ))}
-        </select>
+        </AppSelect>
       </label>
       <ul className="trash-list">
         {rows

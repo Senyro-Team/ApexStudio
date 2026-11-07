@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { desktopAvailable, syncProjects, type SyncReport } from "./bridge";
 import { autoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
+import { recordTeamSyncError, recordTeamSyncReport } from "./teamSyncLog";
 
 export const AUTO_SYNC_DEBOUNCE_MS = 250;
 export const AUTO_SYNC_POLL_MS = 2000;
@@ -23,10 +24,14 @@ export async function synchronizeTeamProjects() {
   inFlight = syncProjects(serverUrl, teamId);
   try {
     const report = await inFlight;
+    recordTeamSyncReport(serverUrl, teamId, "automatic", report);
     window.dispatchEvent(
       new CustomEvent("apex-projects-synced", { detail: report }),
     );
     return report;
+  } catch (reason) {
+    recordTeamSyncError(serverUrl, teamId, "automatic", typeof reason === "string" ? reason : "Project sync could not finish.");
+    throw reason;
   } finally {
     inFlight = null;
   }

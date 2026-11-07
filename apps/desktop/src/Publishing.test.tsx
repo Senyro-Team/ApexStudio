@@ -10,6 +10,7 @@ import {
   exportPublishing,
   type PublishingData,
   type Project,
+  type Catalogue,
 } from "./bridge";
 vi.mock("./bridge", () => ({
   robloxLivery: vi.fn(),
@@ -43,6 +44,22 @@ const empty: PublishingData = {
   media: [],
   liveries: [],
 };
+const catalogue: Catalogue = {
+  capturedAt: "2026-11-04",
+  source: "Official",
+  completeness: "Snapshot",
+  vehicles: [{
+    id: "truck",
+    name: "Truckatron",
+    team: "Fire",
+    source: "Official",
+    liverySupport: "supported",
+    bodyStatus: null,
+    windowStatus: null,
+    notes: [],
+    slots: [],
+  }],
+};
 beforeEach(() => {
   vi.clearAllMocks();
   HTMLDialogElement.prototype.showModal = vi.fn(function (
@@ -61,6 +78,18 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
+it("uses an app menu for vehicle suggestions", async () => {
+  const user = userEvent.setup();
+  render(<Publishing project={project} catalogue={catalogue} onEditingChange={() => {}} />);
+  await user.click(await screen.findByText("Use existing decal IDs manually"));
+  await user.click(screen.getByRole("button", { name: "Add manual livery" }));
+  const input = await screen.findByLabelText("Publishing vehicle") as HTMLInputElement;
+  await user.type(input, "Truck");
+  expect(screen.getByRole("listbox")).toBeTruthy();
+  await user.click(screen.getByRole("option", { name: "Truckatron" }));
+  expect(input.value).toBe("Truckatron");
+  expect(screen.queryByRole("listbox")).toBeNull();
+});
 it("saves incomplete work and keeps export unavailable until required fields exist", async () => {
   const user = userEvent.setup();
   vi.mocked(savePublishing).mockImplementation(async (_, revision, data) => ({

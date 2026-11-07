@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { autoSyncEnabled, setAutoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
 import { Check, CircleAlert, Copy, LogOut, RefreshCw, Server, Users } from "lucide-react";
+import AppSelect from "./AppSelect";
+import { readTeamSyncLog, recordTeamSyncError, recordTeamSyncReport, syncSummary } from "./teamSyncLog";
 import {
   desktopAvailable,
   syncAcceptInvitation,
@@ -54,6 +56,7 @@ export default function TeamSyncSettings({
   const [membersBusy, setMembersBusy] = useState(false);
   const [membersError, setMembersError] = useState("");
   const [membersRefresh, setMembersRefresh] = useState(0);
+  const [syncLog, setSyncLog] = useState(() => readTeamSyncLog(initialUrl.current, ""));
   const automaticSync = useSyncExternalStore(subscribeAutoSync, autoSyncEnabled, () => true);
   useEffect(() => {
     const failed = (event: Event) => setError(String((event as CustomEvent).detail));
@@ -177,6 +180,18 @@ export default function TeamSyncSettings({
   const connectedUser = connection?.user;
   const selectedTeam = connectedUser?.teams.find((team) => team.id === activeTeam);
   const canInvite = selectedTeam?.role === "owner" || selectedTeam?.role === "admin";
+
+  useEffect(() => {
+    setSyncLog(readTeamSyncLog(serverUrl, selectedTeam?.id ?? ""));
+    const refresh = (event: Event) => {
+      const detail = (event as CustomEvent<{ serverUrl: string; teamId: string }>).detail;
+      if (detail?.serverUrl === serverUrl && detail.teamId === selectedTeam?.id) {
+        setSyncLog(readTeamSyncLog(serverUrl, detail.teamId));
+      }
+    };
+    window.addEventListener("apex-team-sync-log", refresh);
+    return () => window.removeEventListener("apex-team-sync-log", refresh);
+  }, [serverUrl, selectedTeam?.id]);
 
   useEffect(() => {
     if (!connectedUser || !selectedTeam) {
@@ -344,7 +359,7 @@ export default function TeamSyncSettings({
                 </div>
               ) : (
                 <>
-                  <select
+                  <AppSelect
                     id="team-sync-team"
                     value={selectedTeam?.id ?? ""}
                     onChange={(event) => changeActiveTeam(event.target.value)}
@@ -352,7 +367,7 @@ export default function TeamSyncSettings({
                     {connectedUser.teams.map((team) => (
                       <option key={team.id} value={team.id}>{team.name}</option>
                     ))}
-                  </select>
+                  </AppSelect>
                   {selectedTeam && (
                     <p className="field-hint">
                       Your role: {selectedTeam.role.replace("_", " ")}
@@ -382,11 +397,32 @@ export default function TeamSyncSettings({
             <button className="secondary" type="button" disabled={busy || syncBusy} onClick={() => {
               setSyncBusy(true); setError(""); setNotice("");
               void syncProjects(serverUrl, selectedTeam.id).then((report) => {
-                setNotice(`${report.uploaded} uploaded · ${report.downloaded} downloaded`);
+                recordTeamSyncReport(serverUrl, selectedTeam.id, "manual", report);
+                setNotice(syncSummary(report));
                 if (report.errors.length) setError(report.errors.join("\n"));
                 window.dispatchEvent(new CustomEvent("apex-projects-synced", {detail: report}));
-              }).catch((reason: unknown) => setError(errorText(reason))).finally(() => setSyncBusy(false));
+              }).catch((reason: unknown) => {
+                const message = errorText(reason);
+                recordTeamSyncError(serverUrl, selectedTeam.id, "manual", message);
+                setError(message);
+              }).finally(() => setSyncBusy(false));
             }}>{syncBusy ? "Synchronizing…" : "Sync projects now"}</button>
+            <div className="team-sync-log" aria-label="Synchronization log">
+              <h4>Sync log</h4>
+              {syncLog.length ? <ol>{syncLog.map((item, index) => (
+                <li key={`${item.at}-${index}`}>
+                  <div className="team-sync-log-heading">
+                    <time dateTime={item.at}>{new Date(item.at).toLocaleString()}</time>
+                    <span>{item.source === "manual" ? "Manual" : "Automatic"}</span>
+                  </div>
+                  <p>{item.summary}</p>
+                  {item.error && <p className="team-sync-log-error">{item.error}</p>}
+                  {item.entries?.some((entry) => entry.status !== "up_to_date") && <ul>{item.entries.filter((entry) => entry.status !== "up_to_date").map((entry) => (
+                    <li key={entry.projectId}>{entry.projectName}: {entry.message}</li>
+                  ))}</ul>}
+                </li>
+              ))}</ol> : <p className="field-hint">No sync attempts recorded yet.</p>}
+            </div>
           </section>}
           {selectedTeam && (
             <section className="team-sync-members" aria-labelledby="team-sync-members-title">

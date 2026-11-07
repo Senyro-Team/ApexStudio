@@ -449,7 +449,6 @@ pub async fn sync_list_members(
     {
         return Err(error("Sign in to this team server before viewing members."));
     }
-
     let response = client()?
         .get(api_url(&base, &format!("api/v1/teams/{team_id}/members"))?)
         .headers(auth_headers(&saved.access_token)?)

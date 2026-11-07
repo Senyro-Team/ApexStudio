@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AppSelect from "./AppSelect";
 const sides = [
   "Left",
   "Right",
@@ -30,7 +31,7 @@ export default function SlotEditor({
   useEffect(() => setEditingNumber(number), [number, value]);
   return (
     <div className="slot-editor">
-      <select
+      <AppSelect
         aria-label={`Side for ${label}`}
         value={side}
         disabled={disabled}
@@ -44,7 +45,7 @@ export default function SlotEditor({
         {sides.map((s) => (
           <option key={s}>{s}</option>
         ))}
-      </select>
+      </AppSelect>
       <input
         aria-label={`Number for ${label}`}
         type="number"

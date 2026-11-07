@@ -144,6 +144,7 @@ pub async fn set_project_sync(
 #[derive(Deserialize)]
 struct RemoteProject {
     id: String,
+    name: String,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -165,12 +166,34 @@ struct Page {
 struct Revision {
     revision: i64,
 }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncEntry {
+    pub project_id: String,
+    pub project_name: String,
+    pub status: &'static str,
+    pub message: String,
+}
+
 #[derive(Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncReport {
     pub uploaded: usize,
     pub downloaded: usize,
+    pub checked: usize,
+    pub up_to_date: usize,
+    pub shared_local: usize,
+    pub remote_projects: usize,
     pub errors: Vec<String>,
+    pub entries: Vec<SyncEntry>,
+}
+
+#[derive(Debug)]
+enum SyncOutcome {
+    Uploaded,
+    Downloaded,
+    UpToDate,
+    Skipped(&'static str),
 }
 
 async fn sync_json<T: DeserializeOwned>(mut r: Response) -> Result<T, String> {
@@ -410,7 +433,7 @@ async fn sync_one(
     id: &str,
     binding: Option<&ProjectSync>,
     report: &mut SyncReport,
-) -> Result<(), String> {
+) -> Result<SyncOutcome, String> {
     uuid::Uuid::parse_str(id).map_err(|_| error("Invalid server project ID."))?;
     let (remote, cursor) = latest(c, id, binding.map_or(0, |b| b.cursor)).await?;
     let local = match ws.project_snapshot(id) {
@@ -443,7 +466,7 @@ async fn sync_one(
             if local_hash.as_deref() == Some(&hash) {
                 ws.acknowledge_project_sync(id, &hash, r.revision, cursor)
                     .map_err(|e| e.to_string())?;
-                return Ok(());
+                return Ok(SyncOutcome::UpToDate);
             }
             let changed = binding.is_none_or(|b| r.revision != b.revision);
             if changed {
@@ -454,7 +477,7 @@ async fn sync_one(
                 }
                 download_files(c, ws, snapshot).await?;
                 if !c.can_apply() {
-                    return Ok(());
+                    return Err(error("Finish editing before applying team updates."));
                 }
                 ws.apply_project_snapshot(
                     snapshot,
@@ -470,18 +493,22 @@ async fn sync_one(
                 ws.acknowledge_project_sync(id, &hash, r.revision, cursor)
                     .map_err(|e| e.to_string())?;
                 report.downloaded += 1;
-                return Ok(());
+                return Ok(SyncOutcome::Downloaded);
             }
         } else if binding.is_none() {
-            return Ok(());
+            return Ok(SyncOutcome::Skipped(
+                "The server project has no compatible Apex snapshot.",
+            ));
         } // Another client format: leave it alone.
     }
     let Some(local) = local else {
-        return Ok(());
+        return Ok(SyncOutcome::Skipped(
+            "No local project or compatible server snapshot was found.",
+        ));
     };
     let hash = local_hash.ok_or_else(|| error("Local project is unavailable."))?;
     if binding.and_then(|b| b.local_hash.as_ref()) == Some(&hash) {
-        return Ok(());
+        return Ok(SyncOutcome::UpToDate);
     }
     if c.team.role == "read_only" {
         return Err(error(
@@ -518,7 +545,7 @@ async fn sync_one(
     ws.acknowledge_project_sync(id, &hash, revision.revision, cursor)
         .map_err(|e| e.to_string())?;
     report.uploaded += 1;
-    Ok(())
+    Ok(SyncOutcome::Uploaded)
 }
 #[tauri::command]
 pub async fn sync_projects(
@@ -535,10 +562,11 @@ pub async fn sync_projects(
     };
     c.app = Some(app);
     if !c.can_apply() {
-        return Ok(SyncReport::default());
+        return Err(error("Finish editing before synchronizing projects."));
     }
     let ws = workspace.inner().clone();
     let bindings = ws.project_sync_bindings().map_err(|e| e.to_string())?;
+    let origin = origin_text(&c.base);
     let projects: Vec<RemoteProject> = sync_json(
         client()?
             .get(c.url(&format!("api/v1/teams/{}/projects", c.team.id))?)
@@ -548,9 +576,22 @@ pub async fn sync_projects(
             .map_err(|_| error("The sync server could not be reached."))?,
     )
     .await?;
+    let mut report = SyncReport {
+        shared_local: bindings
+            .iter()
+            .filter(|b| {
+                b.enabled
+                    && b.origin == origin
+                    && b.server_instance == c.server.server_instance_id
+                    && b.team_id == c.team.id
+            })
+            .count(),
+        remote_projects: projects.len(),
+        ..SyncReport::default()
+    };
     let mut ids = projects.iter().map(|p| p.id.clone()).collect::<Vec<_>>();
     for b in &bindings {
-        if b.origin == origin_text(&c.base)
+        if b.origin == origin
             && b.server_instance == c.server.server_instance_id
             && b.team_id == c.team.id
             && b.enabled
@@ -560,11 +601,19 @@ pub async fn sync_projects(
                 .project_snapshot(&b.project_id)
                 .map_err(|e| e.to_string())?;
             if b.revision > 0 {
-                ws.sync_message(
-                    &b.project_id,
-                    "The server project is unavailable. Local data has been kept.",
-                )
-                .map_err(|e| e.to_string())?;
+                let message = "The server project is unavailable. Local data has been kept.";
+                ws.sync_message(&b.project_id, message)
+                    .map_err(|e| e.to_string())?;
+                report.errors.push(format!(
+                    "{}: {message}",
+                    local.name().map_err(|e| e.to_string())?
+                ));
+                report.entries.push(SyncEntry {
+                    project_id: b.project_id.clone(),
+                    project_name: local.name().map_err(|e| e.to_string())?,
+                    status: "error",
+                    message: message.into(),
+                });
                 continue;
             }
             let response=client()?.post(c.url(&format!("api/v1/teams/{}/projects",c.team.id))?).headers(c.headers()?).json(&json!({"id":b.project_id,"data":{"name":local.name().map_err(|e|e.to_string())?}})).send().await.map_err(|_|error("Could not create the shared project."))?;
@@ -574,25 +623,52 @@ pub async fn sync_projects(
             ids.push(b.project_id.clone());
         }
     }
-    let mut report = SyncReport::default();
     for id in ids {
         let binding = bindings.iter().find(|b| b.project_id == id);
         if binding.is_some_and(|b| {
             !b.enabled
-                || b.origin != origin_text(&c.base)
+                || b.origin != origin
                 || b.server_instance != c.server.server_instance_id
                 || b.team_id != c.team.id
         }) {
             continue;
         }
-        if let Err(message) = sync_one(&c, &ws, &id, binding, &mut report).await {
-            ws.sync_message(&id, &message).map_err(|e| e.to_string())?;
-            report.errors.push(format!(
-                "{}: {message}",
-                ws.project(&id)
-                    .map(|p| p.fields.name)
-                    .unwrap_or_else(|_| id.clone())
-            ));
+        let name = ws.project(&id).map(|p| p.fields.name).unwrap_or_else(|_| {
+            projects
+                .iter()
+                .find(|project| project.id == id)
+                .map(|project| project.name.clone())
+                .unwrap_or_else(|| id.clone())
+        });
+        report.checked += 1;
+        match sync_one(&c, &ws, &id, binding, &mut report).await {
+            Ok(outcome) => {
+                let (status, message) = match outcome {
+                    SyncOutcome::Uploaded => ("uploaded", "Local changes uploaded."),
+                    SyncOutcome::Downloaded => ("downloaded", "Server changes downloaded."),
+                    SyncOutcome::UpToDate => {
+                        report.up_to_date += 1;
+                        ("up_to_date", "Already up to date.")
+                    }
+                    SyncOutcome::Skipped(reason) => ("skipped", reason),
+                };
+                report.entries.push(SyncEntry {
+                    project_id: id,
+                    project_name: name,
+                    status,
+                    message: message.into(),
+                });
+            }
+            Err(message) => {
+                ws.sync_message(&id, &message).map_err(|e| e.to_string())?;
+                report.errors.push(format!("{name}: {message}"));
+                report.entries.push(SyncEntry {
+                    project_id: id,
+                    project_name: name,
+                    status: "error",
+                    message,
+                });
+            }
         }
     }
     Ok(report)
@@ -950,6 +1026,16 @@ mod tests {
             .await
             .unwrap();
             assert_eq!(report.uploaded, 1);
+            let unchanged = sync_one(
+                &c,
+                &a,
+                &project.id,
+                a.project_sync(&project.id).unwrap().as_ref(),
+                &mut report,
+            )
+            .await
+            .unwrap();
+            assert!(matches!(unchanged, SyncOutcome::UpToDate));
             sync_one(&c, &b, &project.id, None, &mut report)
                 .await
                 .unwrap();

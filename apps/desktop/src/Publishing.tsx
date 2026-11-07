@@ -1,4 +1,5 @@
 import PostLiveryPicker from "./PostLiveryPicker";
+import AppSelect from "./AppSelect";
 import { readyForPublishing, publishingLivery } from "./RobloxUpload";
 import { useEffect, useState } from "react";
 import SlotEditor from "./SlotEditor";
@@ -85,7 +86,9 @@ export default function Publishing({
     }),
     [source, setSource] = useState(""),
     [activeLivery, setActiveLivery] = useState(0),
-    [showAssets, setShowAssets] = useState(false);
+    [showAssets, setShowAssets] = useState(false),
+    [vehicleOpen, setVehicleOpen] = useState(false),
+    [vehicleIndex, setVehicleIndex] = useState(0);
   useEffect(() => {
     let active = true;
     setError("");
@@ -309,6 +312,13 @@ export default function Publishing({
     );
   if (!data || !saved) return <p role="status">Loading publishing draft…</p>;
   const current = data.liveries[activeLivery];
+  const vehicleMatches = current?.vehicle.trim()
+    ? catalogue?.vehicles
+        .filter((vehicle) =>
+          vehicle.name.toLowerCase().includes(current.vehicle.toLowerCase()),
+        )
+        .slice(0, 8) ?? []
+    : [];
   const requirements = [
     ...(data.title.trim().length < 5 ? ["Title: at least 5 characters."] : []),
     ...(!data.description.trim() ? ["Description is required."] : []),
@@ -440,7 +450,7 @@ export default function Publishing({
           {draftId && (
             <label>
               Image project
-              <select
+              <AppSelect
                 value={mediaProject}
                 disabled={locked}
                 onChange={(e) => setMediaProject(e.target.value)}
@@ -451,7 +461,7 @@ export default function Publishing({
                     {p.name}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </label>
           )}
           {showAssets && (
@@ -549,7 +559,7 @@ export default function Publishing({
             <h2>Liveries for ERLCX</h2>
             {!draftId && (
               <div className="publishing-add-livery">
-                <select
+                <AppSelect
                   aria-label="Livery source"
                   value={source}
                   disabled={locked}
@@ -563,7 +573,7 @@ export default function Publishing({
                         {f.name}
                       </option>
                     ))}
-                </select>
+                </AppSelect>
                 <button
                   className="secondary"
                   disabled={locked || !source || data.liveries.length >= 20}
@@ -657,31 +667,73 @@ export default function Publishing({
                       </button>
                     </div>
                   )}
-                  <label>
-                    Vehicle
-                    <input
-                      aria-label="Publishing vehicle"
-                      readOnly={!!current.source}
-                      list="publishing-vehicle-options"
-                      maxLength={120}
-                      value={current.vehicle}
-                      disabled={locked}
-                      onChange={(e) =>
-                        changeLivery({ vehicle: e.target.value })
-                      }
-                    />
-                    <datalist id="publishing-vehicle-options">
-                      {current.vehicle.trim() &&
-                        catalogue?.vehicles
-                          .filter((v) =>
-                            v.name
-                              .toLowerCase()
-                              .includes(current.vehicle.toLowerCase()),
-                          )
-                          .slice(0, 8)
-                          .map((v) => <option key={v.id} value={v.name} />)}
-                    </datalist>
-                  </label>
+                  <div className="publishing-vehicle-field">
+                    <label htmlFor="publishing-vehicle-input">Vehicle</label>
+                    <span className="publishing-vehicle-picker">
+                      <input
+                        id="publishing-vehicle-input"
+                        role="combobox"
+                        aria-label="Publishing vehicle"
+                        aria-autocomplete="list"
+                        aria-expanded={vehicleOpen && vehicleMatches.length > 0}
+                        aria-controls="publishing-vehicle-options"
+                        aria-activedescendant={
+                          vehicleOpen && vehicleMatches[vehicleIndex]
+                            ? `publishing-vehicle-${vehicleMatches[vehicleIndex].id}`
+                            : undefined
+                        }
+                        readOnly={!!current.source}
+                        maxLength={120}
+                        value={current.vehicle}
+                        disabled={locked}
+                        onFocus={() => setVehicleOpen(true)}
+                        onBlur={() => setVehicleOpen(false)}
+                        onChange={(e) => {
+                          changeLivery({ vehicle: e.target.value });
+                          setVehicleIndex(0);
+                          setVehicleOpen(true);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") setVehicleOpen(false);
+                          if (event.key === "ArrowDown" && vehicleMatches.length) {
+                            event.preventDefault();
+                            setVehicleOpen(true);
+                            setVehicleIndex((index) => Math.min(index + 1, vehicleMatches.length - 1));
+                          }
+                          if (event.key === "ArrowUp" && vehicleMatches.length) {
+                            event.preventDefault();
+                            setVehicleIndex((index) => Math.max(0, index - 1));
+                          }
+                          if (event.key === "Enter" && vehicleOpen && vehicleMatches[vehicleIndex]) {
+                            event.preventDefault();
+                            changeLivery({ vehicle: vehicleMatches[vehicleIndex].name });
+                            setVehicleOpen(false);
+                          }
+                        }}
+                      />
+                      {vehicleOpen && !locked && !current.source && vehicleMatches.length > 0 && (
+                        <span id="publishing-vehicle-options" className="publishing-vehicle-options" role="listbox">
+                          {vehicleMatches.map((vehicle, index) => (
+                            <button
+                              key={vehicle.id}
+                              id={`publishing-vehicle-${vehicle.id}`}
+                              type="button"
+                              role="option"
+                              aria-selected={index === vehicleIndex}
+                              onPointerDown={(event) => event.preventDefault()}
+                              onMouseEnter={() => setVehicleIndex(index)}
+                              onClick={() => {
+                                changeLivery({ vehicle: vehicle.name });
+                                setVehicleOpen(false);
+                              }}
+                            >
+                              {vehicle.name}
+                            </button>
+                          ))}
+                        </span>
+                      )}
+                    </span>
+                  </div>
                   <div className="publishing-colours">
                     <label>
                       Primary colour

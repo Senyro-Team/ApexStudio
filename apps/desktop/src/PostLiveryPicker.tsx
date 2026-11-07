@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import AppSelect from "./AppSelect";
 import {
   robloxLiveries,
   robloxLivery,
@@ -111,7 +112,7 @@ export default function PostLiveryPicker({
       <div className="file-toolbar">
         <label>
           Project
-          <select
+          <AppSelect
             value={project}
             disabled={disabled || busy}
             onChange={(e) => {
@@ -129,7 +130,7 @@ export default function PostLiveryPicker({
                 {name}
               </option>
             ))}
-          </select>
+          </AppSelect>
         </label>
         <label>
           Search

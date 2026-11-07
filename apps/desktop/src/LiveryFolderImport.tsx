@@ -1,4 +1,5 @@
 import usePreparation from "./usePreparation";
+import AppSelect from "./AppSelect";
 import { useEffect, useRef, useState } from "react";
 import SlotEditor from "./SlotEditor";
 import {
@@ -351,7 +352,7 @@ export default function LiveryFolderImport({
                     </button>
                     <label>
                       Cover image
-                      <select
+                      <AppSelect
                         aria-label="Batch livery cover"
                         value={row.cover ?? ""}
                         onChange={(e) =>
@@ -369,7 +370,7 @@ export default function LiveryFolderImport({
                             {f.name}
                           </option>
                         ))}
-                      </select>
+                      </AppSelect>
                     </label>
                     <p className="field-hint">
                       Unassigned PNGs remain files in this livery. Originals are

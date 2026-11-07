@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AppSelect from "./AppSelect";
 import {
   desktopAvailable,
   errorMessage,
@@ -307,7 +308,7 @@ export default function Statistics({
               <h2>History</h2>
               <label>
                 Metric{" "}
-                <select
+                <AppSelect
                   value={metric}
                   onChange={(e) => setMetric(e.target.value as Metric)}
                 >
@@ -316,7 +317,7 @@ export default function Statistics({
                       {m.label}
                     </option>
                   ))}
-                </select>
+                </AppSelect>
               </label>
             </div>
             {points.length < 2 ? (

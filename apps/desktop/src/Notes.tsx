@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AppSelect from "./AppSelect";
 import {
   EditorContent,
   NodeViewWrapper,
@@ -308,7 +309,7 @@ function NoteEditor({
       )}
       {!readOnly && (
         <div className="editor-toolbar" role="group" aria-label="Formatting">
-          <select
+          <AppSelect
             aria-label="Text style"
             value={state?.heading || 0}
             disabled={busy}
@@ -327,7 +328,7 @@ function NoteEditor({
             <option value={1}>Heading 1</option>
             <option value={2}>Heading 2</option>
             <option value={3}>Heading 3</option>
-          </select>
+          </AppSelect>
           {tools.map(({ name, icon: Icon, run, active }) => (
             <button
               key={name}

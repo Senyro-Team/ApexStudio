@@ -1,4 +1,5 @@
 import PerformanceDiagnostics from "./PerformanceDiagnostics";
+import AppSelect from "./AppSelect";
 import ChromeSettings from "./ChromeSettings";
 import RobloxSettings from "./RobloxSettings";
 import TeamSyncSettings from "./TeamSyncSettings";
@@ -648,7 +649,7 @@ export default function App() {
                     onChange={(event) => setNewThemeColor(event.target.value)}
                   />
                   <label htmlFor="custom-theme-mode">Background</label>
-                  <select
+                  <AppSelect
                     id="custom-theme-mode"
                     value={newThemeMode}
                     onChange={(event) =>
@@ -659,7 +660,7 @@ export default function App() {
                       Black — colored buttons and lines
                     </option>
                     <option value="tinted">Tinted — colored surfaces</option>
-                  </select>
+                  </AppSelect>
                   <button className="primary" type="submit">
                     Create theme
                   </button>
@@ -711,7 +712,7 @@ export default function App() {
                     ))}
                   </div>
                   <label htmlFor="active-theme-mode">Background</label>
-                  <select
+                  <AppSelect
                     id="active-theme-mode"
                     value={activeCustomization.mode}
                     onChange={(event) =>
@@ -722,7 +723,7 @@ export default function App() {
                       Black — colored buttons and lines
                     </option>
                     <option value="tinted">Tinted — colored surfaces</option>
-                  </select>
+                  </AppSelect>
                   <div className="theme-editor-actions">
                     <button
                       type="button"
