@@ -25,6 +25,7 @@ use crate::{
 
 const MAX_RECORD_BYTES: usize = 2 * 1024 * 1024;
 const MAX_CHANGE_PAGE: i64 = 500;
+const MAX_DECAL_CODE_BATCH: usize = 5_000;
 const MAX_BLOB_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_DIRECT_BLOB_BYTES: u64 = 64 * 1024 * 1024;
 const BLOB_CHUNK_BYTES: usize = 8 * 1024 * 1024;
@@ -140,6 +141,10 @@ pub fn private_routes() -> Router<AppState> {
             get(get_team_decal_code).put(save_team_decal_code),
         )
         .route(
+            "/api/v1/teams/{team_id}/decal-codes/batch",
+            post(batch_team_decal_codes),
+        )
+        .route(
             "/api/v1/teams/{team_id}/projects",
             get(list_projects).post(create_project),
         )
@@ -188,6 +193,32 @@ struct TeamDecalCode {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SaveTeamDecalCodeRequest {
     decal_asset_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BatchTeamDecalCodesRequest {
+    codes: Vec<BatchTeamDecalCodeInput>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BatchTeamDecalCodeInput {
+    content_hash: String,
+    decal_asset_id: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchTeamDecalCodeResult {
+    content_hash: String,
+    decal_asset_id: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchTeamDecalCodesResponse {
+    codes: Vec<BatchTeamDecalCodeResult>,
 }
 
 async fn get_team_decal_code(
@@ -261,6 +292,88 @@ async fn save_team_decal_code(
         content_hash: content_hash.trim().to_owned(),
         decal_asset_id: selected,
     }))
+}
+
+async fn batch_team_decal_codes(
+    State(state): State<AppState>,
+    axum::extract::Extension(user): axum::extract::Extension<AuthUser>,
+    Path(team_id): Path<Uuid>,
+    Json(input): Json<BatchTeamDecalCodesRequest>,
+) -> Result<Json<BatchTeamDecalCodesResponse>, ApiError> {
+    let role = membership_role(&state, team_id, user.id).await?;
+    if input.codes.len() > MAX_DECAL_CODE_BATCH {
+        return Err(ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "decal_code_batch_too_large",
+        ));
+    }
+
+    let mut requested_ids = std::collections::HashMap::<String, Option<String>>::new();
+    for code in input.codes {
+        validate_hash(&code.content_hash)?;
+        if let Some(id) = &code.decal_asset_id {
+            if id.is_empty()
+                || id.len() > 20
+                || id.starts_with('0')
+                || !id.bytes().all(|byte| byte.is_ascii_digit())
+            {
+                return Err(ApiError::bad_request("invalid_decal_asset_id"));
+            }
+            if !role.can_write() {
+                return Err(ApiError::forbidden());
+            }
+        }
+        if let Some(previous) = requested_ids.insert(code.content_hash, code.decal_asset_id.clone())
+        {
+            if previous != code.decal_asset_id {
+                return Err(ApiError::bad_request("duplicate_decal_code_conflict"));
+            }
+        }
+    }
+
+    let hashes = requested_ids.keys().cloned().collect::<Vec<_>>();
+    if hashes.is_empty() {
+        return Ok(Json(BatchTeamDecalCodesResponse { codes: Vec::new() }));
+    }
+
+    let mut transaction = state.database.begin().await?;
+    let write_codes = requested_ids
+        .iter()
+        .filter_map(|(hash, id)| id.as_ref().map(|id| (hash.clone(), id.clone())))
+        .collect::<Vec<_>>();
+    if !write_codes.is_empty() {
+        let (write_hashes, write_ids): (Vec<_>, Vec<_>) = write_codes.into_iter().unzip();
+        sqlx::query("INSERT INTO team_decal_codes(team_id,content_hash,decal_asset_id,uploaded_by) SELECT $1, batch.content_hash, batch.decal_asset_id, $4 FROM UNNEST($2::text[], $3::text[]) AS batch(content_hash,decal_asset_id) ON CONFLICT(team_id,content_hash) DO NOTHING")
+            .bind(team_id)
+            .bind(&write_hashes)
+            .bind(&write_ids)
+            .bind(user.id)
+            .execute(&mut *transaction)
+            .await?;
+    }
+
+    let rows = sqlx::query_as::<_, (String, String)>(
+        "SELECT content_hash,decal_asset_id FROM team_decal_codes WHERE team_id=$1 AND content_hash=ANY($2)",
+    )
+    .bind(team_id)
+    .bind(&hashes)
+    .fetch_all(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+
+    let shared = rows
+        .into_iter()
+        .map(|(hash, id)| (hash.trim().to_owned(), id))
+        .collect::<std::collections::HashMap<_, _>>();
+    let codes = hashes
+        .into_iter()
+        .map(|content_hash| BatchTeamDecalCodeResult {
+            decal_asset_id: shared.get(&content_hash).cloned(),
+            content_hash,
+        })
+        .collect::<Vec<_>>();
+    tracing::info!(event = "team_decal_codes_batch_synced", team_id = %team_id, actor_id = %user.id, code_count = codes.len(), "Team Roblox decal codes synchronized in batch");
+    Ok(Json(BatchTeamDecalCodesResponse { codes }))
 }
 
 async fn create_project(

@@ -635,6 +635,49 @@ impl Workspace {
         }
         transaction.commit().map_err(storage)
     }
+    pub fn save_shared_decal_codes(
+        &self,
+        project_id: &str,
+        team_id: &str,
+        codes: &[(String, String)],
+    ) -> Result<(), Error> {
+        for (hash, decal_asset_id) in codes {
+            if !apex_core::valid_hash(hash)
+                || decal_asset_id.is_empty()
+                || decal_asset_id.len() > 20
+                || decal_asset_id.starts_with('0')
+                || !decal_asset_id.bytes().all(|byte| byte.is_ascii_digit())
+            {
+                return Err(Error::InvalidContent("Invalid shared decal code.".into()));
+            }
+        }
+
+        let mut db = self.connection()?;
+        let transaction = db.transaction().map_err(storage)?;
+        for (hash, decal_asset_id) in codes {
+            let existing = transaction
+                .query_row(
+                    "SELECT team_id,decal_asset_id FROM shared_decal_codes WHERE project_id=?1 AND hash=?2",
+                    params![project_id, hash],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )
+                .optional()
+                .map_err(storage)?;
+            if let Some((existing_team, existing_id)) = existing {
+                if existing_team != team_id || existing_id != *decal_asset_id {
+                    return Err(Error::Conflict);
+                }
+            } else {
+                transaction
+                    .execute(
+                        "INSERT INTO shared_decal_codes(project_id,team_id,hash,decal_asset_id) VALUES(?1,?2,?3,?4)",
+                        params![project_id, team_id, hash, decal_asset_id],
+                    )
+                    .map_err(storage)?;
+            }
+        }
+        transaction.commit().map_err(storage)
+    }
     pub fn clear_shared_decal_codes(&self, team_id: &str) -> Result<(), Error> {
         self.connection()?
             .execute("DELETE FROM shared_decal_codes WHERE team_id=?1", [team_id])

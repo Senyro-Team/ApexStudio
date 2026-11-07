@@ -65,6 +65,7 @@ dependencies = [
  "apex-core",
  "apex-storage",
  "base64 0.22.1",
+ "futures-util",
  "httpdate",
  "image",
  "keyring",

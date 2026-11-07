@@ -1,9 +1,13 @@
 use super::*;
-use apex_storage::{ProjectSnapshot, ProjectSync, Workspace};
+use apex_storage::{ProjectSnapshot, ProjectSync, SyncBlob, Workspace};
+use futures_util::{stream, StreamExt, TryStreamExt};
 use reqwest::StatusCode;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::{
+    collections::{BTreeMap, HashSet},
+    io::{Read, Seek, SeekFrom, Write},
+};
 use tauri::Manager;
 
 #[derive(Clone, Deserialize)]
@@ -25,21 +29,42 @@ struct Context {
     team: SyncTeam,
     app: Option<tauri::AppHandle>,
 }
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SharedDecalCode {
     content_hash: String,
-    decal_asset_id: String,
+    decal_asset_id: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SharedDecalCodeBatchRequest {
+    codes: Vec<SharedDecalCode>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SharedDecalCodeBatchResponse {
+    codes: Vec<SharedDecalCode>,
 }
 const SHARED_DECAL_CODE_ATTEMPTS: usize = 3;
+const MAX_CONCURRENT_BLOB_UPLOADS: usize = 4;
+const BLOB_UPLOAD_MEMORY_BUDGET_MIB: usize = 128;
 
-async fn get_shared_decal_code(
+async fn post_shared_decal_codes(
     http: &Client,
     url: Url,
     headers: HeaderMap,
-) -> Result<Option<SharedDecalCode>, String> {
+    request: &SharedDecalCodeBatchRequest,
+) -> Result<SharedDecalCodeBatchResponse, String> {
     for attempt in 0..SHARED_DECAL_CODE_ATTEMPTS {
-        let response = match http.get(url.clone()).headers(headers.clone()).send().await {
+        let response = match http
+            .post(url.clone())
+            .headers(headers.clone())
+            .json(request)
+            .send()
+            .await
+        {
             Ok(response) => response,
             Err(network_error)
                 if attempt + 1 < SHARED_DECAL_CODE_ATTEMPTS
@@ -138,50 +163,83 @@ async fn sync_shared_decal_codes(
     let codes = ws
         .livery_decal_codes(project_id, &account_id)
         .map_err(|error| error.to_string())?;
-    // Reuse connections for the many per-texture lookups in larger projects.
-    let http = client()?;
+    let mut local_codes = BTreeMap::<String, Option<String>>::new();
     for (hash, local_id) in codes {
-        let endpoint = format!("api/v1/teams/{}/decal-codes/{hash}", c.team.id);
-        let remote: Option<SharedDecalCode> =
-            get_shared_decal_code(&http, c.url(&endpoint)?, c.headers()?).await?;
-        let shared = if let Some(remote) = remote {
-            if local_id
-                .as_deref()
-                .is_some_and(|id| id != remote.decal_asset_id)
-            {
-                return Err(error("This image already has a different Roblox decal ID in the team catalog. Resolve the existing code before syncing."));
+        if let Some(existing) = local_codes.get_mut(&hash) {
+            match (existing.as_deref(), local_id.as_deref()) {
+                (Some(existing), Some(incoming)) if existing != incoming => {
+                    return Err(error(
+                        "This image has multiple Roblox decal IDs in the project. Resolve the local codes before syncing.",
+                    ));
+                }
+                (None, Some(_)) => *existing = local_id,
+                _ => {}
             }
-            remote
-        } else if let Some(decal_asset_id) = local_id {
-            response_json(
-                http.put(c.url(&endpoint)?)
-                    .headers(c.headers()?)
-                    .json(&serde_json::json!({ "decalAssetId": decal_asset_id }))
-                    .send()
-                    .await
-                    .map_err(|_| error("Could not share the Roblox decal code with the team."))?,
-            )
-            .await?
         } else {
+            local_codes.insert(hash, local_id);
+        }
+    }
+
+    if local_codes.is_empty() {
+        return Ok(());
+    }
+
+    // Send the project’s code manifest in one small request instead of one request per texture.
+    let http = client()?;
+    let request = SharedDecalCodeBatchRequest {
+        codes: local_codes
+            .iter()
+            .map(|(content_hash, decal_asset_id)| SharedDecalCode {
+                content_hash: content_hash.clone(),
+                decal_asset_id: if c.team.role == "read_only" {
+                    None
+                } else {
+                    decal_asset_id.clone()
+                },
+            })
+            .collect(),
+    };
+    let endpoint = format!("api/v1/teams/{}/decal-codes/batch", c.team.id);
+    let url = c.url(&endpoint)?;
+    let headers = c.headers()?;
+    let mut shared_codes = Vec::new();
+    for batch in request.codes.chunks(5_000) {
+        let response = post_shared_decal_codes(
+            &http,
+            url.clone(),
+            headers.clone(),
+            &SharedDecalCodeBatchRequest {
+                codes: batch.to_vec(),
+            },
+        )
+        .await?;
+        shared_codes.extend(response.codes);
+    }
+    let mut accepted_codes = Vec::with_capacity(shared_codes.len());
+    for shared in shared_codes {
+        let Some(local_id) = local_codes.get(&shared.content_hash) else {
+            return Err(error(
+                "The team server returned an unexpected Roblox decal code.",
+            ));
+        };
+        let Some(shared_id) = shared.decal_asset_id else {
             continue;
         };
-        if shared.content_hash != hash {
+        if local_id.as_deref().is_some_and(|id| id != shared_id) {
+            return Err(error("This image already has a different Roblox decal ID in the team catalog. Resolve the existing code before syncing."));
+        }
+        if !apex_core::valid_hash(&shared.content_hash) {
             return Err(error(
-                "The team server returned a decal code for different image data.",
+                "The team server returned an invalid image hash for a Roblox decal code.",
             ));
         }
-        ws.save_shared_decal_code(
-            project_id,
-            &c.team.id,
-            &hash,
-            &shared.decal_asset_id,
-        )
+        accepted_codes.push((shared.content_hash, shared_id));
+    }
+    ws.save_shared_decal_codes(project_id, &c.team.id, &accepted_codes)
         .map_err(|e| match e {
             apex_core::Error::Conflict => error("A different Roblox decal code is already shared for this image. Review the team code before continuing."),
             other => other.to_string(),
-        })?;
-    }
-    Ok(())
+        })
 }
 
 pub async fn remote_livery_thumbnail(
@@ -513,106 +571,144 @@ async fn upload_files(
             .map_err(|_| error("Could not check project files."))?,
     )
     .await?;
+    let known = known
+        .into_iter()
+        .map(|receipt| receipt.content_hash)
+        .collect::<HashSet<_>>();
+    let mut pending = BTreeMap::<String, SyncBlob>::new();
     for blob in &snapshot.blobs {
-        ensure_enabled(ws, &snapshot.project_id)?;
-        if known.iter().any(|b| b.content_hash == blob.hash) {
-            continue;
-        }
-        let source = ws.sync_blob_path(&blob.hash).map_err(|e| e.to_string())?;
-        let mut file =
-            std::fs::File::open(source).map_err(|_| error("A project file is missing."))?;
-        // Validate the local content before attributing it to a server hash.
-        let mut digest = Sha256::new();
-        std::io::copy(&mut file, &mut digest)
-            .map_err(|_| error("Could not read a project file."))?;
-        if format!("{:x}", digest.finalize()) != blob.hash {
-            return Err(error("A local project file failed its integrity check."));
-        }
-        file.seek(SeekFrom::Start(0))
-            .map_err(|_| error("Could not read a project file."))?;
-        if blob.size <= 64 * 1024 * 1024 {
-            let mut bytes = Vec::new();
-            file.read_to_end(&mut bytes)
-                .map_err(|_| error("Could not read a project file."))?;
-            let _: Value = sync_json(
-                transfer_client()?
-                    .put(c.url(&format!("{path}/blobs/{}", blob.hash))?)
-                    .headers(c.headers()?)
-                    .body(bytes)
-                    .send()
-                    .await
-                    .map_err(|_| error("A project file upload was interrupted."))?,
-            )
-            .await?;
-        } else {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            struct Upload {
-                upload_id: Option<String>,
-                already_present: bool,
-                chunk_size_bytes: usize,
-            }
-            let upload: Upload = sync_json(
-                client()?
-                    .post(c.url(&format!("{path}/blob-uploads"))?)
-                    .headers(c.headers()?)
-                    .json(&json!({"contentHash":blob.hash,"totalBytes":blob.size}))
-                    .send()
-                    .await
-                    .map_err(|_| error("Could not start a project file upload."))?,
-            )
-            .await?;
-            if upload.already_present {
-                continue;
-            }
-            if upload.chunk_size_bytes == 0 || upload.chunk_size_bytes > 8 * 1024 * 1024 {
-                return Err(error("Unsupported server upload chunk size."));
-            }
-            let upload_id = uuid::Uuid::parse_str(upload.upload_id.as_deref().unwrap_or(""))
-                .map_err(|_| error("Invalid file upload session."))?;
-            let mut index = 0;
-            loop {
-                ensure_enabled(ws, &snapshot.project_id)?;
-                let mut bytes = vec![0; upload.chunk_size_bytes];
-                let mut count = 0;
-                while count < bytes.len() {
-                    let n = file
-                        .read(&mut bytes[count..])
-                        .map_err(|_| error("Could not read a project file."))?;
-                    if n == 0 {
-                        break;
-                    }
-                    count += n;
-                }
-                if count == 0 {
-                    break;
-                }
-                bytes.truncate(count);
-                let _: Value = sync_json(
-                    transfer_client()?
-                        .put(c.url(&format!("{path}/blob-uploads/{upload_id}/chunks/{index}"))?)
-                        .headers(c.headers()?)
-                        .body(bytes)
-                        .send()
-                        .await
-                        .map_err(|_| {
-                            error("A project file upload was interrupted. Retry sync to resume.")
-                        })?,
-                )
-                .await?;
-                index += 1;
-            }
-            let _: Value = sync_json(
-                client()?
-                    .post(c.url(&format!("{path}/blob-uploads/{upload_id}/complete"))?)
-                    .headers(c.headers()?)
-                    .send()
-                    .await
-                    .map_err(|_| error("Could not finish a project file upload."))?,
-            )
-            .await?;
+        if !known.contains(&blob.hash) {
+            pending
+                .entry(blob.hash.clone())
+                .or_insert_with(|| blob.clone());
         }
     }
+    let http = transfer_client()?;
+    let project_id = snapshot.project_id.clone();
+    let memory_budget =
+        std::sync::Arc::new(tokio::sync::Semaphore::new(BLOB_UPLOAD_MEMORY_BUDGET_MIB));
+    stream::iter(pending.into_values())
+        .map(|blob: SyncBlob| {
+            let memory_budget = memory_budget.clone();
+            let http = http.clone();
+            let project_id = project_id.clone();
+            async move {
+                let permit_count = if blob.size <= 64 * 1024 * 1024 {
+                    blob.size.div_ceil(1024 * 1024).clamp(1, 64) as u32
+                } else {
+                    8
+                };
+                let _memory = memory_budget
+                    .acquire_many_owned(permit_count)
+                    .await
+                    .map_err(|_| error("Project file upload was cancelled."))?;
+                ensure_enabled(ws, &project_id)?;
+                upload_project_blob(c, ws, &project_id, &blob, &http).await
+            }
+        })
+        .buffer_unordered(MAX_CONCURRENT_BLOB_UPLOADS)
+        .try_collect::<Vec<()>>()
+        .await?;
+    Ok(())
+}
+
+async fn upload_project_blob(
+    c: &Context,
+    ws: &Workspace,
+    project_id: &str,
+    blob: &SyncBlob,
+    http: &Client,
+) -> Result<(), String> {
+    let path = c.project_path(project_id);
+    let source = ws.sync_blob_path(&blob.hash).map_err(|e| e.to_string())?;
+    let mut file = std::fs::File::open(source).map_err(|_| error("A project file is missing."))?;
+    let mut digest = Sha256::new();
+    std::io::copy(&mut file, &mut digest).map_err(|_| error("Could not read a project file."))?;
+    if format!("{:x}", digest.finalize()) != blob.hash {
+        return Err(error("A local project file failed its integrity check."));
+    }
+    file.seek(SeekFrom::Start(0))
+        .map_err(|_| error("Could not read a project file."))?;
+
+    if blob.size <= 64 * 1024 * 1024 {
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .map_err(|_| error("Could not read a project file."))?;
+        let _: Value = sync_json(
+            http.put(c.url(&format!("{path}/blobs/{}", blob.hash))?)
+                .headers(c.headers()?)
+                .body(bytes)
+                .send()
+                .await
+                .map_err(|_| error("A project file upload was interrupted."))?,
+        )
+        .await?;
+        return Ok(());
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Upload {
+        upload_id: Option<String>,
+        already_present: bool,
+        chunk_size_bytes: usize,
+    }
+    let upload: Upload = sync_json(
+        http.post(c.url(&format!("{path}/blob-uploads"))?)
+            .headers(c.headers()?)
+            .json(&json!({"contentHash":blob.hash,"totalBytes":blob.size}))
+            .send()
+            .await
+            .map_err(|_| error("Could not start a project file upload."))?,
+    )
+    .await?;
+    if upload.already_present {
+        return Ok(());
+    }
+    if upload.chunk_size_bytes == 0 || upload.chunk_size_bytes > 8 * 1024 * 1024 {
+        return Err(error("Unsupported server upload chunk size."));
+    }
+    let upload_id = uuid::Uuid::parse_str(upload.upload_id.as_deref().unwrap_or(""))
+        .map_err(|_| error("Invalid file upload session."))?;
+    let mut index = 0;
+    loop {
+        ensure_enabled(ws, project_id)?;
+        let mut bytes = vec![0; upload.chunk_size_bytes];
+        let mut count = 0;
+        while count < bytes.len() {
+            let n = file
+                .read(&mut bytes[count..])
+                .map_err(|_| error("Could not read a project file."))?;
+            if n == 0 {
+                break;
+            }
+            count += n;
+        }
+        if count == 0 {
+            break;
+        }
+        bytes.truncate(count);
+        let _: Value = sync_json(
+            http.put(c.url(&format!("{path}/blob-uploads/{upload_id}/chunks/{index}"))?)
+                .headers(c.headers()?)
+                .body(bytes)
+                .send()
+                .await
+                .map_err(|_| {
+                    error("A project file upload was interrupted. Retry sync to resume.")
+                })?,
+        )
+        .await?;
+        index += 1;
+    }
+    let _: Value = sync_json(
+        http.post(c.url(&format!("{path}/blob-uploads/{upload_id}/complete"))?)
+            .headers(c.headers()?)
+            .send()
+            .await
+            .map_err(|_| error("Could not finish a project file upload."))?,
+    )
+    .await?;
     Ok(())
 }
 async fn download_files(
