@@ -61,11 +61,20 @@ export default function ProjectSyncStatus({
     setBusy(true);
     setError("");
     try {
+      const target = enabled && destination.serverUrl && destination.teamId
+        ? destination
+        : { serverUrl: binding?.origin ?? destination.serverUrl, teamId: binding?.teamId ?? destination.teamId };
+      const destinationChanged = enabled && binding && (
+        binding.origin !== target.serverUrl || binding.teamId !== target.teamId
+      );
+      if (destinationChanged && !window.confirm(
+        "This project is linked to a different team. Reconnecting will share the local project with the selected team. The existing server copy will remain with the previous team. Continue?",
+      )) return;
       setBinding(
         await setProjectSync(projectId, {
           enabled,
-          serverUrl: binding?.origin ?? destination.serverUrl,
-          teamId: binding?.teamId ?? destination.teamId,
+          serverUrl: target.serverUrl,
+          teamId: target.teamId,
         }),
       );
       window.dispatchEvent(new Event("apex-project-sync-request"));

@@ -14,6 +14,7 @@ Implemented 2026-11-03; team access and livery-code/blob handling extended 2026-
 - A removed member's project metadata already present locally remains in their workspace, but server access and future streamed previews stop. Server access control cannot revoke Roblox decal IDs already exposed or files previously copied outside Apex Studio.
 - If a later sync reports an expired session or removed membership, Apex clears the local team decal-code cache for that team. Until the device next contacts the server, cached Roblox codes may remain visible offline.
 - Disabling sync retains local and server data. Deleting a local archived project disables its binding; it does not delete the team copy or cause an automatic re-download.
+- A locally owned project with sync disabled can be reconnected to the currently selected team. Apex asks for confirmation and keeps the previous server copy in the old team; projects received from another team cannot be moved this way. This supports recovery when a team was recreated or a project's saved team binding became outdated.
 
 ## Data and persistence
 

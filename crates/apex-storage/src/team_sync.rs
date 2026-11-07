@@ -470,8 +470,10 @@ impl Workspace {
         let db = self.connection()?;
         if let Some((origin, instance, team)) = destination {
             if let Some(old) = self.project_sync(id)? {
-                if old.origin != origin || old.server_instance != instance || old.team_id != team {
-                    return Err(Error::InvalidContent("This project is linked to another team server. Create a project copy to share it with a different team.".into()));
+                if (old.origin != origin || old.server_instance != instance || old.team_id != team)
+                    && (old.enabled || old.received_from_team)
+                {
+                    return Err(Error::InvalidContent("Disable synchronization before reconnecting this project to a different team. Projects received from a team cannot be moved.".into()));
                 }
             }
             db.execute("INSERT INTO project_sync(project_id,origin,server_instance,team_id) VALUES(?1,?2,?3,?4) ON CONFLICT(project_id) DO UPDATE SET enabled=1,message='Waiting to sync'",params![id,origin,instance,team]).map_err(storage)?;

@@ -120,6 +120,17 @@ function Editor({
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
+    const reconnecting = syncEnabled && !syncInitial;
+    const syncDestination = reconnecting
+      ? destination
+      : { serverUrl: syncBinding?.origin ?? destination.serverUrl, teamId: syncBinding?.teamId ?? destination.teamId };
+    const destinationChanged = reconnecting && syncBinding && (
+      syncBinding.origin !== syncDestination.serverUrl ||
+      syncBinding.teamId !== syncDestination.teamId
+    );
+    if (destinationChanged && !window.confirm(
+      "This project is linked to a different team. Reconnecting will share the local project with the selected team. The existing server copy will remain with the previous team. Continue?",
+    )) return;
     setBusy(true);
     try {
       const values = {
@@ -135,8 +146,8 @@ function Editor({
         };
       const sync = syncEnabled !== syncInitial ? {
         enabled: syncEnabled,
-        serverUrl: syncBinding?.origin ?? destination.serverUrl,
-        teamId: syncBinding?.teamId ?? destination.teamId,
+        serverUrl: syncDestination.serverUrl,
+        teamId: syncDestination.teamId,
       } : undefined;
       onSave(sync ? await saveProject(project?.id ?? null, values, sync) : await saveProject(project?.id ?? null, values));
       window.dispatchEvent(new Event("apex-project-sync-request"));

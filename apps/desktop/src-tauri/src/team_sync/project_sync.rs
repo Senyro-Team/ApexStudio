@@ -224,7 +224,7 @@ async fn context(server_url: &str, team_id: &str) -> Result<Context, String> {
         .teams
         .into_iter()
         .find(|t| t.id == team_id)
-        .ok_or_else(|| error("You no longer belong to this team."))?;
+        .ok_or_else(|| error("The project is linked to a team that is not available to this account. Select your current team in Settings → Team sync, then turn project sync off and back on to reconnect it. The existing server copy will be kept."))?;
     Ok(Context {
         base,
         server,
@@ -716,7 +716,9 @@ pub async fn sync_projects(
         match context(&server_url, &team_id).await {
             Ok(context) => context,
             Err(message) => {
-                if message.contains("no longer belong") || message.contains("session has expired") {
+                if message.contains("not available to this account")
+                    || message.contains("session has expired")
+                {
                     let _ = ws.clear_shared_decal_codes(&team_id);
                 }
                 return Err(message);

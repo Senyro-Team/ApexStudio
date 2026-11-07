@@ -46,8 +46,9 @@ pub async fn save_project(
         // Check destination changes before saving metadata, so errors cannot create duplicate projects.
         if let (Some(id),Some(destination)) = (id.as_deref(),destination.as_ref()) {
             if let Some(old)=workspace.project_sync(id)? {
-                if old.origin!=destination.origin || old.server_instance!=destination.instance || old.team_id!=destination.team {
-                    return Err(Error::InvalidContent("This project is linked to another team. Keep its existing destination or create a project copy.".into()));
+                if (old.origin!=destination.origin || old.server_instance!=destination.instance || old.team_id!=destination.team)
+                    && (old.enabled || old.received_from_team) {
+                    return Err(Error::InvalidContent("Disable synchronization before reconnecting this project to a different team. Projects received from a team cannot be moved.".into()));
                 }
             }
         }
