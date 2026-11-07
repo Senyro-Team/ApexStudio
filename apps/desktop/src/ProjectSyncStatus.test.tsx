@@ -11,6 +11,7 @@ import {
 vi.mock("./bridge", () => ({
   desktopAvailable: true,
   projectSyncSettings: vi.fn(),
+  reconnectProjectSync: vi.fn(),
   setProjectSync: vi.fn(),
   resolveProjectSync: vi.fn(),
   syncProjects: vi

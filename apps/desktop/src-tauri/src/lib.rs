@@ -362,6 +362,7 @@ pub fn run() {
             team_sync::project_sync_settings,
             team_sync::list_project_sync_settings,
             team_sync::set_project_sync,
+            team_sync::reconnect_project_sync,
             team_sync::sync_projects,
             team_sync::resolve_project_sync,
             set_app_theme_icon,

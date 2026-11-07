@@ -126,6 +126,7 @@ export interface SyncReport {
 export const projectSyncSettings = (projectId: string) => invoke<ProjectSyncSettings | null>("project_sync_settings", { projectId });
 export const listProjectSyncSettings = () => invoke<ProjectSyncSettings[]>("list_project_sync_settings");
 export const setProjectSync = (projectId: string, choice: ProjectSyncChoice) => invoke<ProjectSyncSettings | null>("set_project_sync", { projectId, choice });
+export const reconnectProjectSync = (projectId: string, choice: ProjectSyncChoice) => invoke<ProjectSyncSettings | null>("reconnect_project_sync", { projectId, choice });
 export const syncProjects = (serverUrl: string, teamId: string) => invoke<SyncReport>("sync_projects", { serverUrl, teamId });
 export const resolveProjectSync = (projectId: string, useServer: boolean) => invoke<void>("resolve_project_sync", {projectId, useServer});
 

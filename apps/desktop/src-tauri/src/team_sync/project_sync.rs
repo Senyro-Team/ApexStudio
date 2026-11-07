@@ -286,6 +286,34 @@ pub async fn set_project_sync(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn reconnect_project_sync(
+    project_id: String,
+    choice: ProjectSyncChoice,
+    state: State<'_, TeamSyncState>,
+    workspace: State<'_, Workspace>,
+) -> Result<Option<ProjectSync>, String> {
+    if !choice.enabled {
+        return Err(error("Choose a team before reconnecting this project."));
+    }
+    let _worker = worker_lock().lock().await;
+    let _guard = state.0.lock().await;
+    let destination = validate_sync_choice(&choice)
+        .await?
+        .ok_or_else(|| error("Choose a team before reconnecting this project."))?;
+    workspace
+        .reconnect_project_sync(
+            &project_id,
+            &destination.origin,
+            &destination.instance,
+            &destination.team,
+        )
+        .map_err(|e| e.to_string())?;
+    workspace
+        .project_sync(&project_id)
+        .map_err(|e| e.to_string())
+}
+
 #[derive(Deserialize)]
 struct RemoteProject {
     id: String,

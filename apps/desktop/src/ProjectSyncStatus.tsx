@@ -3,6 +3,7 @@ import { autoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
 import {
   desktopAvailable,
   projectSyncSettings,
+  reconnectProjectSync,
   setProjectSync,
   syncProjects,
   resolveProjectSync,
@@ -27,6 +28,7 @@ export default function ProjectSyncStatus({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [resolution, setResolution] = useState<"server" | "local" | null>(null);
+  const [destination, setDestination] = useState(savedSyncDestination);
   const automaticSync = useSyncExternalStore(
     subscribeAutoSync,
     autoSyncEnabled,
@@ -56,7 +58,15 @@ export default function ProjectSyncStatus({
       window.removeEventListener("apex-projects-synced", refresh);
     };
   }, [projectId]);
-  const destination = savedSyncDestination();
+  useEffect(() => {
+    const refreshDestination = () => setDestination(savedSyncDestination());
+    window.addEventListener("apex-project-sync-request", refreshDestination);
+    return () => window.removeEventListener("apex-project-sync-request", refreshDestination);
+  }, []);
+  const needsReconnect = [error, binding?.message ?? ""].some((message) =>
+    message.includes("not available to this account") ||
+    message.includes("no longer belong to this team"),
+  );
   async function toggle(enabled: boolean) {
     setBusy(true);
     setError("");
@@ -97,6 +107,34 @@ export default function ProjectSyncStatus({
       );
     } catch (e) {
       setError(syncErrorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function reconnect() {
+    if (!binding || !destination.serverUrl || !destination.teamId) {
+      setError("Sign in and choose your current team in Settings → Team sync first.");
+      return;
+    }
+    if (binding.origin === destination.serverUrl && binding.teamId === destination.teamId) {
+      setError("The selected team is the same as this project's saved team. Refresh your Team sync connection and select the team you currently belong to.");
+      return;
+    }
+    if (!window.confirm(
+      "Reconnect this local project to the currently selected team? The existing server copy will remain with the previous team.",
+    )) return;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await reconnectProjectSync(projectId, {
+        enabled: true,
+        serverUrl: destination.serverUrl,
+        teamId: destination.teamId,
+      });
+      setBinding(next);
+      window.dispatchEvent(new Event("apex-project-sync-request"));
+    } catch (reason) {
+      setError(syncErrorText(reason));
     } finally {
       setBusy(false);
     }
@@ -167,6 +205,16 @@ export default function ProjectSyncStatus({
           onClick={() => void syncNow()}
         >
           {busy ? "Synchronizing…" : "Sync now"}
+        </button>
+      )}
+      {needsReconnect && binding && !binding.receivedFromTeam && (
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy || loading || !(destination.serverUrl && destination.teamId)}
+          onClick={() => void reconnect()}
+        >
+          {busy ? "Reconnecting…" : "Reconnect to current team"}
         </button>
       )}
       {binding?.enabled && binding.message.startsWith("Conflict:") && (

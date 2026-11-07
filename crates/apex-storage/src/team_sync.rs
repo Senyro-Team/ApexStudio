@@ -469,14 +469,28 @@ impl Workspace {
         }
         let db = self.connection()?;
         if let Some((origin, instance, team)) = destination {
-            if let Some(old) = self.project_sync(id)? {
-                if (old.origin != origin || old.server_instance != instance || old.team_id != team)
-                    && (old.enabled || old.received_from_team)
-                {
-                    return Err(Error::InvalidContent("Disable synchronization before reconnecting this project to a different team. Projects received from a team cannot be moved.".into()));
-                }
+            let old = self.project_sync(id)?;
+            let destination_changed = old.as_ref().is_some_and(|binding| {
+                binding.origin != origin
+                    || binding.server_instance != instance
+                    || binding.team_id != team
+            });
+            if destination_changed
+                && old
+                    .as_ref()
+                    .is_some_and(|binding| binding.enabled || binding.received_from_team)
+            {
+                return Err(Error::InvalidContent("Disable synchronization before reconnecting this project to a different team. Projects received from a team cannot be moved.".into()));
             }
-            db.execute("INSERT INTO project_sync(project_id,origin,server_instance,team_id) VALUES(?1,?2,?3,?4) ON CONFLICT(project_id) DO UPDATE SET enabled=1,message='Waiting to sync'",params![id,origin,instance,team]).map_err(storage)?;
+            if destination_changed {
+                db.execute(
+                    "UPDATE project_sync SET origin=?2,server_instance=?3,team_id=?4,enabled=1,local_hash=NULL,revision=0,cursor=0,message='Waiting to sync',synced_at=NULL WHERE project_id=?1",
+                    params![id, origin, instance, team],
+                )
+                .map_err(storage)?;
+            } else {
+                db.execute("INSERT INTO project_sync(project_id,origin,server_instance,team_id) VALUES(?1,?2,?3,?4) ON CONFLICT(project_id) DO UPDATE SET enabled=1,message='Waiting to sync'",params![id,origin,instance,team]).map_err(storage)?;
+            }
         } else {
             db.execute(
                 "UPDATE project_sync SET enabled=0,message='Sync disabled' WHERE project_id=?1",
@@ -486,6 +500,57 @@ impl Workspace {
         }
         Ok(())
     }
+
+    /// Explicitly reconnect a locally owned project to the selected team.
+    /// The old remote copy is retained; sync cursors reset for the new destination.
+    pub fn reconnect_project_sync(
+        &self,
+        id: &str,
+        origin: &str,
+        instance: &str,
+        team: &str,
+    ) -> Result<(), Error> {
+        let project = self.project(id)?;
+        if project.fields.name.chars().count() < 2 {
+            return Err(Error::InvalidProject(
+                "Use a project name with at least two characters to synchronize it.".into(),
+            ));
+        }
+        let mut db = self.connection()?;
+        let tx = db.transaction().map_err(storage)?;
+        let old: Option<(String, String, String, bool)> = tx
+            .query_row(
+                "SELECT origin,server_instance,team_id,received_from_team FROM project_sync WHERE project_id=?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(storage)?;
+        if old.as_ref().is_some_and(|binding| binding.3) {
+            return Err(Error::InvalidContent(
+                "Projects received from a team cannot be moved to another team.".into(),
+            ));
+        }
+        let destination_changed = old.as_ref().is_some_and(|binding| {
+            binding.0 != origin || binding.1 != instance || binding.2 != team
+        });
+        if destination_changed {
+            tx.execute(
+                "UPDATE project_sync SET origin=?2,server_instance=?3,team_id=?4,enabled=1,local_hash=NULL,revision=0,cursor=0,message='Waiting to sync',synced_at=NULL WHERE project_id=?1",
+                params![id, origin, instance, team],
+            )
+            .map_err(storage)?;
+        } else {
+            tx.execute(
+                "INSERT INTO project_sync(project_id,origin,server_instance,team_id) VALUES(?1,?2,?3,?4) ON CONFLICT(project_id) DO UPDATE SET enabled=1,message='Waiting to sync'",
+                params![id, origin, instance, team],
+            )
+            .map_err(storage)?;
+        }
+        tx.commit().map_err(storage)?;
+        Ok(())
+    }
+
     pub fn sync_message(&self, id: &str, message: &str) -> Result<(), Error> {
         self.connection()?
             .execute(
