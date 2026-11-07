@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent } from "react";
-import { CalendarDays, Clock3, Copy, Eye, FileText, Heart, LayoutGrid, Plus, ShoppingBag, Trophy, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CalendarDays, ChartNoAxesCombined, Clock3, Copy, Eye, FileText, FolderOpen, Heart, Images, LayoutGrid, NotebookPen, Plus, Settings, ShoppingBag, Trophy, Upload, Wallet, type LucideIcon } from "lucide-react";
 import type { useStatistics } from "./Statistics";
 
 type Stats = ReturnType<typeof useStatistics>;
@@ -16,6 +16,17 @@ export const dashboardWidgetOptions = [
   { id: "shortcuts", label: "Shortcuts" },
 ] as const;
 export type DashboardWidgetId = (typeof dashboardWidgetOptions)[number]["id"];
+const shortcutOptions = [
+  { id: "Projects", icon: FolderOpen },
+  { id: "Notes", icon: NotebookPen },
+  { id: "Assets", icon: Images },
+  { id: "Roblox", icon: Upload },
+  { id: "ERLCX", icon: ArrowUpRight },
+  { id: "Statistics", icon: ChartNoAxesCombined },
+  { id: "Settings", icon: Settings },
+] as const;
+export type ShortcutSection = (typeof shortcutOptions)[number]["id"];
+const defaultShortcuts: ShortcutSection[] = ["Projects", "Notes", "Statistics"];
 export type WidgetDesign = "classic" | "glass" | "digital-minimal" | "digital-bold" | "minimal" | "accent" | "outline" | "analog" | "calendar" | "split";
 const generalDesigns = [
   { id: "classic", label: "Classic" },
@@ -52,7 +63,7 @@ const widgetVisuals: Record<DashboardWidgetId, { icon: LucideIcon; description: 
   date: { icon: CalendarDays, description: "Today at a glance" },
   shortcuts: { icon: LayoutGrid, description: "Quick navigation" },
 };
-export type WidgetPlacement = { column: number; row: number; width: number; height: number; design?: WidgetDesign };
+export type WidgetPlacement = { column: number; row: number; width: number; height: number; design?: WidgetDesign; shortcuts?: ShortcutSection[] };
 export type DashboardLayout = Partial<Record<DashboardWidgetId, WidgetPlacement>>;
 const storageKey = "apex-studio-dashboard-widgets";
 const columns = 4;
@@ -124,6 +135,12 @@ export function loadDashboardLayout(): DashboardLayout {
       if (validPlacement(placement) && !occupied(result, placement)) {
         const normalized = { ...placement };
         if (!normalized.design || !designsForWidget(option.id).some((design) => design.id === normalized.design)) delete normalized.design;
+        if (option.id === "shortcuts") {
+          const valid = Array.isArray(normalized.shortcuts)
+            ? shortcutOptions.map(({ id }) => id).filter((id) => normalized.shortcuts?.includes(id))
+            : defaultShortcuts;
+          normalized.shortcuts = valid.length ? valid : defaultShortcuts;
+        } else delete normalized.shortcuts;
         result[option.id] = normalized;
       }
     }
@@ -192,12 +209,13 @@ function SplitDate({ now }: { now: Date }) {
   </div>;
 }
 
-function WidgetContent({ id, design, stats, now, onNavigate }: {
+function WidgetContent({ id, design, shortcuts, stats, now, onNavigate }: {
   id: DashboardWidgetId;
   design: WidgetDesign;
+  shortcuts?: ShortcutSection[];
   stats: Stats;
   now: Date;
-  onNavigate?: (section: "Projects" | "Notes" | "Statistics") => void;
+  onNavigate?: (section: ShortcutSection) => void;
 }) {
   const posts = stats.history.at(-1)?.posts ?? [];
   if (id === "clock" && isRoundClockDesign(design)) return <AnalogClock now={now} variant={design} />;
@@ -207,7 +225,7 @@ function WidgetContent({ id, design, stats, now, onNavigate }: {
   if (id === "date" && design === "calendar") return <CalendarDate now={now} />;
   if (id === "date" && design === "split") return <SplitDate now={now} />;
   if (id === "date") return <strong className="dashboard-widget-date">{now.toLocaleDateString([], { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</strong>;
-  if (id === "shortcuts") return <div className="dashboard-shortcuts">{(["Projects", "Notes", "Statistics"] as const).map((section) => <button className="secondary" key={section} onClick={(event) => { event.stopPropagation(); onNavigate?.(section); }} disabled={!onNavigate}>{section}</button>)}</div>;
+  if (id === "shortcuts") return <div className="dashboard-shortcuts">{shortcutOptions.filter(({ id: section }) => (shortcuts ?? defaultShortcuts).includes(section)).map(({ id: section, icon: Icon }) => <button className="dashboard-shortcut" key={section} onClick={(event) => { event.stopPropagation(); onNavigate?.(section); }} disabled={!onNavigate}><Icon size={17} aria-hidden="true" /><span>{section}</span><ArrowRight size={15} aria-hidden="true" /></button>)}</div>;
   if (id === "robux" || id === "sales") return <><strong className="dashboard-widget-value">{stats.sales ? `${id === "robux" ? "R$ " : ""}${number(id === "robux" ? stats.sales.data.netRobux : stats.sales.data.allTimeSales)}` : "—"}</strong><span className="field-hint">{stats.sales ? "Creator dashboard snapshot" : "Load sales in Statistics"}</span></>;
   if (id === "views" || id === "likes" || id === "copies") return <><strong className="dashboard-widget-value">{number(metricTotal(stats, id))}</strong><span className="field-hint">{stats.history.length ? "Public posts" : "Refresh in Statistics"}</span></>;
   const ranked = id === "topPosts"
@@ -216,20 +234,21 @@ function WidgetContent({ id, design, stats, now, onNavigate }: {
   return ranked.length ? <ol className="dashboard-posts">{ranked.slice(0, 3).map((post) => <li key={post.bundleId}><span title={post.title}>{post.title}</span><b>{id === "topPosts" ? number(post.views) : `#${post.bundleId}`}</b></li>)}</ol> : <p className="field-hint">Refresh public posts in Statistics.</p>;
 }
 
-function WidgetCard({ id, design = "classic", stats, now, onNavigate }: {
+function WidgetCard({ id, design = "classic", shortcuts, stats, now, onNavigate }: {
   id: DashboardWidgetId;
   design?: WidgetDesign;
+  shortcuts?: ShortcutSection[];
   stats: Stats;
   now: Date;
-  onNavigate?: (section: "Projects" | "Notes" | "Statistics") => void;
+  onNavigate?: (section: ShortcutSection) => void;
 }) {
-  return <div className={`dashboard-widget-card design-${design}`}><h3>{dashboardWidgetOptions.find((option) => option.id === id)?.label}</h3><WidgetContent id={id} design={design} stats={stats} now={now} onNavigate={onNavigate} /></div>;
+  return <div className={`dashboard-widget-card design-${design}`}><h3>{dashboardWidgetOptions.find((option) => option.id === id)?.label}</h3><WidgetContent id={id} design={design} shortcuts={shortcuts} stats={stats} now={now} onNavigate={onNavigate} /></div>;
 }
 
 export function DashboardWidgets({ layout, stats, onNavigate, onEdit }: {
   layout: DashboardLayout;
   stats: Stats;
-  onNavigate: (section: "Projects" | "Notes" | "Statistics") => void;
+  onNavigate: (section: ShortcutSection) => void;
   onEdit: () => void;
 }) {
   const now = useNow();
@@ -241,7 +260,7 @@ export function DashboardWidgets({ layout, stats, onNavigate, onEdit }: {
     {placed.length ? <div className="dashboard-widget-grid">{placed.map(({ id }) => {
       const placement = layout[id]!;
       return <div key={id} className="dashboard-widget" style={{ gridColumn: `${placement.column + 1} / span ${placement.width}`, gridRow: `${placement.row + 1} / span ${placement.height}` }}>
-        <WidgetCard id={id} design={placement.design} stats={stats} now={now} onNavigate={onNavigate} />
+        <WidgetCard id={id} design={placement.design} shortcuts={placement.shortcuts} stats={stats} now={now} onNavigate={onNavigate} />
       </div>;
     })}</div> : <p className="field-hint">No widgets yet. Add some with Edit dashboard.</p>}
   </section>;
@@ -256,8 +275,11 @@ export function DashboardWidgetEditor({ layout, stats, onConfirm, onCancel }: {
   const [draft, setDraft] = useState<DashboardLayout>(() => ({ ...layout }));
   const [selected, setSelected] = useState<DashboardWidgetId | null>(null);
   const [pendingDesigns, setPendingDesigns] = useState<Partial<Record<DashboardWidgetId, WidgetDesign>>>({});
+  const [pendingShortcuts, setPendingShortcuts] = useState<ShortcutSection[]>(layout.shortcuts?.shortcuts ?? defaultShortcuts);
   const [dropTarget, setDropTarget] = useState<number | null>(null);
   const [hint, setHint] = useState("Drag a widget into the grid, or choose one and click a cell.");
+  const layoutScroll = useRef<HTMLDivElement>(null);
+  const dragActive = useRef(false);
   const resizeStart = useRef<{
     id: DashboardWidgetId;
     pointerId: number;
@@ -271,12 +293,20 @@ export function DashboardWidgetEditor({ layout, stats, onConfirm, onCancel }: {
     lastHeight: number;
   } | null>(null);
   const now = useNow();
-  const rows = Math.min(maxRows, Math.max(4, ...Object.values(draft).filter((value): value is WidgetPlacement => !!value).map((value) => value.row + value.height + 1)));
+  const rows = maxRows;
   const at = (index: number) => dashboardWidgetOptions.find(({ id }) => {
     const placement = draft[id];
     return placement && overlaps(placement, single(index));
   })?.id;
   const designFor = (id: DashboardWidgetId): WidgetDesign => draft[id]?.design ?? pendingDesigns[id] ?? "classic";
+  function toggleShortcut(section: ShortcutSection) {
+    const next = pendingShortcuts.includes(section)
+      ? pendingShortcuts.filter((item) => item !== section)
+      : [...pendingShortcuts, section];
+    if (!next.length) return;
+    setPendingShortcuts(next);
+    setDraft((layout) => layout.shortcuts ? { ...layout, shortcuts: { ...layout.shortcuts, shortcuts: next } } : layout);
+  }
   function chooseDesign(id: DashboardWidgetId, design: WidgetDesign) {
     setPendingDesigns((current) => ({ ...current, [id]: design }));
     if (draft[id]) setDraft((current) => {
@@ -291,6 +321,7 @@ export function DashboardWidgetEditor({ layout, stats, onConfirm, onCancel }: {
     const chosenDesign = pendingDesigns[id];
     const previous = draft[id] ?? { ...single(index), ...(chosenDesign && chosenDesign !== "classic" ? { design: chosenDesign } : {}) };
     const placement = { ...previous, column: Math.min(index % columns, columns - previous.width), row: Math.min(Math.floor(index / columns), maxRows - previous.height) };
+    if (id === "shortcuts") placement.shortcuts = pendingShortcuts;
     const next = arrange(draft, id, placement);
     if (!next) {
       setHint("No room for that widget. Remove or shrink another widget first.");
@@ -374,6 +405,7 @@ export function DashboardWidgetEditor({ layout, stats, onConfirm, onCancel }: {
   }
   function drop(event: DragEvent<HTMLDivElement>, index: number) {
     event.preventDefault();
+    dragActive.current = false;
     setDropTarget(null);
     const id = event.dataTransfer.getData("text/plain");
     if (dashboardWidgetOptions.some((option) => option.id === id)) place(id as DashboardWidgetId, index);
@@ -384,12 +416,18 @@ export function DashboardWidgetEditor({ layout, stats, onConfirm, onCancel }: {
     event.preventDefault();
     if (selected) place(selected, index);
   }
+  function scrollWhileDragging(event: DragEvent<HTMLDivElement>) {
+    if (!dragActive.current || !layoutScroll.current) return;
+    const bounds = layoutScroll.current.getBoundingClientRect();
+    if (event.clientY < bounds.top + 44) layoutScroll.current.scrollTop -= 24;
+    else if (event.clientY > bounds.bottom - 44) layoutScroll.current.scrollTop += 24;
+  }
   return <div className="dashboard-editor">
     <div className="dashboard-widget-picker">
       <div className="dashboard-widget-picker-heading"><span className="dashboard-widget-picker-symbol"><Plus size={20} aria-hidden="true" /></span><div><h2>Add widgets</h2><p>Drag a tile onto the dashboard, or select it and choose a cell.</p></div></div>
       <div className="dashboard-widget-palette" aria-label="Available widgets">{dashboardWidgetOptions.map(({ id, label }) => {
         const Icon = widgetVisuals[id].icon;
-        return <button key={id} className={`dashboard-palette-card ${selected === id ? "selected" : ""}`} aria-label={label} aria-pressed={selected === id} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", id); }} onDragEnd={() => setDropTarget(null)} onClick={() => { setSelected(id); setHint(`Choose a grid cell for ${label}.`); }}><span className="dashboard-palette-icon"><Icon size={23} aria-hidden="true" /></span><strong>{label}</strong><small>{widgetVisuals[id].description}</small><span className="dashboard-palette-state" aria-hidden="true">{draft[id] ? "On dashboard" : "Add widget"}</span></button>;
+        return <button key={id} className={`dashboard-palette-card ${selected === id ? "selected" : ""}`} aria-label={label} aria-pressed={selected === id} draggable onDragStart={(event) => { dragActive.current = true; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", id); }} onDragEnd={() => { dragActive.current = false; setDropTarget(null); }} onClick={() => { setSelected(id); setHint(`Choose a grid cell for ${label}.`); }}><span className="dashboard-palette-icon"><Icon size={23} aria-hidden="true" /></span><strong>{label}</strong><small>{widgetVisuals[id].description}</small><span className="dashboard-palette-state" aria-hidden="true">{draft[id] ? "On dashboard" : "Add widget"}</span></button>;
       })}</div>
       {selected && <div className="dashboard-design-picker" role="group" aria-label={`${dashboardWidgetOptions.find((option) => option.id === selected)?.label} designs`}>
         <div><h3>Choose a look</h3><p>{dashboardWidgetOptions.find((option) => option.id === selected)?.label} · Changes preview instantly</p></div>
@@ -397,11 +435,18 @@ export function DashboardWidgetEditor({ layout, stats, onConfirm, onCancel }: {
           const Icon = widgetVisuals[selected].icon;
           return <button key={design} className={`dashboard-design-option ${designFor(selected) === design ? "selected" : ""}`} aria-label={`${dashboardWidgetOptions.find((option) => option.id === selected)?.label} design: ${label}`} aria-pressed={designFor(selected) === design} onClick={() => chooseDesign(selected, design)}><span className={`dashboard-design-sample design-${design}`}>{selected === "clock" && isRoundClockDesign(design) ? <AnalogClock now={now} variant={design} /> : selected === "clock" ? <span className="dashboard-design-digital">12:34</span> : design === "calendar" ? <span className="dashboard-design-calendar"><small>{now.toLocaleDateString([], { month: "short" })}</small><b>{now.getDate()}</b></span> : design === "split" ? <span className="dashboard-design-split"><b>{now.getDate()}</b><small>{now.toLocaleDateString([], { month: "short" })}</small></span> : <Icon size={24} aria-hidden="true" />}</span><span>{label}</span></button>;
         })}</div>
+        {selected === "shortcuts" && <div className="dashboard-shortcut-picker" role="group" aria-label="Shortcut destinations">
+          <h4>Show these shortcuts</h4>
+          <div>{shortcutOptions.map(({ id: section, icon: Icon }) => <label key={section}>
+            <input type="checkbox" checked={pendingShortcuts.includes(section)} disabled={pendingShortcuts.length === 1 && pendingShortcuts.includes(section)} onChange={() => toggleShortcut(section)} />
+            <Icon size={17} aria-hidden="true" /><span>{section}</span>
+          </label>)}</div>
+        </div>}
       </div>}
     </div>
     <div className="dashboard-layout-heading"><h2>Your layout</h2><span>Drag to move · pull the curved corner to resize · × to remove</span></div>
     <p className="field-hint" role="status">{hint}</p>
-    <div className="dashboard-layout-scroll">
+    <div className="dashboard-layout-scroll" ref={layoutScroll} onDragOver={scrollWhileDragging} onWheelCapture={(event) => { if (dragActive.current) { event.preventDefault(); event.currentTarget.scrollTop += event.deltaY; } }}>
     <div className="dashboard-editor-grid" role="grid" aria-label="Dashboard layout" style={{ gridTemplateRows: `repeat(${rows}, 200px)` }}>
       {Array.from({ length: rows * columns }, (_, index) => {
         if (at(index)) return null;
@@ -410,8 +455,8 @@ export function DashboardWidgetEditor({ layout, stats, onConfirm, onCancel }: {
       {dashboardWidgetOptions.filter(({ id }) => draft[id]).map(({ id, label }) => {
         const placement = draft[id]!;
         const index = placement.row * columns + placement.column;
-        return <div key={id} role="gridcell" tabIndex={0} draggable className={`dashboard-editor-widget ${dropTarget === index ? "drop-target" : ""}`} style={{ gridColumn: `${placement.column + 1} / span ${placement.width}`, gridRow: `${placement.row + 1} / span ${placement.height}` }} aria-label={`Row ${placement.row + 1}, column ${placement.column + 1}: ${label}, ${placement.width} by ${placement.height}`} onClick={() => setSelected(id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setSelected(id); } }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", id); }} onDragEnd={() => setDropTarget(null)} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropTarget(index); }} onDragLeave={() => setDropTarget((current) => current === index ? null : current)} onDrop={(event) => drop(event, index)}>
-          <WidgetCard id={id} design={placement.design} stats={stats} now={now} />
+        return <div key={id} role="gridcell" tabIndex={0} draggable className={`dashboard-editor-widget ${dropTarget === index ? "drop-target" : ""}`} style={{ gridColumn: `${placement.column + 1} / span ${placement.width}`, gridRow: `${placement.row + 1} / span ${placement.height}` }} aria-label={`Row ${placement.row + 1}, column ${placement.column + 1}: ${label}, ${placement.width} by ${placement.height}`} onClick={() => setSelected(id)} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); setSelected(id); } }} onDragStart={(event) => { dragActive.current = true; event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", id); }} onDragEnd={() => { dragActive.current = false; setDropTarget(null); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropTarget(index); }} onDragLeave={() => setDropTarget((current) => current === index ? null : current)} onDrop={(event) => drop(event, index)}>
+          <WidgetCard id={id} design={placement.design} shortcuts={placement.shortcuts} stats={stats} now={now} />
           <button type="button" className="dashboard-widget-remove" aria-label={`Remove ${label}`} onClick={(event) => { event.stopPropagation(); setDraft((current) => { const next = { ...current }; delete next[id]; return next; }); if (selected === id) setSelected(null); }}>×</button>
           <button type="button" className="dashboard-widget-resize" aria-label={`Drag to resize ${label}`} title="Drag corner to resize · arrow keys also work" draggable={false} onClick={(event) => event.stopPropagation()} onDragStart={(event) => event.preventDefault()} onPointerDown={(event) => startResize(event, id)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize} onKeyDown={(event) => keyResize(event, id)}><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true"><path d="M6 26C17 26 26 17 26 6" /></svg></button>
         </div>;

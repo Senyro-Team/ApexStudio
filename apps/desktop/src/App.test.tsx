@@ -16,6 +16,7 @@ import {
   readWorkspace,
   renameWorkspace,
   listProjects,
+  listProjectSyncSettings,
   vehicleCatalogue,
   listAssets,
   saveProject,
@@ -46,6 +47,7 @@ vi.mock("./bridge", () => ({
   readWorkspace: vi.fn(),
   renameWorkspace: vi.fn(),
   listProjects: vi.fn(),
+  listProjectSyncSettings: vi.fn().mockResolvedValue([]),
   vehicleCatalogue: vi.fn(),
   listAssets: vi.fn(),
   saveProject: vi.fn(),
@@ -81,6 +83,23 @@ it("opens the global ERLCX area with one page heading", async () => {
     screen.getAllByRole("heading", { name: "ERLCX", level: 1 }),
   ).toHaveLength(1);
 });
+
+it("saves the chosen dashboard shortcuts", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("My workspace");
+  await user.click(screen.getByRole("button", { name: "Edit dashboard" }));
+  await user.click(screen.getByRole("button", { name: "Shortcuts" }));
+  const destinations = screen.getByRole("group", { name: "Shortcut destinations" });
+  await user.click(within(destinations).getByRole("checkbox", { name: "Notes" }));
+  await user.click(within(destinations).getByRole("checkbox", { name: "Assets" }));
+  await user.click(screen.getByRole("button", { name: "Confirm dashboard" }));
+  const saved = JSON.parse(localStorage.getItem("apex-studio-dashboard-widgets") ?? "{}");
+  expect(saved.shortcuts.shortcuts).toEqual(["Projects", "Statistics", "Assets"]);
+  const shortcuts = document.querySelector(".dashboard-shortcuts") as HTMLElement;
+  expect(within(shortcuts).getByRole("button", { name: "Assets" })).toBeTruthy();
+  expect(within(shortcuts).queryByRole("button", { name: "Notes" })).toBeNull();
+});
 const info = {
   name: "My workspace",
   root: "C:/local/workspace",
@@ -107,6 +126,7 @@ beforeEach(() => {
   });
   vi.mocked(readWorkspace).mockResolvedValue(info);
   vi.mocked(listProjects).mockResolvedValue([]);
+  vi.mocked(listProjectSyncSettings).mockResolvedValue([]);
   vi.mocked(listAssets).mockResolvedValue([]);
   vi.mocked(vehicleCatalogue).mockResolvedValue({
     capturedAt: "2026-10-22",
@@ -129,6 +149,32 @@ const project: Project = {
   archived: false,
   assetCount: 0,
 };
+it("keeps synchronized own projects separate from projects received from the team", async () => {
+  const shared = { ...project, id: "shared-project", name: "Shared project" };
+  const syncedMine = { ...project, id: "synced-mine", name: "Synced own project" };
+  vi.mocked(listProjects).mockResolvedValue([project, shared, syncedMine]);
+  const binding = {
+    origin: "https://sync.example.test", serverInstance: "server",
+    teamId: "team", enabled: true, localHash: null, revision: 1, cursor: 0,
+    message: "Synced", syncedAt: null,
+  };
+  vi.mocked(listProjectSyncSettings).mockResolvedValue([
+    { ...binding, projectId: shared.id, receivedFromTeam: true },
+    { ...binding, projectId: syncedMine.id, receivedFromTeam: false },
+  ]);
+  render(<App />);
+  await screen.findByText("My workspace");
+  await userEvent.click(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("button", { name: "Projects" }));
+  const view = await screen.findByRole("group", { name: "Project view" });
+  expect(within(view).getByRole("button", { name: /My projects/ }).getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByRole("button", { name: /Harbor project/ })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /Synced own project/ })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Shared project/ })).toBeNull();
+  await userEvent.click(within(view).getByRole("button", { name: /Shared with me/ }));
+  expect(screen.getByRole("button", { name: /Shared project/ })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Harbor project/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Synced own project/ })).toBeNull();
+});
 it("creates a project and opens the asset-first detail with no sample files", async () => {
   vi.mocked(saveProject).mockResolvedValue(project);
   const user = userEvent.setup();

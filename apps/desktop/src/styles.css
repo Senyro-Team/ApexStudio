@@ -609,13 +609,45 @@ p {
   margin-left: auto;
   border-radius: 50%;
 }
+.theme-entry {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  background: var(--surface-raised);
+  box-shadow: var(--elevation-soft);
+}
+.theme-entry:hover { border-color: color-mix(in srgb, var(--accent) 48%, var(--card-border)); }
 .theme-entry .theme-option {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  min-height: 62px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
-.theme-entry > .text-button {
-  margin: 4px 0 0 12px;
+.theme-entry .theme-option:hover { transform: none; }
+.theme-entry .theme-option.selected { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.theme-entry-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  min-height: 38px;
+  margin-inline: 8px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #ffadba;
   font-size: 12px;
+  font-weight: 600;
 }
+.theme-entry-delete:hover:not(:disabled) { border-color: rgb(255 120 145 / 0.3); background: rgb(255 120 145 / 0.12); }
+@media (max-width: 460px) { .theme-entry-delete span { display: none; } }
 .custom-theme-form {
   margin-top: 34px;
   padding-top: 24px;
@@ -699,6 +731,39 @@ p {
   padding: 4px;
   flex-shrink: 0;
 }
+.theme-color-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  width: fit-content;
+  min-height: 55px;
+  padding: 5px 13px 5px 5px;
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  background: var(--surface-raised);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.09), 0 6px 16px rgb(0 0 0 / 0.1);
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.theme-color-control:hover { border-color: color-mix(in srgb, var(--accent) 58%, var(--card-border)); }
+.theme-color-control:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.custom-theme-form .theme-color-control input[type="color"],
+.theme-editor-fields .theme-color-control input[type="color"] {
+  flex: none;
+  width: 43px;
+  height: 43px;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  cursor: pointer;
+}
+.theme-color-control input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.theme-color-control input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 6px; }
+.theme-color-control > span { display: grid; gap: 2px; min-width: 88px; }
+.theme-color-control strong { color: var(--text); font: 650 13px/1.15 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.theme-color-control small { color: var(--muted); font-size: 11px; font-weight: 500; }
 .theme-editor > label {
   margin-top: 22px;
 }
@@ -942,6 +1007,29 @@ dd {
   border: 0;
   background: transparent;
 }
+.recent-projects-card {
+  display: grid;
+  gap: 18px;
+}
+.recent-projects-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.recent-projects-heading h2 { margin: 0; }
+.recent-projects-heading > span { color: var(--muted); font-size: 13px; }
+.recent-projects-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid var(--card-border);
+}
+.recent-projects-footer .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .projects-area > .recent-projects-card .recent-projects-empty {
   display: flex;
   flex-direction: column;
@@ -980,14 +1068,15 @@ dd {
 .project-list {
   max-width: 1000px;
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 .project-row {
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 16px;
   width: 100%;
-  padding: 20px;
+  min-height: 78px;
+  padding: 13px 16px;
   border: 1px solid var(--card-border);
   border-radius: 16px;
   background: var(--surface);
@@ -999,9 +1088,30 @@ dd {
   border-color: var(--accent);
   transform: translateY(-2px);
 }
-.project-row > span {
+.project-row > .project-row-copy {
   flex: 1;
   min-width: 0;
+}
+.project-row-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--card-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-raised));
+  color: var(--accent);
+}
+.project-row-kind {
+  flex: none;
+  padding: 6px 9px;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
 }
 .project-row strong {
   display: block;
@@ -1011,12 +1121,57 @@ dd {
 .project-row small {
   display: block;
   color: var(--muted);
-  margin-top: 10px;
+  margin-top: 5px;
   font-size: 13px;
 }
-.project-row > svg {
+.project-row-arrow {
   color: #a4a9b8;
   flex-shrink: 0;
+}
+.project-view-switch {
+  display: inline-flex;
+  gap: 7px;
+  max-width: 100%;
+  padding: 6px;
+  margin-bottom: 22px;
+  border: 1px solid var(--card-border);
+  border-radius: 17px;
+  background: color-mix(in srgb, var(--surface-raised) 55%, var(--surface));
+  box-shadow: var(--elevation-soft), inset 0 1px rgb(255 255 255 / 0.09);
+}
+.project-view-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 9px 17px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 650;
+  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.project-view-switch button:hover:not(:disabled) { color: var(--text); background: var(--surface-raised); transform: translateY(-1px); }
+.project-view-switch button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--card-border));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 29%, var(--surface-raised)), color-mix(in srgb, var(--accent) 16%, var(--surface)));
+  color: var(--text);
+  box-shadow: 0 5px 15px rgb(0 0 0 / 0.13), inset 0 1px rgb(255 255 255 / 0.14);
+}
+.project-view-switch button span {
+  min-width: 22px;
+  padding: 2px 5px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 620px) {
+  .project-view-switch { display: flex; }
+  .project-view-switch button { flex: 1; padding-inline: 9px; }
+  .project-row-kind { display: none; }
 }
 .deadline-row {
   display: flex;
@@ -2692,11 +2847,20 @@ button:disabled:hover {
   margin-top: 22px;
 }
 .team-sync-invitations {
-  max-width: 520px;
-  margin-top: 30px;
-  padding-top: 22px;
-  border-top: 1px solid var(--card-border);
+  max-width: 640px;
+  margin-top: 26px;
+  padding: 22px;
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface-raised) 72%, var(--surface));
+  box-shadow: var(--elevation-soft);
 }
+.team-sync-invite-heading { display: flex; align-items: flex-start; gap: 13px; }
+.team-sync-invite-heading > span { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--card-border)); border-radius: 12px; background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--accent); }
+.team-sync-invite-heading h3 { margin: 0; }
+.team-sync-invite-heading p { margin: 5px 0 0; color: var(--muted); line-height: 1.45; font-size: 13px; }
+.team-sync-invitations form { margin-top: 18px; }
+.team-sync-role-hint { margin: 8px 0 17px; color: var(--muted); font-size: 12px; }
 .team-sync-members {
   margin-top: 30px;
   padding-top: 22px;
@@ -2761,19 +2925,21 @@ button:disabled:hover {
 .team-sync-invitations h3 {
   margin: 0 0 8px;
 }
+.team-sync-invitations .team-sync-invite-heading h3 { margin: 0; }
 .team-sync-invitations > .field-hint {
   margin: 0 0 16px;
   line-height: 1.55;
 }
 .team-sync-invitations form > label {
   display: block;
-  margin: 16px 0 9px;
+  margin: 0 0 8px;
   font-weight: 600;
 }
 .team-sync-invitations select {
   display: block;
-  width: min(100%, 440px);
-  margin-bottom: 16px;
+  width: min(100%, 360px);
+  min-height: 43px;
+  margin-bottom: 0;
 }
 .team-sync-invitations form > button,
 .team-sync-invitation-code button {
@@ -2897,6 +3063,36 @@ button:disabled:hover {
   margin-top: 32px;
   flex-wrap: wrap;
 }
+.roblox-codes-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(920px, calc(100vw - 40px));
+  max-height: min(82vh, 760px);
+  padding: 26px;
+  border-radius: 20px;
+}
+.roblox-codes-heading > div { display: flex; align-items: center; gap: 12px; }
+.roblox-codes-heading h2 { margin: 0; font-size: 22px; }
+.roblox-codes-heading p { margin: 12px 0 18px; color: var(--muted); font-size: 13px; }
+.roblox-codes-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 16%, var(--surface-raised)); color: var(--accent); }
+.roblox-codes-content {
+  flex: 1;
+  min-height: 190px;
+  margin: 0;
+  padding: 20px;
+  overflow: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-raised) 85%, var(--app-background));
+  color: var(--text);
+  font: 13px/1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.roblox-codes-dialog .roblox-codes-actions { justify-content: flex-start; margin-top: 18px; gap: 10px; }
+.roblox-codes-actions .text-button { margin-left: auto; }
+@media (max-width: 600px) { .roblox-codes-dialog[open] { padding: 18px; } .roblox-codes-actions .text-button { margin-left: 0; } }
 .trash-dialog {
   width: min(440px, calc(100vw - 32px));
   max-height: 85vh;
@@ -3303,6 +3499,83 @@ button:disabled:hover {
 }
 .roblox-start-actions {
   margin: 12px 0 20px;
+}
+.roblox-page { gap: 20px; max-width: 1120px; }
+.roblox-account,
+.roblox-page > section:not(.roblox-page) {
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--surface-raised) 74%, var(--surface)), var(--surface));
+  box-shadow: var(--elevation-soft), inset 0 1px rgb(255 255 255 / 0.08);
+}
+.roblox-account { padding: 18px 22px; }
+.roblox-account-info { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.roblox-account-info > div { display: grid; gap: 4px; min-width: 0; }
+.roblox-account-info small { color: var(--muted); font-size: 12px; font-weight: 650; letter-spacing: .025em; }
+.roblox-account-info strong { overflow-wrap: anywhere; font-size: 15px; }
+.roblox-account-icon,
+.roblox-section-icon { display: grid; flex: 0 0 44px; width: 44px; height: 44px; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--card-border)); border-radius: 13px; background: color-mix(in srgb, var(--accent) 15%, var(--surface-raised)); color: var(--accent); }
+.roblox-account > button,
+.roblox-tabs button,
+.roblox-start-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; }
+.roblox-tabs { gap: 8px; padding: 5px; width: fit-content; max-width: 100%; border: 1px solid var(--card-border); border-radius: 15px; background: var(--surface); box-shadow: var(--elevation-soft); }
+.roblox-tabs .roblox-tab { min-height: 41px; padding: 9px 15px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: var(--muted); font-weight: 650; }
+.roblox-tabs .roblox-tab:hover { border-color: var(--card-border); background: var(--surface-raised); color: var(--text); }
+#roblox-liveries,
+#roblox-queue { padding: 25px; scroll-margin-top: 22px; }
+.roblox-section-heading,
+.roblox-section-heading > div { display: flex; align-items: center; gap: 13px; }
+.roblox-section-heading { justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.roblox-section-heading h2 { margin: 0; font-size: 20px; }
+.roblox-section-heading p { margin-top: 4px; font-size: 13px; }
+.roblox-section-count { flex: none; padding: 7px 11px; border: 1px solid var(--card-border); border-radius: 999px; background: var(--surface-raised); color: var(--muted); font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.roblox-filters { gap: 14px; margin: 23px 0 16px; }
+.roblox-filters label { gap: 8px; font-size: 13px; font-weight: 650; }
+.roblox-filters select,
+.roblox-search-field { min-height: 46px; border: 1px solid var(--card-border); border-radius: 12px; background: var(--surface-raised); }
+.roblox-filters select { padding: 10px 14px; }
+.roblox-search-field { display: flex; align-items: center; gap: 9px; padding: 0 13px; color: var(--muted); }
+.roblox-search-field:focus-within,
+.roblox-filters select:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.roblox-search-field input[type="search"] { width: 100%; min-width: 0; min-height: 43px; padding: 0; border: 0; background: transparent; box-shadow: none; outline: none; }
+.roblox-selection { padding: 12px 15px; border: 1px solid var(--card-border); border-radius: 12px; background: color-mix(in srgb, var(--surface-raised) 60%, transparent); color: var(--text); font-size: 13px; }
+.roblox-selection > span { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.roblox-start-actions { gap: 10px; margin: 16px 0 20px; }
+.roblox-start-actions button { min-height: 42px; }
+.roblox-livery-rows { display: grid; gap: 10px; margin: 0 0 20px; }
+.roblox-livery-rows > li { align-items: center; padding: 16px 17px; border: 1px solid var(--card-border); border-radius: 14px; background: color-mix(in srgb, var(--surface-raised) 66%, var(--surface)); transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.roblox-livery-rows > li:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--card-border)); background: var(--surface-raised); transform: translateY(-1px); }
+.roblox-livery-choice { flex: 1; min-width: 0; cursor: pointer; }
+.roblox-livery-choice strong { line-height: 1.35; }
+.roblox-livery-choice small,
+.roblox-texture-details span { color: var(--muted); }
+.roblox-livery-rows details { flex: none; max-width: 50%; }
+.roblox-livery-rows summary,
+.roblox-batch > summary,
+.roblox-job-list summary { border-radius: 9px; font-weight: 650; }
+.roblox-livery-rows summary { padding: 7px 10px; white-space: nowrap; }
+.roblox-livery-rows summary:hover,
+.roblox-batch > summary:hover,
+.roblox-job-list summary:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.roblox-livery-rows > li:has(details[open]) { display: grid; }
+.roblox-livery-rows > li:has(details[open]) details { max-width: 100%; }
+.roblox-texture-details { margin: 8px 0 0; }
+.roblox-texture-details li { padding: 10px 12px; border-top: 1px solid var(--card-border); }
+.roblox-queue { border-top: 1px solid var(--card-border); }
+.roblox-queue > .button-row { margin: 20px 0; }
+.roblox-batch { margin-top: 12px; padding: 16px; border: 1px solid var(--card-border); border-radius: 14px; background: var(--surface-raised); }
+.roblox-batch > summary { padding: 6px; }
+.roblox-batch > p { margin: 12px 6px 0; }
+.roblox-job-list { display: grid; gap: 8px; margin: 18px 0 0; }
+.roblox-job-list > li { padding: 13px 15px; border: 1px solid var(--card-border); border-radius: 11px; background: var(--surface); }
+.roblox-job-list > li > span { margin-top: 5px; }
+.roblox-job-list details { margin-top: 10px; }
+.roblox-job-list summary { padding: 5px 8px; width: fit-content; }
+.roblox-empty-state { display: flex; align-items: center; gap: 10px; max-width: none; padding: 22px; border: 1px dashed var(--card-border); border-radius: 13px; background: var(--surface-raised); }
+@media (max-width: 760px) {
+  #roblox-liveries, #roblox-queue { padding: 18px; }
+  .roblox-account { padding: 16px; }
+  .roblox-section-count { margin-left: 57px; }
 }
 .performance-diagnostics {
   margin-bottom: 28px;
@@ -3790,13 +4063,36 @@ select {
   margin: 12px 0 0;
 }
 .dashboard-shortcuts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 8px;
+  max-height: calc(100% - 34px);
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
-.dashboard-shortcuts .secondary {
-  padding: 7px 10px;
-  font-size: 0.8rem;
+.dashboard-widget-card:has(.dashboard-shortcuts) h3 { margin-bottom: 12px; }
+.dashboard-shortcut {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--card-border);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--surface-raised) 86%, var(--accent));
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+.dashboard-shortcut > svg:first-child { flex: none; color: var(--accent); }
+.dashboard-shortcut > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dashboard-shortcut > svg:last-child { flex: none; margin-left: auto; color: var(--muted); }
+.dashboard-shortcut:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--card-border));
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-raised));
+  transform: translateY(-1px);
 }
 .dashboard-posts {
   list-style: none;
@@ -3832,7 +4128,10 @@ select {
 }
 .dashboard-layout-scroll {
   max-width: 100%;
-  overflow-x: auto;
+  max-height: min(70vh, 720px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 .dashboard-widget-picker {
   padding: 22px;
@@ -4095,6 +4394,24 @@ select {
   height: 48px;
   margin: 0;
 }
+.dashboard-shortcut-picker { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--card-border); }
+.dashboard-shortcut-picker h4 { margin: 0 0 12px; font-size: 0.9rem; }
+.dashboard-shortcut-picker > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.dashboard-shortcut-picker label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 11px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  cursor: pointer;
+  font-size: 12px;
+}
+.dashboard-shortcut-picker label:has(input:checked) { border-color: color-mix(in srgb, var(--accent) 62%, var(--card-border)); background: var(--accent-selected); }
+.dashboard-shortcut-picker input { margin: 0; accent-color: var(--accent); }
+.dashboard-shortcut-picker svg { color: var(--accent); }
 .dashboard-layout-heading {
   display: flex;
   align-items: baseline;
@@ -4547,3 +4864,89 @@ select {
 .team-sync-member-list li div { display: grid; gap: 3px; min-width: 0; }
 .team-sync-member-list li div span { color: var(--muted); overflow-wrap: anywhere; }
 .team-sync-member-role { flex: none; padding: 5px 9px; border: 1px solid var(--card-border); border-radius: 999px; color: var(--muted); font-size: 0.78rem; text-transform: capitalize; }
+
+:root[data-wallpaper="true"] .app .project-row,
+:root[data-wallpaper="true"] .app .theme-entry {
+  border-color: rgb(255 255 255 / 0.22);
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.13), rgb(18 25 39 / 0.48));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.12), 0 10px 24px rgb(0 0 0 / 0.16);
+  backdrop-filter: blur(18px) saturate(1.35);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+}
+:root[data-wallpaper="true"] .app .project-row:hover:not(:disabled),
+:root[data-wallpaper="true"] .app .theme-entry:hover {
+  border-color: color-mix(in srgb, var(--accent) 60%, white);
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.18), rgb(18 25 39 / 0.56));
+}
+:root[data-wallpaper="true"] .app .project-row-icon,
+:root[data-wallpaper="true"] .app .project-row-kind { background: rgb(255 255 255 / 0.1); border-color: rgb(255 255 255 / 0.18); }
+:root[data-wallpaper="true"] .app .project-view-switch {
+  border-color: rgb(255 255 255 / 0.29);
+  background: linear-gradient(145deg, rgb(255 255 255 / 0.14), rgb(13 21 36 / 0.48));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.2), 0 12px 30px rgb(0 0 0 / 0.18);
+  backdrop-filter: blur(26px) saturate(1.5);
+  -webkit-backdrop-filter: blur(26px) saturate(1.5);
+}
+:root[data-wallpaper="true"] .app .project-view-switch button { border-color: transparent; background: transparent; backdrop-filter: none; }
+:root[data-wallpaper="true"] .app .project-view-switch button:hover:not(:disabled) { background: rgb(255 255 255 / 0.11); }
+:root[data-wallpaper="true"] .app .project-view-switch button[aria-pressed="true"] {
+  border-color: rgb(255 255 255 / 0.42);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 42%, rgb(255 255 255 / 0.21)), rgb(255 255 255 / 0.12));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.28), 0 5px 16px rgb(0 0 0 / 0.18);
+}
+:root[data-wallpaper="true"] .app .project-view-switch button span { background: rgb(255 255 255 / 0.16); }
+:root[data-wallpaper="true"] .app .theme-entry .theme-option { border-color: transparent; background: transparent; backdrop-filter: none; box-shadow: none; }
+:root[data-wallpaper="true"] .app .theme-entry .theme-option.selected { border-color: color-mix(in srgb, var(--accent) 55%, white); background: color-mix(in srgb, var(--accent) 24%, transparent); }
+:root[data-wallpaper="true"] .app .theme-entry .theme-entry-delete { border-color: transparent; background: transparent; color: #ffadba; backdrop-filter: none; }
+:root[data-wallpaper="true"] .app .theme-entry .theme-entry-delete:hover:not(:disabled) { border-color: rgb(255 120 145 / 0.34); background: rgb(255 120 145 / 0.16); }
+:root[data-wallpaper="true"] .app .dashboard-shortcut { border-color: rgb(255 255 255 / 0.19); background: rgb(255 255 255 / 0.11); backdrop-filter: blur(12px); }
+:root[data-wallpaper="true"] .app .dashboard-shortcut:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 60%, white); background: color-mix(in srgb, var(--accent) 25%, rgb(255 255 255 / 0.12)); }
+:root[data-wallpaper="true"] .app .roblox-codes-content { border-color: rgb(255 255 255 / 0.22); background: rgb(9 15 25 / 0.62); }
+:root[data-wallpaper="true"] .app .roblox-account,
+:root[data-wallpaper="true"] .app #roblox-liveries,
+:root[data-wallpaper="true"] .app #roblox-queue {
+  border-color: rgb(255 255 255 / 0.27);
+  background: linear-gradient(145deg, rgb(37 46 65 / 0.65), rgb(10 17 30 / 0.57));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.17), 0 20px 44px rgb(0 0 0 / 0.22);
+  backdrop-filter: blur(26px) saturate(1.45);
+  -webkit-backdrop-filter: blur(26px) saturate(1.45);
+}
+:root[data-wallpaper="true"] .app .roblox-tabs {
+  border-color: rgb(255 255 255 / 0.27);
+  background: rgb(17 26 42 / 0.54);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.14), 0 10px 26px rgb(0 0 0 / 0.16);
+  backdrop-filter: blur(22px) saturate(1.4);
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+}
+:root[data-wallpaper="true"] .app .roblox-tabs button { border-color: transparent; background: transparent; backdrop-filter: none; }
+:root[data-wallpaper="true"] .app .roblox-tabs button:hover { border-color: rgb(255 255 255 / 0.25); background: rgb(255 255 255 / 0.13); }
+:root[data-wallpaper="true"] .app .roblox-account-icon,
+:root[data-wallpaper="true"] .app .roblox-section-icon,
+:root[data-wallpaper="true"] .app .roblox-section-count,
+:root[data-wallpaper="true"] .app .roblox-selection,
+:root[data-wallpaper="true"] .app .roblox-empty-state,
+:root[data-wallpaper="true"] .app .roblox-batch,
+:root[data-wallpaper="true"] .app .roblox-job-list > li {
+  border-color: rgb(255 255 255 / 0.19);
+  background: rgb(255 255 255 / 0.1);
+}
+:root[data-wallpaper="true"] .app .roblox-livery-rows > li {
+  border-color: rgb(255 255 255 / 0.23);
+  background: linear-gradient(130deg, rgb(255 255 255 / 0.14), rgb(19 29 47 / 0.42));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.12);
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+}
+:root[data-wallpaper="true"] .app .roblox-livery-rows > li:hover { border-color: rgb(255 255 255 / 0.42); background: linear-gradient(130deg, rgb(255 255 255 / 0.19), rgb(24 37 59 / 0.52)); }
+:root[data-wallpaper="true"] .app .roblox-search-field { border-color: rgb(255 255 255 / 0.24); background: rgb(255 255 255 / 0.11); }
+:root[data-wallpaper="true"] .app .roblox-search-field input[type="search"] { border: 0; background: transparent; backdrop-filter: none; }
+:root[data-wallpaper="true"] .app .roblox-filters select { border-color: rgb(255 255 255 / 0.24); background: rgb(255 255 255 / 0.11); }
+:root[data-wallpaper="true"] .app .theme-color-control {
+  border-color: rgb(255 255 255 / 0.26);
+  background: linear-gradient(145deg, rgb(255 255 255 / 0.14), rgb(19 27 43 / 0.46));
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.16), 0 8px 20px rgb(0 0 0 / 0.15);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+}
+:root[data-wallpaper="true"] .app .theme-color-control:hover { border-color: rgb(255 255 255 / 0.46); }
+:root[data-wallpaper="true"] .app .theme-color-control input[type="color"] { border-color: rgb(255 255 255 / 0.36); background: transparent; backdrop-filter: none; }

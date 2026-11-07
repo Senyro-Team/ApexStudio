@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { autoSyncEnabled, setAutoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
-import { Check, CircleAlert, Copy, LogOut, RefreshCw, Server, Users } from "lucide-react";
+import { Check, CircleAlert, Copy, LogOut, RefreshCw, Server, UserPlus, Users } from "lucide-react";
 import AppSelect from "./AppSelect";
 import { readTeamSyncLog, recordTeamSyncError, recordTeamSyncReport, syncSummary } from "./teamSyncLog";
 import {
@@ -469,13 +469,14 @@ export default function TeamSyncSettings({
           )}
           {selectedTeam && canInvite && (
             <section className="team-sync-invitations" aria-labelledby="team-sync-invite-title">
-              <h3 id="team-sync-invite-title">Invite a member</h3>
-              <p className="field-hint">
-                Create a single-use code to share privately. It expires after 72 hours; no email is sent.
-              </p>
+              <div className="team-sync-invite-heading">
+                <span aria-hidden="true"><UserPlus size={21} /></span>
+                <div><h3 id="team-sync-invite-title">Invite a member</h3>
+                  <p>Create a private, single-use code. It expires after 72 hours.</p></div>
+              </div>
               <form onSubmit={(event) => void createInvitation(event)}>
                 <label htmlFor="team-sync-invite-role">Team role</label>
-                <select
+                <AppSelect
                   id="team-sync-invite-role"
                   value={inviteRole}
                   onChange={(event) => {
@@ -487,9 +488,10 @@ export default function TeamSyncSettings({
                   {selectedTeam.role === "owner" && <option value="admin">Admin</option>}
                   <option value="designer">Designer</option>
                   <option value="read_only">Read-only</option>
-                </select>
-                <button className="secondary" disabled={busy}>
-                  {busy ? "Creating code…" : "Create invitation code"}
+                </AppSelect>
+                <p className="team-sync-role-hint">{inviteRole === "admin" ? "Can manage members and shared projects." : inviteRole === "designer" ? "Can work on shared projects." : "Can view shared projects without editing."}</p>
+                <button className="primary" disabled={busy}>
+                  <UserPlus size={17} aria-hidden="true" /> {busy ? "Creating code…" : "Create invitation code"}
                 </button>
               </form>
               {createdInvitation && (

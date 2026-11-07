@@ -8,7 +8,38 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
+use tauri_plugin_dialog::DialogExt;
 use zeroize::{Zeroize, Zeroizing};
+
+#[tauri::command]
+pub async fn save_livery_codes_markdown(
+    markdown: String,
+    app: tauri::AppHandle,
+) -> Result<bool, CommandError> {
+    work(move || {
+        if markdown.is_empty() || markdown.len() > 5_000_000 {
+            return Err(bad(
+                "The Livery codes preview is empty or too large to save.",
+            ));
+        }
+        let Some(file) = app
+            .dialog()
+            .file()
+            .set_title("Save Livery codes")
+            .add_filter("Markdown", &["md"])
+            .set_file_name("livery-codes.md")
+            .blocking_save_file()
+        else {
+            return Ok(false);
+        };
+        let path = file
+            .into_path()
+            .map_err(|e| Error::Storage(e.to_string()))?;
+        std::fs::write(path, markdown).map_err(|e| Error::Storage(e.to_string()))?;
+        Ok(true)
+    })
+    .await
+}
 
 #[derive(Default)]
 pub struct RobloxState(pub tokio::sync::Mutex<()>);

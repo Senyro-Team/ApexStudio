@@ -10,6 +10,7 @@ import {
   previewUploadBatch,
   startUploadBatch,
   controlUploadBatch,
+  saveLiveryCodesMarkdown,
   type UploadSnapshot,
 } from "./bridge";
 vi.mock("@tauri-apps/api/event", () => ({
@@ -23,6 +24,7 @@ vi.mock("./bridge", () => ({
   previewUploadBatch: vi.fn(),
   startUploadBatch: vi.fn(),
   controlUploadBatch: vi.fn(),
+  saveLiveryCodesMarkdown: vi.fn().mockResolvedValue(true),
   errorMessage: (e: unknown) => String(e),
 }));
 const empty: UploadSnapshot = {
@@ -75,6 +77,7 @@ beforeEach(() => {
   });
   vi.mocked(startUploadBatch).mockResolvedValue("batch");
   vi.mocked(controlUploadBatch).mockResolvedValue();
+  vi.mocked(saveLiveryCodesMarkdown).mockResolvedValue(true);
 });
 afterEach(cleanup);
 it("preselects project shortcuts and requires review before starting", async () => {
@@ -196,14 +199,20 @@ it("copies several selected liveries with fresh saved decal IDs without uploadin
     screen.getByRole("checkbox", { name: "Select all filtered liveries" }),
   );
   await user.click(
-    screen.getByRole("button", { name: "Copy codes (Markdown)" }),
+    screen.getByRole("button", { name: "Preview codes" }),
   );
+  const preview = await screen.findByRole("dialog", { name: "Livery codes" });
+  expect(within(preview).getByLabelText("Markdown preview").textContent).toContain("## FDNY — EMS");
+  expect(clipboard).not.toHaveBeenCalled();
+  await user.click(within(preview).getByRole("button", { name: "Copy all" }));
   await vi.waitFor(() => expect(clipboard).toHaveBeenCalledOnce());
   const copied = clipboard.mock.calls[0][0];
   expect(copied).toContain("## FDNY — EMS");
   expect(copied).toContain("## Police — Patrol");
   expect(copied).toContain("`222`");
   expect(copied).toContain("`444`");
+  await user.click(within(preview).getByRole("button", { name: "Save as Markdown" }));
+  await vi.waitFor(() => expect(saveLiveryCodesMarkdown).toHaveBeenCalledWith(copied));
   expect(startUploadBatch).not.toHaveBeenCalled();
 });
 it("does not replace the clipboard when no usable saved IDs exist", async () => {
@@ -221,7 +230,7 @@ it("does not replace the clipboard when no usable saved IDs exist", async () => 
   render(<Roblox focus={{ folderIds: ["a"] }} onSettings={() => {}} />);
   await screen.findByText("EMS");
   await user.click(
-    screen.getByRole("button", { name: "Copy codes (Markdown)" }),
+    screen.getByRole("button", { name: "Preview codes" }),
   );
   await screen.findByRole("alert");
   expect(clipboard).not.toHaveBeenCalled();

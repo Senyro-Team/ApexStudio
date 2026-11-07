@@ -44,6 +44,7 @@ import {
   ArrowUpRight,
   ChartNoAxesCombined,
   ImagePlus,
+  Trash2,
 } from "lucide-react";
 import {
   setEditLock,
@@ -617,11 +618,11 @@ export default function App() {
                           {renderTheme(option)}
                           <button
                             type="button"
-                            className="text-button"
+                            className="theme-entry-delete"
                             onClick={() => deleteCustomTheme(option.id)}
                             aria-label={`Delete ${option.name}`}
                           >
-                            Delete
+                            <Trash2 size={16} aria-hidden="true" /><span>Delete</span>
                           </button>
                         </div>
                       ))}
@@ -642,12 +643,15 @@ export default function App() {
                     onChange={(event) => setNewThemeName(event.target.value)}
                   />
                   <label htmlFor="custom-theme-color">Accent color</label>
-                  <input
-                    id="custom-theme-color"
-                    type="color"
-                    value={newThemeColor}
-                    onChange={(event) => setNewThemeColor(event.target.value)}
-                  />
+                  <div className="theme-color-control">
+                    <input
+                      id="custom-theme-color"
+                      type="color"
+                      value={newThemeColor}
+                      onChange={(event) => setNewThemeColor(event.target.value)}
+                    />
+                    <span><strong>{newThemeColor.toUpperCase()}</strong><small>Pick a color</small></span>
+                  </div>
                   <label htmlFor="custom-theme-mode">Background</label>
                   <AppSelect
                     id="custom-theme-mode"
@@ -700,14 +704,17 @@ export default function App() {
                     ).map(([key, label]) => (
                       <label key={key}>
                         <span>{label}</span>
-                        <input
-                          type="color"
-                          aria-label={label}
-                          value={activeColors[key]}
-                          onChange={(event) =>
-                            previewTheme({ [key]: event.target.value })
-                          }
-                        />
+                        <span className="theme-color-control">
+                          <input
+                            type="color"
+                            aria-label={label}
+                            value={activeColors[key]}
+                            onChange={(event) =>
+                              previewTheme({ [key]: event.target.value })
+                            }
+                          />
+                          <span><strong>{activeColors[key].toUpperCase()}</strong><small>Pick a color</small></span>
+                        </span>
                       </label>
                     ))}
                   </div>

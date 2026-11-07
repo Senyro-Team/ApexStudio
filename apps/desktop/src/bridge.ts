@@ -102,7 +102,7 @@ export const syncDisconnect = () => invoke<void>("sync_disconnect");
 export interface ProjectSyncChoice { enabled: boolean; serverUrl: string; teamId: string }
 export interface ProjectSyncSettings {
   projectId: string; origin: string; serverInstance: string; teamId: string;
-  enabled: boolean; localHash: string | null; revision: number; cursor: number;
+  enabled: boolean; receivedFromTeam: boolean; localHash: string | null; revision: number; cursor: number;
   message: string; syncedAt: string | null;
 }
 export interface SyncEntry {
@@ -122,6 +122,7 @@ export interface SyncReport {
   entries?: SyncEntry[];
 }
 export const projectSyncSettings = (projectId: string) => invoke<ProjectSyncSettings | null>("project_sync_settings", { projectId });
+export const listProjectSyncSettings = () => invoke<ProjectSyncSettings[]>("list_project_sync_settings");
 export const setProjectSync = (projectId: string, choice: ProjectSyncChoice) => invoke<ProjectSyncSettings | null>("set_project_sync", { projectId, choice });
 export const syncProjects = (serverUrl: string, teamId: string) => invoke<SyncReport>("sync_projects", { serverUrl, teamId });
 export const resolveProjectSync = (projectId: string, useServer: boolean) => invoke<void>("resolve_project_sync", {projectId, useServer});
@@ -433,6 +434,8 @@ export const testRobloxConnection = () =>
 export const clearRobloxSettings = () => invoke<void>("clear_roblox_settings");
 export const robloxLivery = (folderId: string) =>
   invoke<LiveryUploads>("roblox_livery", { folderId });
+export const saveLiveryCodesMarkdown = (markdown: string) =>
+  invoke<boolean>("save_livery_codes_markdown", { markdown });
 
 export interface LiveryFolderDraft {
   name: string;

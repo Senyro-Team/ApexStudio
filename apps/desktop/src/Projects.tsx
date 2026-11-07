@@ -32,6 +32,7 @@ import {
   vehicleCatalogue,
   errorMessage,
   projectSyncSettings,
+  listProjectSyncSettings,
   type ProjectSyncSettings,
   type RobloxFocus,
   type Project,
@@ -343,6 +344,8 @@ export default function Projects({
 }) {
   const [showTrash, setShowTrash] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [syncBindings, setSyncBindings] = useState<Record<string, ProjectSyncSettings>>({});
+  const [projectView, setProjectView] = useState<"own" | "shared">("own");
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -368,12 +371,14 @@ export default function Projects({
     setError("");
     setLoading(true);
     try {
-      const [items, vehicles] = await Promise.all([
+      const [items, vehicles, bindings] = await Promise.all([
         listProjects(),
         vehicleCatalogue(),
+        listProjectSyncSettings(),
       ]);
       setProjects(items);
       setCatalogue(vehicles);
+      setSyncBindings(Object.fromEntries(bindings.map((binding) => [binding.projectId, binding])));
     } catch (error) {
       setError(errorMessage(error));
     } finally {
@@ -386,7 +391,12 @@ export default function Projects({
   useEffect(() => {
     const updated = (event: Event) => {
       if (!editor && !noteDirty && !busy) {
-        void listProjects().then(setProjects).catch(() => {});
+        void Promise.all([listProjects(), listProjectSyncSettings()])
+          .then(([items, bindings]) => {
+            setProjects(items);
+            setSyncBindings(Object.fromEntries(bindings.map((binding) => [binding.projectId, binding])));
+          })
+          .catch(() => {});
         if (selected) void listAssets(selected).then(setAssets).catch(() => {});
         const report = (event as CustomEvent<{downloaded?: number}>).detail;
         if (!report || (report.downloaded ?? 0) > 0) setSyncRefresh((value) => value + 1);
@@ -454,6 +464,9 @@ export default function Projects({
     setSelected(item.id);
     setTab("Assets");
     setNotice("Project saved.");
+    void listProjectSyncSettings()
+      .then((bindings) => setSyncBindings(Object.fromEntries(bindings.map((binding) => [binding.projectId, binding]))))
+      .catch(() => {});
   };
   async function archive() {
     if (!project) return;
@@ -534,20 +547,23 @@ export default function Projects({
           key={item.id}
           onClick={() => open(item.id)}
         >
-          <FolderOpen size={24} aria-hidden="true" />
-          <span>
+          <span className="project-row-icon" aria-hidden="true"><FolderOpen size={22} /></span>
+          <span className="project-row-copy">
             <strong>{item.name}</strong>
             <small>
               {item.assetCount} files · Edited {date(item.updatedAt)}
               {item.archived ? " · Archived" : ""}
             </small>
           </span>
-          <ArrowRight size={18} aria-hidden="true" />
+          <span className="project-row-kind">{syncBindings[item.id]?.receivedFromTeam ? "Shared" : "Mine"}</span>
+          <ArrowRight className="project-row-arrow" size={18} aria-hidden="true" />
         </button>
       ))}
     </div>
   );
   const active = projects.filter((project) => !project.archived);
+  const ownCount = active.filter((item) => !syncBindings[item.id]?.receivedFromTeam).length;
+  const sharedCount = active.length - ownCount;
   const deadlines = active
     .filter((project) => project.deadline)
     .sort((a, b) => a.deadline!.localeCompare(b.deadline!))
@@ -555,6 +571,7 @@ export default function Projects({
   const filtered = projects.filter(
     (item) =>
       item.archived === showArchived &&
+      Boolean(syncBindings[item.id]?.receivedFromTeam) === (projectView === "shared") &&
       [item.name, item.description, ...item.tags, ...item.vehicles].some(
         (value) => value.toLowerCase().includes(query.toLowerCase()),
       ),
@@ -598,7 +615,7 @@ export default function Projects({
             </button>
           </header>
           <section className="content-section recent-projects-card">
-            <h2>Recent projects</h2>
+            <div className="recent-projects-heading"><h2>Recent projects</h2><span>{active.length} total</span></div>
             {loading ? (
               <p role="status">Opening projects…</p>
             ) : active.length ? (
@@ -618,12 +635,11 @@ export default function Projects({
               </div>
             )}
             {active.length > 3 && (
-              <button
-                className="text-button"
-                onClick={() => onNavigate("Projects")}
-              >
-                View all projects <ArrowRight size={16} />
-              </button>
+              <div className="recent-projects-footer">
+                <button className="text-button" onClick={() => onNavigate("Projects")}>
+                  View all projects <ArrowRight size={16} />
+                </button>
+              </div>
             )}
           </section>
           <section className="content-section deadlines">
@@ -871,6 +887,10 @@ export default function Projects({
               New project
             </button>
           </header>
+          <div className="project-view-switch" role="group" aria-label="Project view">
+            <button type="button" aria-pressed={projectView === "own"} onClick={() => setProjectView("own")}>My projects <span>{ownCount}</span></button>
+            <button type="button" aria-pressed={projectView === "shared"} onClick={() => setProjectView("shared")}>Shared with me <span>{sharedCount}</span></button>
+          </div>
           <div className="file-toolbar">
             <label className="search-field">
               <Search size={17} />
@@ -900,7 +920,9 @@ export default function Projects({
                   ? "No matching projects"
                   : showArchived
                     ? "No archived projects"
-                    : "No projects"}
+                    : projectView === "shared"
+                      ? "No shared projects"
+                      : "No projects yet"}
               </h2>
             </div>
           )}

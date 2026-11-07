@@ -15,6 +15,7 @@ pub struct ProjectSync {
     pub server_instance: String,
     pub team_id: String,
     pub enabled: bool,
+    pub received_from_team: bool,
     pub local_hash: Option<String>,
     pub revision: i64,
     pub cursor: i64,
@@ -75,6 +76,18 @@ mod tests {
         b.apply_project_snapshot(&before, None, DEST, 2).unwrap();
         assert_eq!(before, b.project_snapshot(&project.id).unwrap());
         assert!(b.project_sync(&project.id).unwrap().unwrap().enabled);
+        assert!(
+            !a.project_sync(&project.id)
+                .unwrap()
+                .unwrap()
+                .received_from_team
+        );
+        assert!(
+            b.project_sync(&project.id)
+                .unwrap()
+                .unwrap()
+                .received_from_team
+        );
         assert!(serde_json::to_string(&before)
             .unwrap()
             .find("server_instance")
@@ -86,8 +99,21 @@ mod tests {
         let updated = a.project_snapshot(&project.id).unwrap();
         b.apply_project_snapshot(&updated, Some(&old_hash), DEST, 3)
             .unwrap();
+        assert!(
+            b.project_sync(&project.id)
+                .unwrap()
+                .unwrap()
+                .received_from_team
+        );
         assert_eq!(b.project(&project.id).unwrap().fields.name, "Updated on A");
         assert_eq!(b.projects().unwrap().len(), 1);
+        b.configure_project_sync(&project.id, None).unwrap();
+        assert!(
+            b.project_sync(&project.id)
+                .unwrap()
+                .unwrap()
+                .received_from_team
+        );
     }
     #[test]
     fn concurrent_edits_disabled_sync_and_cross_project_rows_never_overwrite_local_data() {
@@ -334,7 +360,7 @@ impl Workspace {
     }
     pub fn project_sync_bindings(&self) -> Result<Vec<ProjectSync>, Error> {
         let db = self.connection()?;
-        let mut q = db.prepare("SELECT project_id,origin,server_instance,team_id,enabled,local_hash,revision,message,synced_at,cursor FROM project_sync ORDER BY project_id").map_err(storage)?;
+        let mut q = db.prepare("SELECT project_id,origin,server_instance,team_id,enabled,local_hash,revision,message,synced_at,cursor,received_from_team FROM project_sync ORDER BY project_id").map_err(storage)?;
         let rows = q
             .query_map([], |r| {
                 Ok(ProjectSync {
@@ -348,6 +374,7 @@ impl Workspace {
                     message: r.get(7)?,
                     synced_at: r.get(8)?,
                     cursor: r.get(9)?,
+                    received_from_team: r.get(10)?,
                 })
             })
             .map_err(storage)?
@@ -526,7 +553,7 @@ impl Workspace {
                 "The server project contains records outside its project.".into(),
             ));
         }
-        tx.execute("INSERT INTO project_sync(project_id,origin,server_instance,team_id,local_hash,revision,message,synced_at) VALUES(?1,?2,?3,?4,?5,?6,'Synced',strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(project_id) DO UPDATE SET local_hash=excluded.local_hash,revision=excluded.revision,message='Synced',synced_at=excluded.synced_at",params![incoming.project_id,destination.0,destination.1,destination.2,incoming.fingerprint()?,revision]).map_err(storage)?;
+        tx.execute("INSERT INTO project_sync(project_id,origin,server_instance,team_id,local_hash,revision,message,synced_at,received_from_team) VALUES(?1,?2,?3,?4,?5,?6,'Synced',strftime('%Y-%m-%dT%H:%M:%fZ','now'),?7) ON CONFLICT(project_id) DO UPDATE SET local_hash=excluded.local_hash,revision=excluded.revision,message='Synced',synced_at=excluded.synced_at",params![incoming.project_id,destination.0,destination.1,destination.2,incoming.fingerprint()?,revision,!present]).map_err(storage)?;
         tx.commit().map_err(storage)
     }
 }
