@@ -682,6 +682,11 @@ async fn sync_one(
         Err(apex_core::Error::NotFound) => None,
         Err(e) => return Err(e.to_string()),
     };
+    let local_name = local
+        .as_ref()
+        .map(ProjectSnapshot::name)
+        .transpose()
+        .map_err(|e| e.to_string())?;
     let local_hash = local
         .as_ref()
         .map(ProjectSnapshot::fingerprint)
@@ -741,10 +746,27 @@ async fn sync_one(
                 return Ok(SyncOutcome::Downloaded);
             }
         } else {
-            return Ok(SyncOutcome::Skipped(
-                "The server project has no compatible Apex snapshot.",
-            ));
-        } // Another client format: leave it alone, even after an explicit reconnect.
+            let owned_local_project = binding.is_some_and(|binding| !binding.received_from_team);
+            let recognized_placeholder = r.revision == 1
+                && owned_local_project
+                && local_name.as_deref().is_some_and(|name| {
+                    r.data.as_ref().is_some_and(|data| {
+                        let Some(object) = data.as_object() else {
+                            return false;
+                        };
+                        object.get("name").and_then(serde_json::Value::as_str) == Some(name)
+                            && (object.len() == 1
+                                || (object.len() == 2
+                                    && object.get("apexPendingSnapshot")
+                                        == Some(&serde_json::Value::Bool(true))))
+                    })
+                });
+            if !recognized_placeholder {
+                return Ok(SyncOutcome::Skipped(
+                    "The server project has no compatible Apex snapshot.",
+                ));
+            }
+        } // Unknown server formats stay untouched; only Apex's own pending placeholder can be completed.
     }
     let Some(local) = local else {
         return Ok(SyncOutcome::Skipped(
@@ -752,7 +774,7 @@ async fn sync_one(
         ));
     };
     let hash = local_hash.ok_or_else(|| error("Local project is unavailable."))?;
-    if binding.and_then(|b| b.local_hash.as_ref()) == Some(&hash) {
+    if remote_snapshot.is_some() && binding.and_then(|b| b.local_hash.as_ref()) == Some(&hash) {
         sync_shared_decal_codes(c, ws, id).await?;
         return Ok(SyncOutcome::UpToDate);
     }
@@ -873,7 +895,7 @@ pub async fn sync_projects(
                 });
                 continue;
             }
-            let response=client()?.post(c.url(&format!("api/v1/teams/{}/projects",c.team.id))?).headers(c.headers()?).json(&json!({"id":b.project_id,"data":{"name":local.name().map_err(|e|e.to_string())?}})).send().await.map_err(|_|error("Could not create the shared project."))?;
+            let response=client()?.post(c.url(&format!("api/v1/teams/{}/projects",c.team.id))?).headers(c.headers()?).json(&json!({"id":b.project_id,"data":{"name":local.name().map_err(|e|e.to_string())?,"apexPendingSnapshot":true}})).send().await.map_err(|_|error("Could not create the shared project."))?;
             if response.status() != StatusCode::CONFLICT {
                 let _: Revision = sync_json(response).await?;
             }
