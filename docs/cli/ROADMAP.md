@@ -1,6 +1,6 @@
 # Apex Studio CLI Roadmap
 
-Status: Phases 1–3 are complete; Phase 4 is next.
+Status: Phases 1–3 are complete; Phase 4 implementation is in progress.
 
 ## Product shape
 
@@ -60,7 +60,7 @@ Window layout, drag-and-drop gestures, native file-picker dialogs, and browser-o
 
 **Exit gate:** Round-trip disposable projects and backups, verify contents and file hashes, test conflicts and interrupted/invalid archives without changing the active real workspace.
 
-### Phase 4 — Roblox and ERLCX
+### Phase 4 — Roblox and ERLCX (in progress)
 
 - Add Roblox account configuration through the OS credential store, livery selection, queue controls, double-upload preference, progress/retry/recovery, and Markdown-formatted code export.
 - Add global ERLCX draft management, preview/livery selection, `.apexpublish` export and the existing Chrome Native Messaging handoff.

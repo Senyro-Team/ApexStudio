@@ -76,11 +76,79 @@ enum Command {
         #[command(subcommand)]
         action: BackupCommand,
     },
+    /// Manage global ERLCX post drafts and decal-code exports.
+    Posts {
+        #[command(subcommand)]
+        action: PostCommand,
+    },
+    /// Export Roblox decal IDs from saved post snapshots as Markdown.
+    Codes {
+        #[command(subcommand)]
+        action: CodeCommand,
+    },
+    /// Inspect Roblox upload candidates and the durable upload queue.
+    Roblox {
+        #[command(subcommand)]
+        action: RobloxCommand,
+    },
     /// Show the workspace name and storage summary.
     Workspace {
         #[command(subcommand)]
         action: Option<WorkspaceCommand>,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum PostCommand {
+    /// List global ERLCX post drafts.
+    List,
+    /// Create an empty global ERLCX post draft.
+    Create,
+    /// Show a post draft and its saved revision.
+    Show { id: String },
+    /// Save a full post JSON snapshot (the format returned by `posts show`).
+    Save { id: String, input: PathBuf },
+    /// Show whether linked livery sources still match the saved codes.
+    Sources { id: String },
+    /// Import and pin preview PNGs for this draft; add their returned hashes to the JSON before saving.
+    AddImages {
+        id: String,
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+    },
+    /// Export a validated .apexpublish bundle without overwriting an existing file.
+    Export {
+        id: String,
+        destination: PathBuf,
+        /// Confirm use of saved codes when source liveries changed or are unavailable.
+        #[arg(long)]
+        reviewed: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum CodeCommand {
+    /// Combine saved post codes into one Markdown file.
+    Export {
+        destination: PathBuf,
+        /// Include a global ERLCX post draft (repeatable).
+        #[arg(long = "post")]
+        posts: Vec<String>,
+        /// Confirm use of saved code snapshots when linked liveries changed or are unavailable.
+        #[arg(long)]
+        reviewed: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum RobloxCommand {
+    /// List livery folders and upload coverage for an account ID.
+    Liveries {
+        #[arg(long)]
+        account_id: String,
+    },
+    /// Show durable batches, upload jobs, and livery assignments.
+    Queue,
 }
 
 #[derive(Debug, Subcommand)]
@@ -433,6 +501,9 @@ fn run(args: Args) -> Result<(), CliError> {
         Some(Command::Vehicles { action }) => run_vehicle_command(action, json)?,
         Some(Command::Packages { action }) => run_package_command(&app, action, json)?,
         Some(Command::Backups { action }) => run_backup_command(&app, action, json)?,
+        Some(Command::Posts { action }) => run_post_command(&app, action, json)?,
+        Some(Command::Codes { action }) => run_code_command(&app, action, json)?,
+        Some(Command::Roblox { action }) => run_roblox_command(&app, action, json)?,
         Some(Command::Workspace { action: None }) => print_workspace(&app, json)?,
         Some(Command::Workspace {
             action: Some(WorkspaceCommand::Rename { name }),
@@ -601,6 +672,304 @@ fn run_backup_command(
         }
     }
     Ok(())
+}
+
+fn run_post_command(
+    app: &ApplicationServices,
+    action: PostCommand,
+    json: bool,
+) -> Result<(), CliError> {
+    match action {
+        PostCommand::List => {
+            let posts = app.posts().map_err(CliError::from)?;
+            if json {
+                print_json(&posts)?;
+            } else if posts.is_empty() {
+                println!("No ERLCX drafts.");
+            } else {
+                for post in posts {
+                    println!(
+                        "{}\t{}\t{} livery(s)\t{}",
+                        post.id, post.title, post.liveries, post.updated_at
+                    );
+                }
+            }
+        }
+        PostCommand::Create => {
+            let id = app.create_post().map_err(CliError::from)?;
+            let draft = app.post(&id).map_err(CliError::from)?;
+            if json {
+                print_json(&serde_json::json!({"id":id,"draft":draft}))?;
+            } else {
+                println!("Created ERLCX draft {id}");
+            }
+        }
+        PostCommand::Show { id } => {
+            let draft = app.post(&id).map_err(CliError::from)?;
+            if json {
+                print_json(&draft)?;
+            } else {
+                println!("{}\nRevision: {}\n", draft.data.title, draft.revision);
+                println!(
+                    "{} liveries · {} preview image(s)",
+                    draft.data.liveries.len(),
+                    draft.data.media.len()
+                );
+                println!("Save the JSON shown by `posts show {id} --json` to edit this draft.");
+            }
+        }
+        PostCommand::Save { id, input } => {
+            let source = fs::read(&input).map_err(|error| CliError {
+                code: "input_read_failed".into(),
+                message: format!("{}: {error}", input.display()),
+            })?;
+            let draft: apex_core::PublishingDraft =
+                serde_json::from_slice(&source).map_err(|error| CliError {
+                    code: "invalid_post_input".into(),
+                    message: error.to_string(),
+                })?;
+            let saved = app
+                .save_post(&id, draft.revision, draft.data)
+                .map_err(CliError::from)?;
+            let _ = app.release_post_image_pins(&id);
+            if json {
+                print_json(&saved)?;
+            } else {
+                println!("Saved ERLCX draft at revision {}", saved.revision);
+            }
+        }
+        PostCommand::Sources { id } => {
+            let sources = app.post_sources(&id).map_err(CliError::from)?;
+            if json {
+                print_json(&sources)?;
+            } else if sources.is_empty() {
+                println!("This draft has no linked livery sources.");
+            } else {
+                for source in sources {
+                    println!("{}\t{}\t{}", source.folder_id, source.vehicle, source.state);
+                }
+            }
+        }
+        PostCommand::AddImages { id, paths } => {
+            app.post(&id).map_err(CliError::from)?;
+            let previews = app.add_post_images(&id, &paths).map_err(CliError::from)?;
+            if json {
+                print_json(&previews)?;
+            } else {
+                for preview in previews {
+                    println!("{}\t{}\t{} bytes", preview.hash, preview.name, preview.size);
+                }
+                println!("Add these hashes to the draft's media list, then save it.");
+            }
+        }
+        PostCommand::Export {
+            id,
+            destination,
+            reviewed,
+        } => {
+            let draft = app.post(&id).map_err(CliError::from)?;
+            app.export_post(&id, draft.revision, reviewed, &destination)
+                .map_err(CliError::from)?;
+            print_action(
+                &format!("Exported .apexpublish bundle to {}", destination.display()),
+                json,
+            );
+        }
+    }
+    Ok(())
+}
+
+fn run_code_command(
+    app: &ApplicationServices,
+    action: CodeCommand,
+    json: bool,
+) -> Result<(), CliError> {
+    match action {
+        CodeCommand::Export {
+            destination,
+            posts,
+            reviewed,
+        } => {
+            if posts.is_empty() || posts.len() > 50 {
+                return Err(CliError {
+                    code: "invalid_post_selection".into(),
+                    message: "Choose between 1 and 50 ERLCX post drafts.".into(),
+                });
+            }
+            let mut selected = std::collections::HashSet::new();
+            let mut markdown = String::new();
+            let mut codes = 0u32;
+            let mut missing = 0u32;
+            let mut livery_count = 0usize;
+            for id in posts {
+                if !selected.insert(id.clone()) {
+                    continue;
+                }
+                let draft = app.post(&id).map_err(CliError::from)?;
+                draft.data.validate(false).map_err(CliError::from)?;
+                if !reviewed
+                    && app
+                        .post_sources(&id)
+                        .map_err(CliError::from)?
+                        .iter()
+                        .any(|source| source.state != "current")
+                {
+                    return Err(CliError {
+                        code: "source_review_required".into(),
+                        message: format!(
+                            "Draft '{}' has changed livery sources. Review the saved snapshot and pass --reviewed to export its codes.",
+                            draft.data.title
+                        ),
+                    });
+                }
+                markdown.push_str(&format!("# {}\n\n", markdown_escape(&draft.data.title)));
+                for livery in draft.data.liveries {
+                    livery_count += 1;
+                    markdown.push_str(&format!("## {}\n\n", markdown_escape(&livery.vehicle)));
+                    for side in livery.sides {
+                        let code = if side.decal_id.is_empty() {
+                            missing += 1;
+                            "Not uploaded".to_owned()
+                        } else {
+                            codes += 1;
+                            format!("`{}`", side.decal_id)
+                        };
+                        markdown.push_str(&format!(
+                            "- **{}:** {}\n",
+                            markdown_escape(&side.side),
+                            code
+                        ));
+                    }
+                    markdown.push('\n');
+                }
+            }
+            if destination.exists() {
+                return Err(CliError {
+                    code: "output_exists".into(),
+                    message: format!(
+                        "{} already exists; choose another output path.",
+                        destination.display()
+                    ),
+                });
+            }
+            let mut output = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&destination)
+                .map_err(|error| CliError {
+                    code: "output_create_failed".into(),
+                    message: format!("{}: {error}", destination.display()),
+                })?;
+            if let Err(error) = output
+                .write_all(markdown.as_bytes())
+                .and_then(|_| output.sync_all())
+            {
+                drop(output);
+                let _ = fs::remove_file(&destination);
+                return Err(CliError {
+                    code: "output_write_failed".into(),
+                    message: format!("{}: {error}", destination.display()),
+                });
+            }
+            if json {
+                print_json(&serde_json::json!({
+                    "path": destination,
+                    "posts": selected.len(),
+                    "liveries": livery_count,
+                    "codes": codes,
+                    "missing": missing
+                }))?;
+            } else {
+                println!(
+                    "Exported {codes} decal codes from {livery_count} liveries; {missing} missing."
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_roblox_command(
+    app: &ApplicationServices,
+    action: RobloxCommand,
+    json: bool,
+) -> Result<(), CliError> {
+    match action {
+        RobloxCommand::Liveries { account_id } => {
+            if account_id.trim().is_empty() || account_id.len() > 20 {
+                return Err(CliError {
+                    code: "invalid_account_id".into(),
+                    message: "Provide the Roblox account ID to inspect account-specific uploads."
+                        .into(),
+                });
+            }
+            let liveries = app.roblox_liveries(&account_id).map_err(CliError::from)?;
+            if json {
+                print_json(&liveries)?;
+            } else if liveries.is_empty() {
+                println!("No livery folders are available for Roblox uploads.");
+            } else {
+                for livery in liveries {
+                    println!(
+                        "{}\t{} / {}\t{} of {} texture(s) already uploaded",
+                        livery.id,
+                        livery.project_name,
+                        livery.name,
+                        livery.uploaded,
+                        livery.textures
+                    );
+                }
+            }
+        }
+        RobloxCommand::Queue => {
+            let queue = app.upload_queue().map_err(CliError::from)?;
+            if json {
+                print_json(&queue)?;
+            } else if queue.batches.is_empty() {
+                println!("The Roblox upload queue is empty.");
+            } else {
+                for batch in &queue.batches {
+                    let job_ids = queue
+                        .items
+                        .iter()
+                        .filter(|item| item.batch_id == batch.id)
+                        .map(|item| item.job_id.as_str())
+                        .collect::<std::collections::HashSet<_>>();
+                    let jobs = job_ids.len();
+                    let failed = queue
+                        .jobs
+                        .iter()
+                        .filter(|job| {
+                            job_ids.contains(job.id.as_str())
+                                && matches!(job.state.as_str(), "failed" | "needs_review")
+                        })
+                        .count();
+                    println!(
+                        "{}\t{}\taccount {}\t{} job(s), {} need attention",
+                        batch.id, batch.state, batch.account_id, jobs, failed
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn markdown_escape(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        if character.is_control() {
+            if character == '\n' || character == '\r' {
+                escaped.push(' ');
+            }
+            continue;
+        }
+        if "\\`*_{}[]<>#+.!|~()-".contains(character) {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
 }
 
 fn snapshot_archive(

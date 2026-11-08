@@ -4,12 +4,15 @@
 
 use apex_core::{
     Asset, AssetBoard, AssetFolder, AssetVersion, Error, ImportReport, Note, Project, ProjectInput,
-    WorkspaceInfo, WorkspaceRepository,
+    PublishingDraft, PublishingInput, PublishingPreview, WorkspaceInfo, WorkspaceRepository,
 };
 use apex_storage::Workspace;
 use std::path::{Path, PathBuf};
 
-pub use apex_storage::{PackagePreview, TrashItem, TrashPreview};
+pub use apex_storage::{
+    LiveryUploads, PackagePreview, PostSourceStatus, PostSummary, QueueSnapshot,
+    RobloxLiverySummary, TrashItem, TrashPreview,
+};
 
 #[derive(Clone)]
 pub struct ApplicationServices {
@@ -31,6 +34,71 @@ impl ApplicationServices {
 
     pub fn workspace_info(&self) -> Result<WorkspaceInfo, Error> {
         self.workspace.info()
+    }
+
+    pub fn posts(&self) -> Result<Vec<PostSummary>, Error> {
+        self.workspace.posts()
+    }
+
+    pub fn post(&self, id: &str) -> Result<PublishingDraft, Error> {
+        self.workspace.post(id)
+    }
+
+    pub fn create_post(&self) -> Result<String, Error> {
+        self.workspace.create_post()
+    }
+
+    pub fn save_post(
+        &self,
+        id: &str,
+        revision: u64,
+        data: PublishingInput,
+    ) -> Result<PublishingDraft, Error> {
+        self.workspace.save_post(id, revision, data)
+    }
+
+    pub fn post_sources(&self, id: &str) -> Result<Vec<PostSourceStatus>, Error> {
+        self.workspace.post_sources(id)
+    }
+
+    pub fn add_post_images(
+        &self,
+        id: &str,
+        paths: &[PathBuf],
+    ) -> Result<Vec<PublishingPreview>, Error> {
+        self.workspace
+            .add_post_images(&format!("editor:{id}"), paths)
+    }
+
+    pub fn release_post_image_pins(&self, id: &str) -> Result<(), Error> {
+        self.workspace.release_content(&format!("editor:{id}"))
+    }
+
+    pub fn export_post(
+        &self,
+        id: &str,
+        revision: u64,
+        reviewed: bool,
+        destination: &Path,
+    ) -> Result<(), Error> {
+        self.workspace
+            .export_post(id, revision, reviewed, destination)
+    }
+
+    pub fn roblox_liveries(&self, account_id: &str) -> Result<Vec<RobloxLiverySummary>, Error> {
+        self.workspace.roblox_liveries(account_id)
+    }
+
+    pub fn livery_uploads(
+        &self,
+        folder_id: &str,
+        account_id: &str,
+    ) -> Result<LiveryUploads, Error> {
+        self.workspace.livery_uploads(folder_id, account_id)
+    }
+
+    pub fn upload_queue(&self) -> Result<QueueSnapshot, Error> {
+        self.workspace.upload_snapshot()
     }
 
     pub fn rename_workspace(&self, name: &str) -> Result<WorkspaceInfo, Error> {

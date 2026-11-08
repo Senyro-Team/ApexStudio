@@ -1,6 +1,8 @@
 #![allow(clippy::expect_used)]
 
-use apex_core::{ProjectInput, WorkspaceRepository};
+use apex_core::{
+    ProjectInput, PublishingInput, PublishingLivery, PublishingSide, WorkspaceRepository,
+};
 use apex_storage::Workspace;
 use std::{
     fs,
@@ -78,6 +80,152 @@ fn lists_dummy_projects_as_json_from_a_disposable_workspace() {
         .expect("filter dummy projects");
     assert!(filtered.status.success());
     assert_eq!(filtered.stdout, b"[]\n");
+}
+
+#[test]
+fn code_export_combines_selected_saved_posts_as_markdown_without_overwriting() {
+    let temp = tempdir().expect("temporary directory");
+    let root = temp.path().join("workspace");
+    let workspace = Workspace::open(&root).expect("dummy workspace");
+    let mut post_ids = Vec::new();
+    for (title, vehicle, id) in [
+        ("Patrol *One*", "Falcon Interceptor", "123456"),
+        ("Fire Support", "Rescue Truck", "987654"),
+    ] {
+        let id_post = workspace.create_post().expect("create post");
+        let revision = workspace.post(&id_post).expect("read new post").revision;
+        workspace
+            .save_post(
+                &id_post,
+                revision,
+                PublishingInput {
+                    title: title.into(),
+                    liveries: vec![PublishingLivery {
+                        source: None,
+                        vehicle: vehicle.into(),
+                        primary_color: "#FFFFFF".into(),
+                        secondary_color: None,
+                        opacity: 100,
+                        sides: vec![PublishingSide {
+                            side: "Left 1".into(),
+                            decal_id: id.into(),
+                        }],
+                    }],
+                    ..Default::default()
+                },
+            )
+            .expect("save post");
+        post_ids.push(id_post);
+    }
+    drop(workspace);
+
+    let output_path = temp.path().join("codes.md");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"));
+    command.args([
+        "--workspace",
+        root.to_str().expect("workspace path is UTF-8"),
+        "codes",
+        "export",
+        output_path.to_str().expect("output path is UTF-8"),
+        "--post",
+        &post_ids[0],
+        "--post",
+        &post_ids[1],
+    ]);
+    let exported = command.output().expect("run code export");
+    assert!(
+        exported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&exported.stderr)
+    );
+    let markdown = fs::read_to_string(&output_path).expect("read Markdown output");
+    assert!(markdown.contains("# Patrol \\*One\\*"));
+    assert!(markdown.contains("`123456`"));
+    assert!(markdown.contains("`987654`"));
+
+    let duplicate = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args([
+            "--workspace",
+            root.to_str().expect("workspace path is UTF-8"),
+            "codes",
+            "export",
+            output_path.to_str().expect("output path is UTF-8"),
+            "--post",
+            &post_ids[0],
+            "--json",
+        ])
+        .output()
+        .expect("run duplicate export");
+    assert!(!duplicate.status.success());
+    assert!(String::from_utf8_lossy(&duplicate.stderr).contains("output_exists"));
+}
+
+#[test]
+fn roblox_commands_show_liveries_and_queue_without_starting_network_uploads() {
+    let temp = tempdir().expect("temporary directory");
+    let root = temp.path().join("workspace");
+    let workspace = Workspace::open(&root).expect("dummy workspace");
+    let project = workspace
+        .save_project(
+            None,
+            ProjectInput {
+                name: "EMS Test Project".into(),
+                ..Default::default()
+            },
+        )
+        .expect("create project");
+    let vehicle = apex_core::vehicle_catalogue()
+        .expect("official vehicle catalogue")
+        .vehicles
+        .into_iter()
+        .find(|vehicle| vehicle.livery_support == "supported")
+        .expect("a livery-supported vehicle");
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../design/Banner_Small.png");
+    workspace
+        .import_livery(
+            &project.id,
+            None,
+            None,
+            "Highway Patrol",
+            &vehicle.id,
+            &[(source.clone(), "Left1.png".into(), Some("Left 1".into()))],
+            None,
+        )
+        .expect("import fixture livery");
+    drop(workspace);
+
+    let liveries = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args([
+            "--workspace",
+            root.to_str().expect("workspace path is UTF-8"),
+            "roblox",
+            "liveries",
+            "--account-id",
+            "123456",
+            "--json",
+        ])
+        .output()
+        .expect("list Roblox livery candidates");
+    assert!(liveries.status.success());
+    let liveries: serde_json::Value =
+        serde_json::from_slice(&liveries.stdout).expect("livery JSON");
+    assert_eq!(liveries[0]["name"], "Highway Patrol");
+    assert_eq!(liveries[0]["textures"], 1);
+
+    let queue = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args([
+            "--workspace",
+            root.to_str().expect("workspace path is UTF-8"),
+            "roblox",
+            "queue",
+            "--json",
+        ])
+        .output()
+        .expect("inspect Roblox queue");
+    assert!(queue.status.success());
+    let queue: serde_json::Value = serde_json::from_slice(&queue.stdout).expect("queue JSON");
+    assert_eq!(queue["batches"].as_array().expect("batch list").len(), 0);
+    assert_eq!(queue["jobs"].as_array().expect("job list").len(), 0);
 }
 
 #[test]
