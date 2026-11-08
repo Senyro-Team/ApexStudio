@@ -1,0 +1,47 @@
+.group-revenue-page { display:grid; gap:1.25rem; max-width:1180px; margin:0 auto; padding-bottom:3rem; }
+.group-revenue-header { display:flex; align-items:flex-end; justify-content:space-between; gap:1.5rem; flex-wrap:wrap; padding:1.5rem 0 .5rem; }
+.group-revenue-header h1 { margin:.1rem 0 .5rem; font-size:2rem; letter-spacing:-.035em; }
+.group-revenue-header p { margin:.3rem 0; color:var(--muted); }
+.group-revenue-header .eyebrow { color:var(--accent); font-size:.75rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
+.group-revenue-selector { display:grid; gap:.4rem; min-width:230px; color:var(--muted); font-size:.8rem; }
+.group-revenue-page .content-section.group-revenue-card { display:grid; gap:1rem; margin:0; padding:1.25rem; border:1px solid var(--border); border-radius:14px; background:var(--surface); }
+.group-revenue-card h2 { margin:0; font-size:1.1rem; }
+.group-revenue-card p { margin:.4rem 0 0; }
+.group-revenue-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+.group-revenue-form label,.group-revenue-selector { color:var(--muted); font-size:.82rem; }
+.group-revenue-form input,.group-revenue-selector select,.group-revenue-map-list input { display:block; width:100%; margin-top:.45rem; }
+.group-revenue-form small { display:block; margin-top:.35rem; color:var(--muted); }
+.group-revenue-wide { grid-column:1/-1; }
+.group-revenue-actions { grid-column:1/-1; display:flex; gap:.6rem; flex-wrap:wrap; }
+.group-revenue-section-heading { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.group-revenue-privacy,.group-revenue-note { color:var(--muted); font-size:.82rem; line-height:1.5; }
+.group-revenue-notice { padding:.75rem 1rem; border:1px solid color-mix(in srgb,var(--accent) 35%,transparent); border-radius:10px; background:color-mix(in srgb,var(--accent) 8%,var(--surface)); }
+.group-revenue-preview { padding:1rem; border:1px solid var(--border); border-radius:10px; background:var(--surface-raised); }
+.group-revenue-preview h3 { margin:.1rem 0 .7rem; }
+.group-revenue-preview p { margin:.55rem 0; line-height:1.5; }
+.group-revenue-preview button + button { margin-left:.5rem; }
+.group-revenue-cards { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.8rem; }
+.group-revenue-cards article,.group-revenue-comparison > div { display:grid; gap:.45rem; min-width:0; padding:1rem; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
+.group-revenue-cards span,.group-revenue-comparison span { color:var(--muted); font-size:.8rem; }
+.group-revenue-cards strong,.group-revenue-comparison strong { font-size:1.35rem; overflow-wrap:anywhere; }
+.group-revenue-cards small,.group-revenue-comparison small { color:var(--muted); }
+.group-revenue-map-list { display:grid; gap:.6rem; }
+.group-revenue-map-list label { display:grid; grid-template-columns:minmax(150px,.65fr) minmax(200px,1.35fr); align-items:center; gap:1rem; color:var(--muted); font-size:.82rem; }
+.group-revenue-map-list label strong { color:var(--text); font-variant-numeric:tabular-nums; }
+.group-revenue-comparison { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.8rem; margin-top:.8rem; }
+.group-revenue-table-wrap { overflow:auto; }
+.group-revenue-table { width:100%; border-collapse:collapse; text-align:left; font-size:.82rem; }
+.group-revenue-table th,.group-revenue-table td { padding:.75rem .65rem; border-bottom:1px solid var(--line); white-space:nowrap; }
+.group-revenue-table th { color:var(--muted); font-weight:600; }
+.group-revenue-table td:nth-last-child(-n+2) { text-align:right; font-variant-numeric:tabular-nums; }
+.group-revenue-delete { color:var(--danger,#d65b5b); }
+@media (max-width:760px) {
+  .group-revenue-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .group-revenue-comparison { grid-template-columns:1fr; }
+}
+@media (max-width:520px) {
+  .group-revenue-form,.group-revenue-map-list label { grid-template-columns:1fr; }
+  .group-revenue-cards { grid-template-columns:1fr 1fr; }
+  .group-revenue-page .content-section.group-revenue-card { padding:1rem; }
+  .group-revenue-section-heading { align-items:flex-start; flex-direction:column; }
+}

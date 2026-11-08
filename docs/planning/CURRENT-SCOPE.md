@@ -56,18 +56,13 @@ Observed identity: dark charcoal/black backgrounds, white outlined A mark, bold 
 
 First review covers dashboard and project detail only, with readable content, asset previews, notes access and clear upload preparation. No invented analytics/payment widgets. Apply Impeccable and UI/UX Pro Max during actual design work; apply Tauri/Rust/React/SQLite/TypeScript skills at the corresponding implementation stage. CLI/TUI skills remain available for later scope.
 
-## Licensing requirements — no licence chosen yet
+## Licensing requirements — adopted
 
-User intent:
-- Prohibit selling the app, paid forks, paid hosting and paid redistribution.
-- Allow use of the app to create paid livery commissions; creator output retains its own licence.
-- Require attribution, modification notices and same-licence redistribution; source availability for distributed modifications needs an explicit clause.
-- Donations, sponsorships and paid support only through options/permission the user later grants; none initially enabled.
-- Apex branding has a separate limited permission for in-app branding; no permission for unrelated reuse. Clarify whether forks retain or replace branding and who can grant redistribution rights on behalf of the studio.
+Original application source code is licensed under Apache-2.0; the full terms are in the repository's `LICENSE`. Apache-2.0 permits commercial use, forks and redistributed modifications, subject to its terms, notices, patent language and warranty/liability clauses. Do not add non-commercial, paid-hosting or same-brand restrictions to the source licence.
 
-This requires source-available terms rather than an OSI open-source claim. MIT does not match the user's restrictions. Plain PolyForm Noncommercial is also not an exact match: its permitted-purpose limitation does not by itself express the required paid-creative-work permission and full requested share-alike policy. Creative Commons itself advises against using its licences for software. Do not label a modified licence as unmodified GPL, MIT or PolyForm.
+Apex Studio's name, wordmark, logo, app icon and other identifying artwork are excluded from the code licence and governed by `BRANDING.md`. Forks may keep the marks when identifying a modified build as unofficial, or remove them and rebrand. Reuse of the marks as the identity of an unrelated product requires written permission. This is a separate brand policy and does not restrict rights to the Apache-licensed code.
 
-Prepare a custom software-licence draft (or evaluate a reviewed software-specific base with explicit exceptions), plus a separate brand notice. Before release review source obligations, attribution placement, commercial-use exception, paid-support permissions, warranty/liability, termination/cure, patent terms, dependency compatibility and contributor rights. No legal guarantee is claimed by this planning document. No LICENSE file has been created.
+Fonts and third-party assets remain under their own licences and notices. Keep the code licence, brand policy, asset notices and contribution terms aligned when preparing releases. See [licensing rationale](LICENSE-STRATEGY.md).
 
 References:
 - https://polyformproject.org/licenses/noncommercial/1.0.0
@@ -86,7 +81,7 @@ Confirmed follow-up decisions:
 
 - Suggest all current ER:LC vehicles with livery-support labels. Unknown support must remain visibly unknown until verified.
 - Unpacked extension installation with manual updates is accepted.
-- Modified forks should retain the in-app Apex branding. The brand terms must explicitly permit that redistribution while prohibiting unrelated reuse and avoiding false endorsement. This is limited brand permission, not relicensing the assets as application code.
+- Forks are encouraged to retain Apex attribution when practical. If a modified fork keeps Apex Marks, it must be identified as unofficial and cannot imply endorsement; forks may remove the marks and rebrand. See `BRANDING.md`.
 - Find a similar freely licensed font rather than requiring the banner's original font. Recommended candidate: Archivo, weight 800–900, expanded width up to 125 for large headings; normal width and regular/medium weight for controls and body text. Visual similarity is a design judgment pending the prototype review, not identification of the original font.
 - Archivo is distributed under SIL OFL 1.1; bundling is permitted with its copyright and licence notice. Keep font files under OFL separately from the app licence, and bundle locally for offline use. Sources: https://raw.githubusercontent.com/google/fonts/main/ofl/archivo/OFL.txt and https://raw.githubusercontent.com/google/fonts/main/ofl/archivo/METADATA.pb . No font binaries have been installed or added yet.
 
@@ -120,3 +115,5 @@ Personal-account Open Cloud decal uploads are implemented per livery, with verif
 2026-10-29: user-authorised ERLCX statistics supersede the earlier exclusion of analytics. Public-profile snapshots are manually refreshed, with separate opt-in Chrome collection for authenticated creator sales; see [ERLCX statistics](ERLCX-STATISTICS.md). Schemas 10 and 11 add statistics storage and protect early development workspaces.
 
 2026-10-30: The optional self-hosted Linux Docker service has an initial account, invitation, role, project-record, and blob-transfer API. Settings checks the server, signs in, creates and accepts one-time invitation codes, initializes the first team, and stores sessions securely in Windows Credential Manager. The Windows test deployment is reachable through Cloudflare Tunnel at the user's configured HTTPS origin. Project sync execution, operational protections, and verified PostgreSQL/blob backups remain outstanding. See [team sync architecture](TEAM-SYNC-ARCHITECTURE.md) and the [server API contract](TEAM-SYNC-API.md).
+
+2026-11-08: Roblox Group Revenue has a local CSV prototype under Statistics. It filters to configured group experiences and Game Passes, deduplicates repeat imports, stores no buyer IDs/raw CSV and compares aggregate dates with the ERLCX snapshot. Roblox's cookie-authenticated experimental API and scheduled Sync Server polling remain deferred. See [Roblox group revenue plan](ROBLOX-GROUP-REVENUE.md).

@@ -21,6 +21,44 @@ export const statisticsSales = () => invoke<SalesSnapshot | null>("statistics_sa
 export const startStatisticsBrowser = () => invoke<void>("start_statistics_browser");
 export const statisticsBrowserStatus = () => invoke<{state:string;message:string}>("statistics_browser_status");
 
+export interface RobloxRevenueGroup {
+  groupId: string;
+  name: string;
+  experienceIds: string[];
+  passMappings: Record<string, string>;
+  updatedAt?: string | null;
+  lastImportAt?: string | null;
+}
+export interface RobloxGroupSale {
+  groupId?: string;
+  saleFingerprint: string;
+  universeId: string;
+  assetId: string;
+  saleAt: string;
+  saleLocation: string;
+  holdStatus: "Released" | "Held" | "Cancelled";
+  price: number;
+  revenue: number;
+  importBatchId: string;
+  importedAt?: string | null;
+}
+export interface RobloxGroupRevenueData {
+  groups: RobloxRevenueGroup[];
+  sales: RobloxGroupSale[];
+}
+export const robloxGroupRevenue = () => invoke<RobloxGroupRevenueData>("roblox_group_revenue");
+export const saveRobloxRevenueGroup = (group: RobloxRevenueGroup) =>
+  invoke<RobloxGroupRevenueData>("save_roblox_revenue_group", { group });
+export const importRobloxGroupSales = (
+  group: RobloxRevenueGroup,
+  batchId: string,
+  sales: RobloxGroupSale[],
+) => invoke<{ inserted: number; duplicates: number }>("import_roblox_group_sales", {
+  group, batchId, sales,
+});
+export const removeRobloxGroupRevenue = (groupId: string) =>
+  invoke<RobloxGroupRevenueData>("remove_roblox_group_revenue", { groupId });
+
 export interface SyncServerInfo {
   product: string;
   apiVersion: string;

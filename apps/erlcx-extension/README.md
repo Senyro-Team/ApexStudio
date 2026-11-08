@@ -4,7 +4,7 @@
 
 Build with `npm run build:extension`. Keep `dist/erlcx-extension` in a permanent location or extract the versioned ZIP into your existing extension folder. In Chrome, open Extensions, enable Developer mode, choose Load unpacked and select that folder. For updates keep the same folder and choose Reload, preserving the installed extension ID. No Web Store account is required.
 
-Installation is manual; the build does not install an extension or change browser settings. Keep the Apex Studio branding and bundled brand notice with this assistant.
+Installation is manual; the build does not install an extension or change browser settings. Extension source code is covered by the repository's [Apache-2.0 licence](../../LICENSE). Apex Studio marks are excluded from that code licence and governed by the [brand policy](../../BRANDING.md): a modified fork that retains the marks must clearly identify itself as unofficial; forks may remove the marks and rebrand.
 
 ## Use
 

@@ -2,6 +2,8 @@
 
 This Docker deployment runs the Apex Sync Server API for team access and project synchronization. The API supports first-owner setup, password sign-in, one-time invitation codes, team roles and member removal, revisioned project records, tombstones, content-addressed file transfer, and immutable team-shared Roblox decal codes. Apex Studio Settings can check the server, sign in, list/remove team members, create and accept invitation codes, and synchronize projects. Livery image blobs remain server-side for team sync and are streamed only when a member requests a preview; the preview is resized in memory by the desktop client. Production backup/restore remains future work. Review the [API contract](../../docs/planning/TEAM-SYNC-API.md) before integrating a client.
 
+The original server source code is licensed under [Apache-2.0](../../LICENSE). The licence does not grant use of Apex Studio branding; see the [brand policy](../../BRANDING.md). Keep deployment secrets in `.env` and out of source control.
+
 ## Requirements
 
 For a temporary Windows PC deployment without incoming ports, use the

@@ -5,6 +5,8 @@ mod assets;
 mod browser_bridge;
 #[allow(dead_code)] // Shared framing module is also compiled into the standalone Chrome host.
 mod chrome_protocol;
+mod group_revenue;
+mod installer_resources;
 mod notes;
 mod posts;
 mod projects;
@@ -279,6 +281,7 @@ pub fn run() {
             });
         })
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(roblox::RobloxState::default())
         .manage(team_sync::TeamSyncState::default())
         .manage(notes::PendingArchives::default())
@@ -306,6 +309,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            installer_resources::copy_erlcx_extension_to_downloads,
+            installer_resources::open_erlcx_extension_in_explorer,
+            installer_resources::consume_initial_setup_features,
             roblox::roblox_settings,
             roblox::set_roblox_double_upload,
             roblox::save_roblox_settings,
@@ -348,6 +354,10 @@ pub fn run() {
             statistics::statistics_history,
             statistics::refresh_statistics,
             statistics::statistics_sales,
+            group_revenue::roblox_group_revenue,
+            group_revenue::save_roblox_revenue_group,
+            group_revenue::import_roblox_group_sales,
+            group_revenue::remove_roblox_group_revenue,
             browser_bridge::start_statistics_browser,
             browser_bridge::statistics_browser_status,
             team_sync::sync_check_server,

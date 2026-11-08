@@ -3,11 +3,13 @@ import AppSelect from "./AppSelect";
 import ChromeSettings from "./ChromeSettings";
 import RobloxSettings from "./RobloxSettings";
 import TeamSyncSettings from "./TeamSyncSettings";
+import Onboarding from "./Onboarding";
 import useTeamProjectSync from "./useTeamProjectSync";
 import Statistics, { StatisticsSettings, useStatistics } from "./Statistics";
 import { DashboardWidgets, DashboardWidgetEditor, loadDashboardLayout, saveDashboardLayout, type DashboardLayout } from "./DashboardWidgets";
 import { loadWallpaper, saveWallpaper } from "./wallpaper";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   applyTheme,
   loadCustomThemes,
@@ -29,6 +31,7 @@ import ProjectsArea from "./Projects";
 const ERLCX = lazy(() => import("./ERLCX"));
 const Roblox = lazy(() => import("./Roblox"));
 const Notes = lazy(() => import("./Notes"));
+const GroupRevenue = lazy(() => import("./GroupRevenue"));
 import { BackupTools } from "./Packages";
 import {
   House,
@@ -45,6 +48,7 @@ import {
   ChartNoAxesCombined,
   ImagePlus,
   Trash2,
+  MessageCircle,
 } from "lucide-react";
 import {
   setEditLock,
@@ -69,6 +73,7 @@ const sections = [
 type Section = (typeof sections)[number]["name"];
 
 const settingsCategories = [
+  ["setup", "Setup guide"],
   ["appearance", "Appearance"],
   ["dashboard", "Dashboard"],
   ["performance", "Performance"],
@@ -163,6 +168,12 @@ function WorkspaceStartup() {
 
 function AppContent() {
   const [section, setSection] = useState<Section>("Dashboard");
+  const [statisticsView, setStatisticsView] = useState<"creator" | "groups">("creator");
+  const [onboardingOpen, setOnboardingOpen] = useState(
+    () => desktopAvailable && localStorage.getItem("apex-studio.onboarding.completed") !== "true",
+  );
+  const [onboardingFeatures, setOnboardingFeatures] = useState<("roblox" | "erlcx")[]>([]);
+  const [onboardingFeaturesLoaded, setOnboardingFeaturesLoaded] = useState(!desktopAvailable);
   const [dashboardLayout, setDashboardLayout] = useState<DashboardLayout>(loadDashboardLayout);
   const [dashboardEditing, setDashboardEditing] = useState(false);
   useEffect(() => {
@@ -419,6 +430,40 @@ function AppContent() {
   }, [navigationLocked]);
   const [workspaceGeneration, setWorkspaceGeneration] = useState(0);
   const stats = useStatistics(workspaceGeneration);
+  useEffect(() => {
+    if (!desktopAvailable) return;
+    let active = true;
+    invoke<{ roblox: boolean; erlcx: boolean } | null>("consume_initial_setup_features")
+      .then((features) => {
+        if (!active) return;
+        setOnboardingFeatures(features
+          ? [
+              ...(features.roblox ? ["roblox" as const] : []),
+              ...(features.erlcx ? ["erlcx" as const] : []),
+            ]
+          : ["roblox", "erlcx"]);
+        setOnboardingFeaturesLoaded(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        setOnboardingFeatures(["roblox", "erlcx"]);
+        setOnboardingFeaturesLoaded(true);
+      });
+    return () => { active = false; };
+  }, []);
+  function closeOnboarding() {
+    localStorage.setItem("apex-studio.onboarding.completed", "true");
+    setOnboardingOpen(false);
+  }
+  function openSetupSettings(category: "roblox" | "chrome") {
+    closeOnboarding();
+    setSection("Settings");
+    window.setTimeout(() => {
+      const id = `settings-${category}`;
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      highlightSettingsCategory(id);
+    }, 80);
+  }
   async function load() {
     setLoading(true);
     setError("");
@@ -631,7 +676,19 @@ function AppContent() {
               />
             </Suspense>
           )}
-          {section === "Statistics" && <Statistics stats={stats} onSettings={() => setSection("Settings")} />}
+          {section === "Statistics" && (
+            <>
+              <div className="statistics-view-tabs" aria-label="Statistics views" role="group">
+                <button type="button" aria-pressed={statisticsView === "creator"} onClick={() => setStatisticsView("creator")}>ERLCX statistics</button>
+                <button type="button" aria-pressed={statisticsView === "groups"} onClick={() => setStatisticsView("groups")}>Group Revenue</button>
+              </div>
+              {statisticsView === "creator" ? (
+                <Statistics stats={stats} onSettings={() => setSection("Settings")} />
+              ) : (
+                <Suspense fallback={<p role="status">Loading Group Revenue…</p>}><GroupRevenue /></Suspense>
+              )}
+            </>
+          )}
           {section === "Settings" && (
             <div className="settings-content">
               <nav className="settings-nav" aria-label="Settings categories">
@@ -645,6 +702,16 @@ function AppContent() {
                   </a>
                 ))}
               </nav>
+              <section className="setup-guide-card" id="settings-setup">
+                <div>
+                  <span className="setup-guide-eyebrow">APEX STUDIO</span>
+                  <h2>Continue setup</h2>
+                  <p>Connect Roblox uploads or set up the ERLCX Chrome extension.</p>
+                </div>
+                <button className="secondary" type="button" onClick={() => setOnboardingOpen(true)}>
+                  Open setup guide
+                </button>
+              </section>
               <section className="theme-settings" id="settings-appearance">
                 <h2>Appearance</h2>
                 <p>Choose a theme for the app and its logo.</p>
@@ -935,6 +1002,19 @@ function AppContent() {
           <footer className="page-footer">
             <span>0.1.0</span>
             <button
+              className="discord-link"
+              type="button"
+              onClick={() => {
+                void openUrl("https://discord.gg/VPMyGVEu3j").catch(() => {
+                  window.open("https://discord.gg/VPMyGVEu3j", "_blank", "noopener,noreferrer");
+                });
+              }}
+              aria-label="Join the Apex Studio Discord server"
+            >
+              <MessageCircle size={14} />
+              Join our Discord
+            </button>
+            <button
               className="text-button"
               disabled={navigationLocked}
               onClick={() =>
@@ -947,6 +1027,13 @@ function AppContent() {
           </footer>
         </main>
       </div>
+      {onboardingOpen && onboardingFeaturesLoaded && (
+        <Onboarding
+          onClose={closeOnboarding}
+          onOpenSettings={openSetupSettings}
+          initialSelected={onboardingFeatures}
+        />
+      )}
     </div>
   );
 }

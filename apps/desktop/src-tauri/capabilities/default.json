@@ -1,6 +1,13 @@
 {
   "identifier": "default",
-  "description": "Local main window; no filesystem, SQL, network or shell permissions in the frontend.",
+  "description": "Local main window; no filesystem, SQL or network permissions. External opening is scoped to the Apex Studio Discord invite.",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-destroy"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-destroy",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://discord.gg/VPMyGVEu3j" }]
+    }
+  ]
 }

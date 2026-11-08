@@ -23,15 +23,17 @@ mod pipeline;
 pub use pipeline::{png_dimensions, PreparationProgress, PreparedTexture};
 mod queue;
 pub use queue::*;
+mod group_revenue;
 mod posts;
 mod statistics;
 mod team_sync;
 mod trash;
+pub use group_revenue::*;
 pub use posts::*;
 pub use statistics::*;
 pub use team_sync::*;
 pub use trash::*;
-const SCHEMA_VERSION: u32 = 16;
+const SCHEMA_VERSION: u32 = 17;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
@@ -201,6 +203,12 @@ impl Workspace {
             progress("Updating workspace schema…");
             connection
                 .execute_batch(include_str!("schema16.sql"))
+                .map_err(storage)?;
+        }
+        if version < 17 {
+            progress("Updating workspace schema…");
+            connection
+                .execute_batch(include_str!("schema17.sql"))
                 .map_err(storage)?;
         }
         *workspace
