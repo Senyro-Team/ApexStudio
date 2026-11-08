@@ -29,6 +29,9 @@ const MAX_DECAL_CODE_BATCH: usize = 5_000;
 const MAX_BLOB_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_DIRECT_BLOB_BYTES: u64 = 64 * 1024 * 1024;
 const BLOB_CHUNK_BYTES: usize = 8 * 1024 * 1024;
+const MAX_PENDING_BLOB_UPLOADS: i64 = 8;
+const MAX_PENDING_BLOB_UPLOAD_BYTES: i64 = 2 * 1024 * 1024 * 1024;
+pub(crate) const BLOB_UPLOAD_ADVISORY_LOCK: i64 = 0x4150455855504C44;
 
 #[derive(Deserialize)]
 struct CreateProjectRequest {
@@ -721,6 +724,26 @@ async fn upload_blob(
         return Err(ApiError::bad_request("blob_hash_mismatch"));
     }
 
+    let byte_size_i64 =
+        i64::try_from(byte_size).map_err(|_| ApiError::bad_request("blob_too_large"))?;
+    let mut transaction = state.database.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(BLOB_UPLOAD_ADVISORY_LOCK)
+        .execute(&mut *transaction)
+        .await?;
+    let (stored_bytes, pending_bytes) = blob_storage_reservations(&mut transaction).await?;
+    if !has_blob_storage_capacity(
+        stored_bytes,
+        pending_bytes,
+        byte_size_i64,
+        state.max_blob_storage_bytes,
+    ) {
+        return Err(ApiError::new(
+            StatusCode::INSUFFICIENT_STORAGE,
+            "blob_storage_capacity_reached",
+        ));
+    }
+
     let prefix = &content_hash[..2];
     let blob_dir = blobs_dir.join(prefix);
     fs::create_dir_all(&blob_dir)
@@ -736,10 +759,11 @@ async fn upload_blob(
         .bind(team_id)
         .bind(project_id)
         .bind(&content_hash)
-        .bind(i64::try_from(byte_size).map_err(|_| ApiError::bad_request("blob_too_large"))?)
+        .bind(byte_size_i64)
         .bind(user.id)
-        .execute(&state.database)
+        .execute(&mut *transaction)
         .await?;
+    transaction.commit().await?;
 
     tracing::info!(event = "project_blob_uploaded", team_id = %team_id, project_id = %project_id, actor_id = %user.id, byte_size, transfer = "direct", "Project blob upload completed");
     Ok(Json(BlobReceipt {
@@ -851,16 +875,43 @@ async fn start_blob_upload(
         }));
     }
 
+    let total_bytes =
+        i64::try_from(input.total_bytes).map_err(|_| ApiError::bad_request("invalid_blob_size"))?;
+    let mut transaction = state.database.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(BLOB_UPLOAD_ADVISORY_LOCK)
+        .execute(&mut *transaction)
+        .await?;
+    let (pending_uploads, pending_bytes) = sqlx::query_as::<_, (i64, i64)>(
+        "SELECT COUNT(*)::BIGINT, COALESCE(SUM(total_bytes), 0)::BIGINT FROM blob_uploads WHERE completed_at IS NULL",
+    )
+    .fetch_one(&mut *transaction)
+    .await?;
+    let (stored_bytes, _) = blob_storage_reservations(&mut transaction).await?;
+    if !has_upload_capacity(
+        pending_uploads,
+        pending_bytes,
+        stored_bytes,
+        total_bytes,
+        state.max_blob_storage_bytes,
+    ) {
+        return Err(ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "upload_capacity_reached",
+        ));
+    }
+
     let upload_id = Uuid::now_v7();
     sqlx::query("INSERT INTO blob_uploads (id,team_id,project_id,content_hash,total_bytes,created_by,expires_at) VALUES ($1,$2,$3,$4,$5,$6,now()+interval '24 hours')")
         .bind(upload_id)
         .bind(team_id)
         .bind(project_id)
         .bind(&input.content_hash)
-        .bind(i64::try_from(input.total_bytes).map_err(|_| ApiError::bad_request("invalid_blob_size"))?)
+        .bind(total_bytes)
         .bind(user.id)
-        .execute(&state.database)
+        .execute(&mut *transaction)
         .await?;
+    transaction.commit().await?;
 
     Ok(Json(StartBlobUploadResponse {
         upload_id: Some(upload_id),
@@ -868,6 +919,49 @@ async fn start_blob_upload(
         chunk_size_bytes: BLOB_CHUNK_BYTES,
         total_chunks: chunk_count(input.total_bytes)?,
     }))
+}
+
+async fn blob_storage_reservations(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+) -> Result<(i64, i64), ApiError> {
+    sqlx::query_as::<_, (i64, i64)>(
+        "SELECT COALESCE((SELECT SUM(byte_size) FROM (SELECT content_hash, MAX(byte_size) AS byte_size FROM project_blobs GROUP BY content_hash) stored), 0)::BIGINT, COALESCE((SELECT SUM(total_bytes) FROM blob_uploads WHERE completed_at IS NULL), 0)::BIGINT",
+    )
+    .fetch_one(&mut **transaction)
+    .await
+    .map_err(Into::into)
+}
+
+fn has_blob_storage_capacity(
+    stored_bytes: i64,
+    pending_bytes: i64,
+    requested_bytes: i64,
+    storage_limit: i64,
+) -> bool {
+    stored_bytes >= 0
+        && pending_bytes >= 0
+        && requested_bytes >= 0
+        && storage_limit > 0
+        && stored_bytes
+            .checked_add(pending_bytes)
+            .and_then(|reserved| reserved.checked_add(requested_bytes))
+            .is_some_and(|total| total <= storage_limit)
+}
+
+fn has_upload_capacity(
+    pending_uploads: i64,
+    pending_bytes: i64,
+    stored_bytes: i64,
+    requested_bytes: i64,
+    storage_limit: i64,
+) -> bool {
+    pending_uploads >= 0
+        && pending_uploads < MAX_PENDING_BLOB_UPLOADS
+        && pending_bytes >= 0
+        && pending_bytes
+            .checked_add(requested_bytes)
+            .is_some_and(|total| total <= MAX_PENDING_BLOB_UPLOAD_BYTES)
+        && has_blob_storage_capacity(stored_bytes, pending_bytes, requested_bytes, storage_limit)
 }
 
 async fn blob_upload_status(
@@ -1058,6 +1152,11 @@ async fn complete_blob_upload(
     output.sync_all().await.map_err(|_| ApiError::internal())?;
     drop(output);
 
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(BLOB_UPLOAD_ADVISORY_LOCK)
+        .execute(&mut *transaction)
+        .await?;
+
     let blob_dir = state
         .storage_dir
         .join("blobs")
@@ -1211,5 +1310,47 @@ struct StagedBlob(std::path::PathBuf);
 impl Drop for StagedBlob {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+#[cfg(test)]
+mod upload_capacity_tests {
+    use super::*;
+
+    #[test]
+    fn pending_upload_limit_bounds_bytes_and_zero_byte_sessions() {
+        let storage_limit = 8 * 1024 * 1024 * 1024;
+        assert!(has_upload_capacity(
+            0,
+            0,
+            0,
+            MAX_BLOB_BYTES as i64,
+            storage_limit
+        ));
+        assert!(has_upload_capacity(
+            3,
+            3 * MAX_BLOB_BYTES as i64,
+            0,
+            MAX_BLOB_BYTES as i64,
+            storage_limit
+        ));
+        assert!(!has_upload_capacity(
+            4,
+            4 * MAX_BLOB_BYTES as i64,
+            0,
+            1,
+            storage_limit
+        ));
+        assert!(!has_upload_capacity(8, 0, 0, 0, storage_limit));
+        assert!(!has_upload_capacity(
+            1,
+            MAX_PENDING_BLOB_UPLOAD_BYTES,
+            0,
+            1,
+            storage_limit
+        ));
+        assert!(!has_upload_capacity(-1, 0, 0, 0, storage_limit));
+        assert!(!has_upload_capacity(0, 0, 0, -1, storage_limit));
+        assert!(!has_upload_capacity(0, 0, storage_limit, 1, storage_limit));
     }
 }

@@ -56,7 +56,7 @@ Blob addresses are lowercase SHA-256 hex digests. Uploads are project-scoped, an
 | `POST /api/v1/teams/{teamId}/projects/{projectId}/blob-uploads/{uploadId}/complete` | Verify and commit all chunks. |
 | `DELETE /api/v1/teams/{teamId}/projects/{projectId}/blob-uploads/{uploadId}` | Cancel an incomplete upload. |
 
-Chunked uploads support blobs up to 512 MiB and expire after 24 hours. The completion endpoint validates received indexes, byte counts, and SHA-256 before associating the blob with the project. Clients may retry chunks using the same index. Completed upload sessions remain queryable until their expiry. Server startup removes expired session metadata and staging directories.
+Chunked uploads support blobs up to 512 MiB and expire after 24 hours. The completion endpoint validates received indexes, byte counts, and SHA-256 before associating the blob with the project. Clients may retry chunks using the same index. Completed upload sessions remain queryable until their expiry. The server limits active reservations to eight sessions and 2 GiB total, and caps stored blobs at 8 GiB by default (`APEX_SYNC_MAX_BLOB_STORAGE_BYTES` can override this deployment limit). Capacity errors return HTTP 429 for pending-upload saturation and HTTP 507 when persistent blob storage is full. Expired session metadata and staging directories, plus unreferenced blob files left by interrupted writes, are removed at startup and every 15 minutes while the API is running.
 
 ## Deployment and current limitations
 

@@ -173,6 +173,12 @@ async fn response_json<T: DeserializeOwned>(response: Response) -> Result<T, Str
             "invitation_unavailable" => {
                 error("This invitation is expired or has already been used.")
             }
+            "upload_capacity_reached" => error(
+                "The team server has reached its temporary upload limit. Retry synchronization after other uploads finish.",
+            ),
+            "blob_storage_capacity_reached" => error(
+                "The team server has reached its blob storage limit. Contact its administrator.",
+            ),
             "already_exists" => error("An account with this email already exists."),
             "authentication_required" | "invalid_session" => {
                 error("Your server session has expired. Sign in again.")

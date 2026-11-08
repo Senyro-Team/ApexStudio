@@ -3,7 +3,10 @@
 mod auth;
 mod sync;
 
-use std::{env, error::Error, net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
+use std::{
+    collections::HashSet, env, error::Error, net::SocketAddr, path::PathBuf, sync::Arc,
+    time::Instant,
+};
 
 use axum::{
     extract::{DefaultBodyLimit, MatchedPath, Request, State},
@@ -29,6 +32,7 @@ pub struct AppState {
     pub bootstrap_token_hash: Option<[u8; 32]>,
     pub password_hash_slots: Arc<Semaphore>,
     pub storage_dir: PathBuf,
+    pub max_blob_storage_bytes: i64,
 }
 
 #[derive(Serialize)]
@@ -65,9 +69,21 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     migrations.run(&database).await?;
     ensure_server_instance(&database).await?;
     let storage_dir = PathBuf::from(env_value("APEX_SYNC_DATA_DIR", "/data")?);
+    let max_blob_storage_bytes = env_value("APEX_SYNC_MAX_BLOB_STORAGE_BYTES", "8589934592")?
+        .parse::<i64>()
+        .ok()
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "APEX_SYNC_MAX_BLOB_STORAGE_BYTES must be a positive integer",
+            )
+        })?;
     tokio::fs::create_dir_all(storage_dir.join("blobs")).await?;
     tokio::fs::create_dir_all(storage_dir.join("staging")).await?;
     cleanup_expired_blob_uploads(&database, &storage_dir).await?;
+    cleanup_orphaned_blob_files(&database, &storage_dir).await?;
+    start_blob_upload_cleanup(database.clone(), storage_dir.clone());
 
     let bootstrap_token_hash = match env::var("APEX_SYNC_BOOTSTRAP_TOKEN") {
         Ok(token) if token.is_empty() => None,
@@ -88,6 +104,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         bootstrap_token_hash,
         password_hash_slots: Arc::new(Semaphore::new(4)),
         storage_dir,
+        max_blob_storage_bytes,
     };
     let app = Router::new()
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024 + 128 * 1024))
@@ -107,6 +124,22 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .await?;
 
     Ok(())
+}
+
+fn start_blob_upload_cleanup(database: PgPool, storage_dir: PathBuf) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(15 * 60));
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            if let Err(error) = cleanup_expired_blob_uploads(&database, &storage_dir).await {
+                tracing::error!(%error, "Expired blob upload cleanup failed");
+            }
+            if let Err(error) = cleanup_orphaned_blob_files(&database, &storage_dir).await {
+                tracing::error!(%error, "Orphaned blob cleanup failed");
+            }
+        }
+    });
 }
 
 async fn log_failed_requests(request: Request, next: Next) -> Response {
@@ -170,18 +203,103 @@ async fn cleanup_expired_blob_uploads(
     database: &PgPool,
     storage_dir: &std::path::Path,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let expired = sqlx::query_scalar::<_, Uuid>(
-        "DELETE FROM blob_uploads WHERE expires_at<=now() RETURNING id",
-    )
-    .fetch_all(database)
-    .await?;
-    for upload_id in expired {
-        let path = storage_dir
-            .join("staging")
-            .join("uploads")
-            .join(upload_id.to_string());
-        let _ = tokio::fs::remove_dir_all(path).await;
+    loop {
+        let mut transaction = database.begin().await?;
+        let expired = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM blob_uploads WHERE expires_at<=now() ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED",
+        )
+        .fetch_all(&mut *transaction)
+        .await?;
+        let batch_len = expired.len();
+        if expired.is_empty() {
+            transaction.commit().await?;
+            break;
+        }
+        let mut cleanup_failed = false;
+        for upload_id in expired {
+            let path = storage_dir
+                .join("staging")
+                .join("uploads")
+                .join(upload_id.to_string());
+            match tokio::fs::remove_dir_all(path).await {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    tracing::error!(%error, %upload_id, "Expired blob upload staging cleanup failed");
+                    cleanup_failed = true;
+                    continue;
+                }
+            }
+            sqlx::query("DELETE FROM blob_uploads WHERE id=$1 AND expires_at<=now()")
+                .bind(upload_id)
+                .execute(&mut *transaction)
+                .await?;
+        }
+        transaction.commit().await?;
+        if cleanup_failed || batch_len < 100 {
+            break;
+        }
     }
+    Ok(())
+}
+
+async fn cleanup_orphaned_blob_files(
+    database: &PgPool,
+    storage_dir: &std::path::Path,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let mut transaction = database.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(crate::sync::BLOB_UPLOAD_ADVISORY_LOCK)
+        .execute(&mut *transaction)
+        .await?;
+    let referenced =
+        sqlx::query_scalar::<_, String>("SELECT DISTINCT content_hash FROM project_blobs")
+            .fetch_all(&mut *transaction)
+            .await?
+            .into_iter()
+            .map(|hash| hash.trim().to_owned())
+            .collect::<HashSet<_>>();
+    let blob_root = storage_dir.join("blobs");
+    let mut prefixes = tokio::fs::read_dir(&blob_root).await?;
+    while let Some(prefix_entry) = prefixes.next_entry().await? {
+        let prefix = prefix_entry.file_name();
+        let Some(prefix) = prefix.to_str() else {
+            continue;
+        };
+        if prefix.len() != 2
+            || !prefix
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || !prefix_entry.file_type().await?.is_dir()
+        {
+            continue;
+        }
+        let mut files = tokio::fs::read_dir(prefix_entry.path()).await?;
+        while let Some(file_entry) = files.next_entry().await? {
+            if !file_entry.file_type().await?.is_file() {
+                continue;
+            }
+            let name = file_entry.file_name();
+            let Some(hash) = name.to_str() else {
+                continue;
+            };
+            if hash.len() != 64
+                || !hash.starts_with(prefix)
+                || !hash
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                || referenced.contains(hash)
+            {
+                continue;
+            }
+            if let Err(error) = tokio::fs::remove_file(file_entry.path()).await {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    tracing::error!(%error, %hash, "Orphaned blob cleanup failed");
+                }
+            }
+        }
+    }
+    transaction.commit().await?;
     Ok(())
 }
 
