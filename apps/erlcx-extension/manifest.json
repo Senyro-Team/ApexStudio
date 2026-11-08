@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Apex Studio \u2014 ERLCX Assistant",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Prepare free ERLCX livery posts from Apex Studio and stop before publication.",
   "permissions": [
     "activeTab",
@@ -17,10 +17,13 @@
     "128": "icon128.png"
   },
   "content_security_policy": {
-    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'none'; object-src 'none'; base-uri 'none'"
+    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src https://games.roblox.com https://apis.roblox.com https://economy.roblox.com; object-src 'none'; base-uri 'none'"
   },
   "host_permissions": [
-    "https://erlcx.com/*"
+    "https://erlcx.com/*",
+    "https://games.roblox.com/*",
+    "https://apis.roblox.com/*",
+    "https://economy.roblox.com/*"
   ],
   "background": {
     "service_worker": "service-worker.js",

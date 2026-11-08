@@ -363,6 +363,8 @@ pub fn run() {
             group_revenue::remove_roblox_group_revenue,
             browser_bridge::start_statistics_browser,
             browser_bridge::statistics_browser_status,
+            browser_bridge::start_group_revenue_browser,
+            browser_bridge::group_revenue_browser_status,
             team_sync::sync_check_server,
             team_sync::sync_connection_status,
             team_sync::sync_sign_in,

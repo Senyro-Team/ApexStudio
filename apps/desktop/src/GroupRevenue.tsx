@@ -3,6 +3,8 @@ import {
   desktopAvailable,
   errorMessage,
   importRobloxGroupSales,
+  groupRevenueBrowserStatus,
+  startGroupRevenueBrowser,
   removeRobloxGroupRevenue,
   robloxGroupRevenue,
   saveRobloxRevenueGroup,
@@ -19,7 +21,7 @@ const number = (value: number) => new Intl.NumberFormat().format(value);
 const robux = (value: number) => `R$ ${number(value)}`;
 const idPattern = /^[1-9]\d{0,19}$/;
 
-function parseCsv(source: string): string[][] {
+export function parseCsv(source: string): string[][] {
   const text = source.replace(/^\uFEFF/, "");
   const rows: string[][] = [];
   let row: string[] = [];
@@ -60,15 +62,15 @@ function readField(row: string[], columns: Map<string, number>, name: string) {
   return index === undefined ? "" : (row[index] ?? "").trim();
 }
 
-function amount(value: string, label: string) {
-  const clean = value.replace(/[\s,]/g, "").replace(/^R\$/i, "");
-  if (!/^\d+$/.test(clean)) throw new Error(`${label} must be a whole number of Robux.`);
+export function amount(value: string, label: string) {
+  const clean = value.trim().replace(/^R\$\s*/i, "").replace(/,/g, "");
+  if (!/^\d+(?:\.0+)?$/.test(clean)) throw new Error(`${label} must be a whole number of Robux.`);
   const parsed = Number(clean);
   if (!Number.isSafeInteger(parsed)) throw new Error(`${label} is outside the supported range.`);
   return parsed;
 }
 
-type ParsedPreview = {
+export type ParsedPreview = {
   rows: RobloxGroupSale[];
   skipped: number;
   files: string[];
@@ -89,7 +91,7 @@ function parseDate(value: string) {
   return parsed.toISOString();
 }
 
-async function readCsvFiles(files: File[], group: RobloxRevenueGroup): Promise<ParsedPreview> {
+export async function readCsvFiles(files: File[], group: RobloxRevenueGroup): Promise<ParsedPreview> {
   const experiences = new Set(group.experienceIds);
   const rows: Omit<RobloxGroupSale, "saleFingerprint">[] = [];
   let skipped = 0;
@@ -98,41 +100,50 @@ async function readCsvFiles(files: File[], group: RobloxRevenueGroup): Promise<P
     if (file.size > 25 * 1024 * 1024) throw new Error(`${file.name} is larger than 25 MB.`);
     const parsed = parseCsv(await file.text());
     const columns = new Map(parsed[0].map((header, index) => [normalizeHeader(header), index]));
-    const required = ["saledateandtime", "salelocation", "universeid", "assetid", "assettype", "holdstatus", "revenue", "price"];
-    const missing = required.filter((name) => !columns.has(name));
+    const aliases: Record<string, string[]> = {
+      saleDate: ["saledateandtime", "dateandtime"],
+      saleLocation: ["salelocation", "location"],
+      universeId: ["universeid"], assetId: ["assetid"], assetType: ["assettype"],
+      holdStatus: ["holdstatus"], revenue: ["revenue"], price: ["price"],
+    };
+    const column = (field: keyof typeof aliases) => aliases[field].find((alias) => columns.has(alias));
+    const required = ["saleDate", "universeId", "assetId", "assetType", "holdStatus", "revenue", "price"] as const;
+    const missing = required.filter((field) => !column(field));
     if (missing.length) throw new Error(`${file.name} is missing required Roblox CSV columns: ${missing.join(", ")}.`);
-    const recognized = new Set([...required, "buyeruserid", "universe", "assetname"]);
+    const recognized = new Set([...Object.values(aliases).flat(), "id", "buyeruserid", "universe", "assetname", "locationid"]);
     const unexpected = [...columns.keys()].filter((header) => !recognized.has(header));
     if (unexpected.length) warnings.push(`${file.name}: ignored unrecognized column(s): ${unexpected.join(", ")}.`);
     for (let line = 1; line < parsed.length; line++) {
       const row = parsed[line];
-      const type = normalizeHeader(readField(row, columns, "assettype"));
-      const universeId = readField(row, columns, "universeid");
+      const type = normalizeHeader(readField(row, columns, column("assetType")!));
+      const universeId = readField(row, columns, column("universeId")!);
       if (type !== "gamepass" || !experiences.has(universeId)) {
         skipped++;
         continue;
       }
-      const assetId = readField(row, columns, "assetid");
+      const assetId = readField(row, columns, column("assetId")!);
       if (!idPattern.test(universeId) || !idPattern.test(assetId)) throw new Error(`${file.name}, row ${line + 1}: invalid experience or Game Pass asset ID.`);
-      const holdValue = normalizeHeader(readField(row, columns, "holdstatus"));
+      const holdValue = normalizeHeader(readField(row, columns, column("holdStatus")!));
       const holdStatus = holdValue === "released" ? "Released" : holdValue === "held" ? "Held" : holdValue === "cancelled" || holdValue === "canceled" ? "Cancelled" : null;
       if (!holdStatus) throw new Error(`${file.name}, row ${line + 1}: unknown hold status.`);
       rows.push({
         universeId,
         assetId,
-        saleAt: parseDate(readField(row, columns, "saledateandtime")),
-        saleLocation: readField(row, columns, "salelocation"),
+        saleAt: parseDate(readField(row, columns, column("saleDate")!)),
+        saleLocation: column("saleLocation") ? readField(row, columns, column("saleLocation")!) : "",
         holdStatus,
         revenue: amount(readField(row, columns, "revenue"), "Revenue"),
         price: amount(readField(row, columns, "price"), "Price"),
         importBatchId: "",
+        externalTransactionId: columns.has("id") ? readField(row, columns, "id") || null : null,
+        source: "csv",
+        dedupeConfidence: columns.has("id") ? "transaction_id" : "exact_fields",
       });
     }
   }
   if (!rows.length) throw new Error("No Game Pass sales for the configured experiences were found in these CSV files.");
 
-  // Roblox's export has no transaction ID. This stable signature intentionally omits Buyer User ID.
-  // Identical rows are retained by adding their ordinal within the import, so repeat imports stay idempotent.
+  // Never persist Buyer User ID. Stable Roblox IDs are the preferred idempotency key.
   const occurrences = new Map<string, number>();
   const batchId = crypto.randomUUID();
   const sales: RobloxGroupSale[] = [];
@@ -140,14 +151,15 @@ async function readCsvFiles(files: File[], group: RobloxRevenueGroup): Promise<P
     const signature = JSON.stringify([row.universeId, row.assetId, row.saleAt, row.saleLocation, row.holdStatus, row.price, row.revenue]);
     const ordinal = occurrences.get(signature) ?? 0;
     occurrences.set(signature, ordinal + 1);
-    sales.push({ ...row, importBatchId: batchId, saleFingerprint: await digest(`${signature}#${ordinal}`) });
+    const fingerprint = row.externalTransactionId ? `id:${await digest(row.externalTransactionId)}` : await digest(`${signature}#${ordinal}`);
+    sales.push({ ...row, importBatchId: batchId, saleFingerprint: fingerprint.padEnd(64, "0").slice(0, 64) });
   }
   const dates = sales.map((sale) => sale.saleAt.slice(0, 10)).sort();
   return { rows: sales, skipped, files: files.map((file) => file.name), warnings, from: dates[0], to: dates.at(-1)! };
 }
 
 export default function GroupRevenue() {
-  const [data, setData] = useState<RobloxGroupRevenueData>({ groups: [], sales: [] });
+  const [data, setData] = useState<RobloxGroupRevenueData>({ groups: [], sales: [], passes: [] });
   const [selectedId, setSelectedId] = useState("");
   const [profile, setProfile] = useState<string | null>(null);
   const [erlcxSales, setErlcxSales] = useState<SalesSnapshot | null>(null);
@@ -158,8 +170,10 @@ export default function GroupRevenue() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [apiRefresh, setApiRefresh] = useState({ state: "idle", message: "" });
   const [mappingNames, setMappingNames] = useState<Record<string, string>>({});
   const fileInput = useRef<HTMLInputElement>(null);
+  const lastApiState = useRef("idle");
 
   useEffect(() => {
     if (!desktopAvailable) return;
@@ -182,27 +196,53 @@ export default function GroupRevenue() {
     return () => { live = false; };
   }, []);
 
+  useEffect(() => {
+    if (!desktopAvailable) return;
+    let live = true;
+    const poll = () => void groupRevenueBrowserStatus().then(async (status) => {
+      if (!live) return;
+      setApiRefresh(status);
+      if (lastApiState.current === "running" && status.state === "complete") {
+        const next = await robloxGroupRevenue();
+        if (live) {
+          setData(next);
+          const refreshed = next.groups.find((group) => group.groupId === selectedId);
+          if (refreshed) setExperiences(refreshed.experienceIds.join(", "));
+        }
+      }
+      lastApiState.current = status.state;
+    }).catch(() => {});
+    poll();
+    const timer = window.setInterval(poll, 1200);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [selectedId]);
+
   const selected = data.groups.find((group) => group.groupId === selectedId) ?? null;
-  const groupSales = useMemo(
+  const allGroupSales = useMemo(
     () => data.sales.filter((sale) => sale.groupId === selectedId),
     [data.sales, data.groups, selectedId],
   );
-  const latestImportAt = data.sales
-    .filter((sale) => sale.groupId === selectedId && sale.importedAt)
+  const selectedPassIds = new Set(selected?.selectedPassIds ?? []);
+  const groupSales = allGroupSales.filter((sale) => selectedPassIds.has(sale.assetId));
+  const latestImportAt = allGroupSales
+    .filter((sale) => sale.importedAt)
     .map((sale) => sale.importedAt!)
     .sort()
     .at(-1) ?? null;
-  const assetIds = [...new Set(groupSales.map((sale) => sale.assetId))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const assetIds = [...new Set([...allGroupSales.map((sale) => sale.assetId), ...data.passes.filter((pass) => pass.groupId === selectedId).map((pass) => pass.assetId)])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const from = groupSales.map((sale) => sale.saleAt.slice(0, 10)).sort()[0] ?? null;
   const to = groupSales.map((sale) => sale.saleAt.slice(0, 10)).sort().at(-1) ?? null;
   const totals = {
-    count: groupSales.length,
+    count: groupSales.filter((sale) => sale.holdStatus !== "Cancelled").length,
     released: groupSales.filter((sale) => sale.holdStatus === "Released").reduce((sum, sale) => sum + sale.revenue, 0),
     held: groupSales.filter((sale) => sale.holdStatus === "Held").reduce((sum, sale) => sum + sale.revenue, 0),
+    releasedPrice: groupSales.filter((sale) => sale.holdStatus === "Released").reduce((sum, sale) => sum + sale.price, 0),
+    heldPrice: groupSales.filter((sale) => sale.holdStatus === "Held").reduce((sum, sale) => sum + sale.price, 0),
     cancelled: groupSales.filter((sale) => sale.holdStatus === "Cancelled").length,
   };
   const mappedNames = selected?.passMappings ?? {};
   const unmappedIds = assetIds.filter((assetId) => !mappedNames[assetId]);
+  const catalogPasses = new Map(data.passes.filter((pass) => pass.groupId === selectedId).map((pass) => [pass.assetId, pass]));
 
   async function refreshData() {
     const next = await robloxGroupRevenue();
@@ -227,10 +267,11 @@ export default function GroupRevenue() {
     setNotice("");
     try {
       const ids = [...new Set(experiences.split(/[\s,;]+/).map((value) => value.trim()).filter(Boolean))];
-      if (!idPattern.test(groupId.trim()) || !ids.length || ids.some((id) => !idPattern.test(id))) throw new Error("Enter numeric Roblox IDs for the group and at least one experience.");
+      if (!idPattern.test(groupId.trim()) || ids.some((id) => !idPattern.test(id))) throw new Error("Enter a valid numeric group ID and numeric experience IDs.");
       const group: RobloxRevenueGroup = {
         groupId: groupId.trim(), name: name.trim(), experienceIds: ids,
-        passMappings: selected?.groupId === groupId.trim() ? selected.passMappings : {}, updatedAt: null,
+        passMappings: selected?.groupId === groupId.trim() ? selected.passMappings : {},
+        selectedPassIds: selected?.groupId === groupId.trim() ? selected.selectedPassIds : [], updatedAt: null,
       };
       const next = await saveRobloxRevenueGroup(group);
       setData(next);
@@ -265,6 +306,14 @@ export default function GroupRevenue() {
     finally { setBusy(false); }
   }
 
+  async function refreshRobloxApi() {
+    if (!selected) return;
+    setError("");
+    setNotice("");
+    try { await startGroupRevenueBrowser(selected.groupId); }
+    catch (reason) { setError(errorMessage(reason)); }
+  }
+
   async function saveMappings() {
     if (!selected) return;
     setBusy(true);
@@ -280,6 +329,18 @@ export default function GroupRevenue() {
       setMappingNames({});
       setNotice("Game Pass labels saved.");
     } catch (reason) { setError(errorMessage(reason)); }
+    finally { setBusy(false); }
+  }
+
+  async function togglePass(assetId: string, checked: boolean) {
+    if (!selected) return;
+    const selectedPassIds = checked
+      ? [...new Set([...selected.selectedPassIds, assetId])]
+      : selected.selectedPassIds.filter((id) => id !== assetId);
+    setBusy(true);
+    setError("");
+    try { setData(await saveRobloxRevenueGroup({ ...selected, selectedPassIds })); }
+    catch (reason) { setError(errorMessage(reason)); }
     finally { setBusy(false); }
   }
 
@@ -326,34 +387,37 @@ export default function GroupRevenue() {
       {!desktopAvailable && <p className="group-revenue-note">Group Revenue storage is available in the Apex Studio desktop app.</p>}
 
       <section className="content-section group-revenue-card">
-        <div><h2>Group and experiences</h2><p className="field-hint">Set the IDs that scope imports. Experience IDs are matched against the export's Universe ID.</p></div>
+        <div><h2>Group and experiences</h2><p className="field-hint">Group ID scopes Roblox refreshes. Experience IDs are optional before the first refresh; Roblox can discover the group's experiences. Enter IDs manually for CSV import if needed.</p></div>
         <form className="group-revenue-form" onSubmit={(event) => void saveGroup(event)}>
           <label>Group name<input value={name} onChange={(event) => setName(event.target.value)} required maxLength={120} placeholder="Apex Designs" /></label>
           <label>Group ID<input value={groupId} onChange={(event) => setGroupId(event.target.value)} required inputMode="numeric" placeholder="12345678" /></label>
-          <label className="group-revenue-wide">Experience IDs<input value={experiences} onChange={(event) => setExperiences(event.target.value)} required placeholder="123456789, 987654321" /><small>Separate multiple IDs with commas or spaces.</small></label>
+          <label className="group-revenue-wide">Experience IDs<input value={experiences} onChange={(event) => setExperiences(event.target.value)} placeholder="Discovered when you refresh Roblox" /><small>Optional · separate multiple IDs with commas or spaces.</small></label>
           <div className="group-revenue-actions"><button className="primary" type="submit" disabled={busy}>{busy ? "Saving…" : selected ? "Save group settings" : "Add group"}</button>{selected && <button className="secondary" type="button" onClick={() => chooseGroup("")}>New group</button>}</div>
         </form>
       </section>
 
       {selected && <>
         <section className="content-section group-revenue-card">
-          <div className="group-revenue-section-heading"><div><h2>Import Roblox sales</h2><p className="field-hint">Roblox CSV exports are updated about every 48 hours. Extract the CSV from Roblox's downloaded ZIP first.</p></div><button className="secondary" type="button" disabled={busy} onClick={() => fileInput.current?.click()}>{busy ? "Reading…" : "Choose CSV files"}</button></div>
+          <div className="group-revenue-section-heading"><div><h2>Roblox group data</h2><p className="field-hint">Refresh the experimental Roblox catalog and transaction feed in the connected browser, or import CSV files for backfill.</p></div><div className="group-revenue-actions"><button className="primary" type="button" disabled={busy || apiRefresh.state === "running"} onClick={() => void refreshRobloxApi()}>{apiRefresh.state === "running" ? "Refreshing…" : "Refresh from Roblox"}</button><button className="secondary" type="button" disabled={busy} onClick={() => fileInput.current?.click()}>{busy ? "Reading…" : "Choose CSV files"}</button></div></div>
+          {apiRefresh.state !== "idle" && <p className={apiRefresh.state === "failed" ? "error" : "group-revenue-note"} role={apiRefresh.state === "failed" ? "alert" : "status"}>{apiRefresh.message}</p>}
+          {selected.apiUpdatedAt && <p className="group-revenue-note">Last successful Roblox API refresh: {new Date(selected.apiUpdatedAt).toLocaleString()} · sale coverage: {selected.apiCoverageFrom && selected.apiCoverageTo ? `${selected.apiCoverageFrom} – ${selected.apiCoverageTo}` : "not established"}. {selected.apiStatus === "partial" ? `${number(selected.apiSummary?.unsupportedTransactions ?? 0)} transactions require CSV review.` : "This experimental feed may be incomplete."}</p>}
           <input ref={fileInput} className="visually-hidden" type="file" accept=".csv,text/csv" multiple onChange={(event) => void prepareImport(event.target.files)} />
           <p className="group-revenue-privacy">Apex keeps transaction fields needed for the report in this workspace. Buyer User ID, the raw CSV and the original rows are not saved.</p>
-          {preview && <div className="group-revenue-preview"><h3>Import preview</h3><p>{preview.files.join(", ")} · {preview.from} to {preview.to}</p><p>{number(preview.rows.length)} Game Pass rows for {selected.experienceIds.length} configured experience(s); {number(preview.skipped)} other or out-of-scope rows skipped.</p>{preview.warnings.map((warning) => <p className="group-revenue-note" key={warning}>{warning}</p>)}<p>No Roblox transaction ID is included in this export. Apex uses the available date, experience, pass, location, status, price and revenue fields for repeat-import deduplication. Identical transactions cannot always be distinguished perfectly.</p><button className="primary" type="button" disabled={busy} onClick={() => void commitImport()}>Import {number(preview.rows.length)} rows</button><button className="secondary" type="button" onClick={() => setPreview(null)}>Cancel</button></div>}
+          {preview && <div className="group-revenue-preview"><h3>Import preview</h3><p>{preview.files.join(", ")} · {preview.from} to {preview.to}</p><p>{number(preview.rows.length)} Game Pass rows for {selected.experienceIds.length} configured experience(s); {number(preview.skipped)} other or out-of-scope rows skipped.</p>{preview.warnings.map((warning) => <p className="group-revenue-note" key={warning}>{warning}</p>)}<p>{preview.rows.some((row) => row.externalTransactionId) ? "Roblox transaction IDs will be used to prevent repeat imports. Buyer User IDs and raw rows are discarded." : "This export has no transaction IDs. Apex matches canonical sale fields and flags uncertain overlaps."}</p><button className="primary" type="button" disabled={busy} onClick={() => void commitImport()}>Import {number(preview.rows.length)} rows</button><button className="secondary" type="button" onClick={() => setPreview(null)}>Cancel</button></div>}
         </section>
 
         <section className="group-revenue-cards" aria-label="Roblox group revenue summary">
-          <article><span>Game Pass sales</span><strong>{number(totals.count)}</strong><small>{from && to ? `${from} – ${to}` : "No imported sales"}</small></article>
-          <article><span>Released revenue</span><strong>{robux(totals.released)}</strong><small>Roblox CSV Revenue</small></article>
-          <article><span>Held revenue</span><strong>{robux(totals.held)}</strong><small>Separate from released Robux</small></article>
-          <article><span>Cancelled rows</span><strong>{number(totals.cancelled)}</strong><small>Excluded from sales comparison</small></article>
+          <article><span>Selected Game Pass sales</span><strong>{number(totals.count)}</strong><small>{selected?.selectedPassIds.length ? (from && to ? `${from} – ${to}` : "No sales for selected passes") : "Select passes to include sales"}</small></article>
+          <article><span>Released Revenue</span><strong>{robux(totals.released)}</strong><small>Buyer Price: {robux(totals.releasedPrice)}</small></article>
+          <article><span>Held Revenue</span><strong>{robux(totals.held)}</strong><small>Buyer Price: {robux(totals.heldPrice)}</small></article>
+          <article><span>Cancelled rows</span><strong>{number(totals.cancelled)}</strong><small>Excluded from revenue totals</small></article>
         </section>
+        {selected.apiSummary && Object.entries(selected.apiSummary).some(([key, value]) => key !== "returnedTransactions" && key !== "importedTransactions" && key !== "unsupportedTransactions" && key !== "experiences" && key !== "gamePasses" && Number.isFinite(value)) && <section className="content-section group-revenue-card"><div><h2>Roblox group comparison</h2><p className="field-hint">Group-wide Roblox summary for the API period. This comparison is separate from the selected Game Pass totals above.</p></div><div className="group-revenue-cards">{Object.entries(selected.apiSummary).filter(([key, value]) => key !== "returnedTransactions" && key !== "importedTransactions" && key !== "unsupportedTransactions" && key !== "experiences" && key !== "gamePasses" && Number.isFinite(value)).map(([key, value]) => <article key={key}><span>{key.replace(/[._]/g, " ")}</span><strong>{/revenue|robux|amount/i.test(key) ? robux(value) : number(value)}</strong><small>Roblox group API · monthly summary</small></article>)}</div></section>}
         <p className="group-revenue-note">Source: Roblox Creator Hub sales CSV · Last import: {latestImportAt ? new Date(latestImportAt).toLocaleString() : "not imported"} · Range: {from && to ? `${from} – ${to}` : "none"}. Coverage is limited to the files you selected and the configured experience IDs; Apex cannot independently verify that the exports include every eligible sale. Roblox-generated exports are updated about every 48 hours.</p>
 
         <section className="content-section group-revenue-card">
-          <div><h2>Game Pass mapping</h2><p className="field-hint">IDs determine matching. Names are labels only; unknown IDs remain visible.</p></div>
-          {assetIds.length ? <div className="group-revenue-map-list">{assetIds.map((assetId) => <label key={assetId}><span>Asset ID <strong>{assetId}</strong></span><input value={mappingNames[assetId] ?? mappedNames[assetId] ?? ""} onChange={(event) => setMappingNames((current) => ({ ...current, [assetId]: event.target.value }))} placeholder="Game Pass display name" /></label>)}</div> : <p>No Game Pass IDs imported yet.</p>}
+          <div><h2>Game Pass selection</h2><p className="field-hint">Only selected passes contribute to sales and revenue. New passes start unselected; IDs missing from the catalog remain available for review.</p></div>
+          {assetIds.length ? <div className="group-revenue-map-list">{assetIds.map((assetId) => { const pass = catalogPasses.get(assetId); return <label key={assetId}><span><input type="checkbox" checked={selectedPassIds.has(assetId)} disabled={busy} onChange={(event) => void togglePass(assetId, event.target.checked)} /><strong>{mappingNames[assetId] ?? mappedNames[assetId] ?? pass?.name ?? `Unknown Game Pass ${assetId}`}</strong><small>{pass ? `${pass.name} · Experience ${pass.universeId}` : `Not found in catalog · ID ${assetId}`}</small></span><input aria-label={`Label for Game Pass ${assetId}`} value={mappingNames[assetId] ?? mappedNames[assetId] ?? ""} onChange={(event) => setMappingNames((current) => ({ ...current, [assetId]: event.target.value }))} placeholder="Optional label" /></label>; })}</div> : <p>No Game Pass IDs imported or loaded yet.</p>}
           {(unmappedIds.length > 0 || Object.keys(mappingNames).length > 0) && <button className="secondary" type="button" disabled={busy} onClick={() => void saveMappings()}>Save labels</button>}
           {unmappedIds.length === 0 && assetIds.length > 0 && <p className="group-revenue-note">All imported Game Pass IDs have labels.</p>}
         </section>
@@ -366,8 +430,8 @@ export default function GroupRevenue() {
         </section>
 
         <section className="content-section group-revenue-card">
-          <div className="group-revenue-section-heading"><div><h2>Imported sales</h2><p className="field-hint">Only configured experiences and Game Pass rows are shown.</p></div><button className="text-button group-revenue-delete" type="button" disabled={busy} onClick={() => void deleteGroup()}>Remove group data</button></div>
-          {groupSales.length ? <div className="group-revenue-table-wrap"><table className="group-revenue-table"><thead><tr><th>Date (UTC)</th><th>Experience ID</th><th>Game Pass</th><th>Sale location</th><th>Status</th><th>Price</th><th>Revenue</th></tr></thead><tbody>{groupSales.slice(0, 500).map((sale) => <tr key={sale.saleFingerprint}><td>{sale.saleAt.replace("T", " ").replace(".000Z", " UTC")}</td><td>{sale.universeId}</td><td>{mappedNames[sale.assetId] ? `${mappedNames[sale.assetId]} · ` : ""}{sale.assetId}</td><td>{sale.saleLocation || "—"}</td><td>{sale.holdStatus}</td><td>{robux(sale.price)}</td><td>{robux(sale.revenue)}</td></tr>)}</tbody></table>{groupSales.length > 500 && <p className="field-hint">Showing latest 500 of {number(groupSales.length)} sales.</p>}</div> : <p>No imported sales for this group yet.</p>}
+          <div className="group-revenue-section-heading"><div><h2>Imported sales</h2><p className="field-hint">Showing selected Game Passes only. Choose passes above to include their sales.</p></div><button className="text-button group-revenue-delete" type="button" disabled={busy} onClick={() => void deleteGroup()}>Remove group data</button></div>
+          {groupSales.length ? <div className="group-revenue-table-wrap"><table className="group-revenue-table"><thead><tr><th>Date (UTC)</th><th>Experience ID</th><th>Game Pass</th><th>Sale location</th><th>Status</th><th>Source / match</th><th>Price</th><th>Revenue</th></tr></thead><tbody>{groupSales.slice(0, 500).map((sale) => <tr key={sale.saleFingerprint}><td>{sale.saleAt.replace("T", " ").replace(".000Z", " UTC")}</td><td>{sale.universeId}</td><td>{mappedNames[sale.assetId] ? `${mappedNames[sale.assetId]} · ` : ""}{sale.assetId}</td><td>{sale.saleLocation || "—"}</td><td>{sale.holdStatus}</td><td>{sale.source === "api" ? "Roblox API" : "CSV"}{sale.dedupeConfidence === "ambiguous" ? " · review match" : ""}</td><td>{robux(sale.price)}</td><td>{robux(sale.revenue)}</td></tr>)}</tbody></table>{groupSales.length > 500 && <p className="field-hint">Showing latest 500 of {number(groupSales.length)} sales.</p>}</div> : <p>No imported sales for this group yet.</p>}
         </section>
       </>}
       {!selected && data.groups.length === 0 && <p className="group-revenue-note">Add a group above to start. CSV import remains manual; experimental Roblox APIs are not enabled.</p>}

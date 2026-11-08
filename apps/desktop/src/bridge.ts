@@ -26,6 +26,12 @@ export interface RobloxRevenueGroup {
   name: string;
   experienceIds: string[];
   passMappings: Record<string, string>;
+  selectedPassIds: string[];
+  apiUpdatedAt?: string | null;
+  apiCoverageFrom?: string | null;
+  apiCoverageTo?: string | null;
+  apiSummary?: Record<string, number> | null;
+  apiStatus?: string | null;
   updatedAt?: string | null;
   lastImportAt?: string | null;
 }
@@ -40,11 +46,15 @@ export interface RobloxGroupSale {
   price: number;
   revenue: number;
   importBatchId: string;
+  externalTransactionId?: string | null;
+  source?: "csv" | "api";
+  dedupeConfidence?: "transaction_id" | "exact_fields" | "ambiguous";
   importedAt?: string | null;
 }
 export interface RobloxGroupRevenueData {
   groups: RobloxRevenueGroup[];
   sales: RobloxGroupSale[];
+  passes: { groupId: string; assetId: string; universeId: string; name: string; source: string }[];
 }
 export const robloxGroupRevenue = () => invoke<RobloxGroupRevenueData>("roblox_group_revenue");
 export const saveRobloxRevenueGroup = (group: RobloxRevenueGroup) =>
@@ -58,6 +68,10 @@ export const importRobloxGroupSales = (
 });
 export const removeRobloxGroupRevenue = (groupId: string) =>
   invoke<RobloxGroupRevenueData>("remove_roblox_group_revenue", { groupId });
+export const startGroupRevenueBrowser = (groupId: string) =>
+  invoke<void>("start_group_revenue_browser", { groupId });
+export const groupRevenueBrowserStatus = () =>
+  invoke<{ state: string; message: string }>("group_revenue_browser_status");
 
 export interface SyncServerInfo {
   product: string;

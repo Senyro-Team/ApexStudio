@@ -306,6 +306,7 @@ fn checked(path: &Path) -> Result<Checked, Error> {
             "shared_decal_codes",
             "roblox_group_revenue_groups",
             "roblox_group_revenue_sales",
+            "roblox_group_revenue_passes",
         ]);
         let mut stmt=db.prepare("SELECT name,type FROM sqlite_master WHERE type IN ('table','view','trigger') AND name NOT LIKE 'sqlite_%'").map_err(storage)?;
         let schema = stmt

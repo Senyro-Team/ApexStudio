@@ -1,6 +1,6 @@
 use super::{chrome_protocol as protocol, projects::work, CommandError};
 use apex_core::Error;
-use apex_storage::{SalesData, Workspace};
+use apex_storage::{RobloxGroupSale, RobloxRevenuePass, SalesData, Workspace};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -37,6 +37,19 @@ struct StatisticsTransfer {
     state: String,
     message: String,
 }
+struct GroupRevenueTransfer {
+    token: String,
+    session: Option<String>,
+    group_id: String,
+    expires: Instant,
+    state: String,
+    message: String,
+    passes: Vec<RobloxRevenuePass>,
+    sales: Vec<RobloxGroupSale>,
+    coverage_from: Option<String>,
+    coverage_to: Option<String>,
+    summary: Option<Value>,
+}
 #[derive(Default)]
 struct BridgeState {
     config: protocol::ChromeConfig,
@@ -46,6 +59,7 @@ struct BridgeState {
     pending: Option<String>,
     status: BrowserStatus,
     statistics: Option<StatisticsTransfer>,
+    group_revenue: Option<GroupRevenueTransfer>,
     workspace: Option<Workspace>,
 }
 #[derive(Clone, Default)]
@@ -70,6 +84,7 @@ impl BrowserBridge {
         let mut s = self.lock()?;
         s.transfer = None;
         s.statistics = None;
+        s.group_revenue = None;
         s.pending = None;
         s.checked = None;
         s.check = None;
@@ -120,6 +135,100 @@ impl BrowserBridge {
             s.checked = Some(Instant::now());
             s.status.message = "Chrome connection verified.".into();
             return Ok(json!({"ok":true}));
+        }
+        if kind == "group_revenue_claim"
+            || kind == "group_revenue_batch"
+            || kind == "group_revenue_complete"
+            || kind == "group_revenue_error"
+        {
+            let workspace = s.workspace.clone();
+            let transfer = s
+                .group_revenue
+                .as_mut()
+                .ok_or_else(|| invalid("No Roblox Group Revenue refresh is active."))?;
+            if Instant::now() > transfer.expires {
+                transfer.state = "failed".into();
+                transfer.message = "Roblox refresh expired. Start it again.".into();
+                return Err(invalid("Roblox refresh expired."));
+            }
+            if kind == "group_revenue_claim" {
+                if transfer.session.is_some()
+                    || r["token"].as_str() != Some(transfer.token.as_str())
+                {
+                    return Err(invalid("Invalid Roblox refresh token."));
+                }
+                let session = secret();
+                transfer.token.clear();
+                transfer.session = Some(session.clone());
+                return Ok(json!({"session":session,"groupId":transfer.group_id}));
+            }
+            if transfer.session.is_none() || r["session"].as_str() != transfer.session.as_deref() {
+                return Err(invalid("Invalid Roblox refresh session."));
+            }
+            if kind == "group_revenue_error" {
+                transfer.state = "failed".into();
+                transfer.message = match r["reason"].as_str() { Some("unauthorized") => "Roblox login expired or this account cannot view the group sales.", Some("rate_limited") => "Roblox temporarily rate-limited the request. Try again later.", _ => "Roblox did not return a complete, supported response. Existing successful data was kept." }.into();
+                return Ok(json!({"ok":true}));
+            }
+            if kind == "group_revenue_batch" {
+                let passes: Vec<RobloxRevenuePass> = serde_json::from_value(r["passes"].clone())
+                    .map_err(|_| invalid("Invalid Game Pass catalog batch."))?;
+                let sales: Vec<RobloxGroupSale> = serde_json::from_value(r["sales"].clone())
+                    .map_err(|_| invalid("Invalid transaction batch."))?;
+                if passes.len() > 100
+                    || sales.len() > 50
+                    || transfer.passes.len() + passes.len() > 10_000
+                    || transfer.sales.len() + sales.len() > 100_000
+                {
+                    return Err(invalid("Roblox refresh exceeded its safe data limit."));
+                }
+                if passes.iter().any(|pass| pass.group_id != transfer.group_id) {
+                    return Err(invalid("Game Pass batch belongs to another group."));
+                }
+                transfer.passes.extend(passes);
+                transfer.sales.extend(sales);
+                return Ok(json!({"ok":true,"received":transfer.sales.len()}));
+            }
+            if kind == "group_revenue_complete" {
+                let from = r["coverageFrom"].as_str().map(str::to_owned);
+                let to = r["coverageTo"].as_str().map(str::to_owned);
+                let summary = r.get("summary").filter(|v| v.is_object()).cloned();
+                if let Some(summary) = &summary {
+                    if summary.to_string().len() > 8_000 {
+                        return Err(invalid("Roblox group summary was too large."));
+                    }
+                }
+                transfer.coverage_from = from;
+                transfer.coverage_to = to;
+                transfer.summary = summary;
+                let ws = workspace.ok_or_else(|| invalid("Workspace unavailable."))?;
+                let result = ws.apply_roblox_group_api_refresh(
+                    &transfer.group_id,
+                    &transfer.passes,
+                    &transfer.sales,
+                    transfer.coverage_from.as_deref(),
+                    transfer.coverage_to.as_deref(),
+                    transfer.summary.as_ref(),
+                )?;
+                let unsupported = transfer
+                    .summary
+                    .as_ref()
+                    .and_then(|value| value.get("unsupportedTransactions"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                transfer.state = "complete".into();
+                transfer.message = if unsupported > 0 {
+                    format!("Roblox catalog refreshed; {unsupported} transactions need CSV review, {} new sales, {} matched.", result.inserted, result.duplicates)
+                } else {
+                    format!(
+                        "Roblox catalog refreshed; {} new sales, {} matched.",
+                        result.inserted, result.duplicates
+                    )
+                };
+                return Ok(
+                    json!({"ok":true,"inserted":result.inserted,"duplicates":result.duplicates}),
+                );
+            }
         }
         if kind == "statistics_claim" || kind == "statistics_submit" || kind == "statistics_error" {
             let workspace = s.workspace.clone();
@@ -409,6 +518,10 @@ pub fn save_chrome_settings(
     if state.transfer.is_some()
         || state.pending.is_some()
         || state
+            .group_revenue
+            .as_ref()
+            .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
+        || state
             .statistics
             .as_ref()
             .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
@@ -494,6 +607,94 @@ pub struct StatisticsBrowserStatus {
     message: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupRevenueBrowserStatus {
+    state: String,
+    message: String,
+}
+
+#[tauri::command]
+pub fn group_revenue_browser_status(
+    bridge: tauri::State<'_, BrowserBridge>,
+) -> Result<GroupRevenueBrowserStatus, CommandError> {
+    let mut state = bridge.lock()?;
+    let transfer = state.group_revenue.as_mut();
+    if let Some(t) = transfer {
+        if t.state == "running" && Instant::now() > t.expires {
+            t.state = "failed".into();
+            t.message = "Roblox refresh expired. Start it again.".into();
+        }
+        return Ok(GroupRevenueBrowserStatus {
+            state: t.state.clone(),
+            message: t.message.clone(),
+        });
+    }
+    Ok(GroupRevenueBrowserStatus {
+        state: "idle".into(),
+        message: String::new(),
+    })
+}
+
+#[tauri::command]
+pub fn start_group_revenue_browser(
+    group_id: String,
+    bridge: tauri::State<'_, BrowserBridge>,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<(), CommandError> {
+    if !workspace
+        .roblox_group_revenue()?
+        .groups
+        .iter()
+        .any(|group| group.group_id == group_id)
+    {
+        return Err(
+            invalid("Save this group and its experiences before refreshing Roblox data.").into(),
+        );
+    }
+    let mut state = bridge.lock()?;
+    if !state
+        .checked
+        .is_some_and(|t| t.elapsed() < Duration::from_secs(300))
+    {
+        return Err(invalid("Verify the Chrome connection in Settings first.").into());
+    }
+    if state.transfer.is_some()
+        || state.pending.is_some()
+        || state
+            .statistics
+            .as_ref()
+            .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
+        || state
+            .group_revenue
+            .as_ref()
+            .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
+    {
+        return Err(invalid("Another Chrome operation is already active.").into());
+    }
+    let token = secret();
+    let config = state.config.clone();
+    state.group_revenue = Some(GroupRevenueTransfer {
+        token: token.clone(),
+        session: None,
+        group_id,
+        expires: Instant::now() + Duration::from_secs(20 * 60),
+        state: "running".into(),
+        message: "Reading Roblox group data…".into(),
+        passes: Vec::new(),
+        sales: Vec::new(),
+        coverage_from: None,
+        coverage_to: None,
+        summary: None,
+    });
+    drop(state);
+    if let Err(error) = launch(&config, &format!("group-revenue={token}")) {
+        bridge.lock()?.group_revenue = None;
+        return Err(error.into());
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn statistics_browser_status(
     bridge: tauri::State<'_, BrowserBridge>,
@@ -537,6 +738,10 @@ pub fn start_statistics_browser(
             .is_some_and(|t| Instant::now() < t.expires)
         || state
             .statistics
+            .as_ref()
+            .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
+        || state
+            .group_revenue
             .as_ref()
             .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
     {
@@ -584,6 +789,10 @@ pub async fn prepare_browser(
                 .as_ref()
                 .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
                 || state.pending.is_some()
+                || state
+                    .group_revenue
+                    .as_ref()
+                    .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
                 || state
                     .transfer
                     .as_ref()

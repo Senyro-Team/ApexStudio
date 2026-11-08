@@ -33,10 +33,25 @@ pub use posts::*;
 pub use statistics::*;
 pub use team_sync::*;
 pub use trash::*;
-const SCHEMA_VERSION: u32 = 17;
+const SCHEMA_VERSION: u32 = 18;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
+}
+
+fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, Error> {
+    let mut statement = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(storage)?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(storage)?;
+    for name in columns {
+        if name.map_err(storage)? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn is_locking_protocol(error: &rusqlite::Error) -> bool {
@@ -220,6 +235,56 @@ impl Workspace {
             connection
                 .execute_batch(include_str!("schema17.sql"))
                 .map_err(storage)?;
+        }
+        if version < 18 {
+            progress("Updating workspace schema…");
+            let transaction = connection.transaction().map_err(storage)?;
+            for (table, column, definition) in [
+                (
+                    "roblox_group_revenue_groups",
+                    "selected_pass_ids_json",
+                    "TEXT NOT NULL DEFAULT '[]'",
+                ),
+                ("roblox_group_revenue_groups", "api_updated_at", "TEXT"),
+                ("roblox_group_revenue_groups", "api_coverage_from", "TEXT"),
+                ("roblox_group_revenue_groups", "api_coverage_to", "TEXT"),
+                ("roblox_group_revenue_groups", "api_summary_json", "TEXT"),
+                (
+                    "roblox_group_revenue_groups",
+                    "api_status",
+                    "TEXT NOT NULL DEFAULT 'never'",
+                ),
+                (
+                    "roblox_group_revenue_sales",
+                    "external_transaction_id",
+                    "TEXT",
+                ),
+                (
+                    "roblox_group_revenue_sales",
+                    "source",
+                    "TEXT NOT NULL DEFAULT 'csv'",
+                ),
+                (
+                    "roblox_group_revenue_sales",
+                    "dedupe_confidence",
+                    "TEXT NOT NULL DEFAULT 'exact_fields'",
+                ),
+            ] {
+                if !table_has_column(&transaction, table, column)? {
+                    transaction
+                        .execute_batch(&format!(
+                            "ALTER TABLE {table} ADD COLUMN {column} {definition};"
+                        ))
+                        .map_err(storage)?;
+                }
+            }
+            transaction
+                .execute_batch(include_str!("schema18.sql"))
+                .map_err(storage)?;
+            transaction
+                .pragma_update(None, "user_version", SCHEMA_VERSION)
+                .map_err(storage)?;
+            transaction.commit().map_err(storage)?;
         }
         *workspace
             .anchor

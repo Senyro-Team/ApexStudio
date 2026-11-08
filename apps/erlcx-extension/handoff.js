@@ -2,6 +2,7 @@ import { readBundle } from "./bundle.js";
 import { storage } from "./storage.js";
 import { nativeConnection } from "./native.js";
 import { readCreatorStatistics } from "./creator-statistics.js";
+import { readGroupRevenue } from "./group-revenue.js";
 const $ = (id) => document.getElementById(id);
 let native = null,
   timer = null;
@@ -95,6 +96,26 @@ async function init() {
                 : "unavailable",
           })
           .catch(() => {});
+        throw e;
+      }
+      return;
+    }
+    if (params.has("group-revenue")) {
+      const claim = await native.request({
+        kind: "group_revenue_claim",
+        token: params.get("group-revenue"),
+      });
+      try {
+        $("step").textContent = "Roblox Group Revenue";
+        $("status").textContent = "Reading group experiences, Game Passes, and available sales…";
+        await readGroupRevenue(claim.groupId, claim.session, native);
+        $("status").textContent = "Roblox data refresh complete. You can return to Apex Studio.";
+      } catch (e) {
+        await native.request({
+          kind: "group_revenue_error",
+          session: claim.session,
+          reason: e.code || "unavailable",
+        }).catch(() => {});
         throw e;
       }
       return;
