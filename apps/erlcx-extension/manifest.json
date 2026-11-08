@@ -1,13 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Apex Studio \u2014 ERLCX Assistant",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Prepare free ERLCX livery posts from Apex Studio and stop before publication.",
-  "permissions": [
-    "activeTab",
-    "scripting",
-    "nativeMessaging"
-  ],
+  "permissions": ["activeTab", "scripting", "nativeMessaging"],
   "action": {
     "default_popup": "popup.html",
     "default_title": "Apex Studio"
