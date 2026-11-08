@@ -1,6 +1,6 @@
 # Apex Studio CLI Roadmap
 
-Status: Phase 1 is complete; Phase 2 has not started. The plan was recorded before implementation.
+Status: Phases 1 and 2 are complete; Phase 3 is next.
 
 ## Product shape
 
@@ -44,7 +44,7 @@ Window layout, drag-and-drop gestures, native file-picker dialogs, and browser-o
 
 **Exit gate:** Release and debug CLI build; `--help`, JSON project listing and TUI navigation work; shared-workspace/concurrent-startup tests pass; installer stages and installs the CLI component without altering desktop-only installs.
 
-### Phase 2 — Projects, notes and asset explorer
+### Phase 2 — Projects, notes and asset explorer (complete)
 
 - Complete project create/edit/archive/restore and search/filter.
 - Add project/general notes, rendered preview and Markdown editing that preserves supported Markdown content.

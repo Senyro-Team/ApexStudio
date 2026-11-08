@@ -8,6 +8,8 @@ license.workspace = true
 [dependencies]
 apex-core = { path = "../apex-core" }
 apex-storage = { path = "../apex-storage" }
+pulldown-cmark = "0.13.6"
+serde_json = "1"
 
 [dev-dependencies]
 tempfile = "3"
