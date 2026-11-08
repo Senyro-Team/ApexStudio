@@ -9,7 +9,7 @@ use apex_core::{
 use apex_storage::Workspace;
 use std::path::{Path, PathBuf};
 
-pub use apex_storage::{TrashItem, TrashPreview};
+pub use apex_storage::{PackagePreview, TrashItem, TrashPreview};
 
 #[derive(Clone)]
 pub struct ApplicationServices {
@@ -35,6 +35,33 @@ impl ApplicationServices {
 
     pub fn rename_workspace(&self, name: &str) -> Result<WorkspaceInfo, Error> {
         apex_core::rename_workspace(&self.workspace, name)
+    }
+
+    pub fn preview_archive(&self, path: &Path) -> Result<PackagePreview, Error> {
+        self.workspace.preview_package(path)
+    }
+
+    pub fn export_project_package(
+        &self,
+        id: &str,
+        include_assets: bool,
+        include_notes: bool,
+        destination: &Path,
+    ) -> Result<(), Error> {
+        self.workspace
+            .export_project(id, include_assets, include_notes, destination)
+    }
+
+    pub fn import_project_package(&self, path: &Path) -> Result<String, Error> {
+        self.workspace.import_package(path)
+    }
+
+    pub fn create_workspace_backup(&self, destination: &Path) -> Result<(), Error> {
+        self.workspace.backup(destination)
+    }
+
+    pub fn restore_workspace_backup(&self, path: &Path) -> Result<PathBuf, Error> {
+        self.workspace.restore_backup(path)
     }
 
     pub fn projects(&self) -> Result<Vec<Project>, Error> {

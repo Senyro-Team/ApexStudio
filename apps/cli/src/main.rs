@@ -66,8 +66,66 @@ enum Command {
         #[command(subcommand)]
         action: VehicleCommand,
     },
+    /// Inspect, export, and import project packages.
+    Packages {
+        #[command(subcommand)]
+        action: PackageCommand,
+    },
+    /// Create, inspect, and restore whole-workspace backups.
+    Backups {
+        #[command(subcommand)]
+        action: BackupCommand,
+    },
     /// Show the workspace name and storage summary.
-    Workspace,
+    Workspace {
+        #[command(subcommand)]
+        action: Option<WorkspaceCommand>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum PackageCommand {
+    /// Preview an .apexstd archive without importing it.
+    Inspect { path: PathBuf },
+    /// Export a project without overwriting an existing destination.
+    Export {
+        project: String,
+        destination: PathBuf,
+        /// Export project metadata and folder structure without file contents.
+        #[arg(long)]
+        metadata_only: bool,
+        /// Omit notes when embedding assets.
+        #[arg(long)]
+        exclude_notes: bool,
+    },
+    /// Import a package as a new project after reviewing its contents.
+    Import {
+        path: PathBuf,
+        /// Confirm the import without an interactive prompt.
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum BackupCommand {
+    /// Create a complete workspace backup without overwriting an existing file.
+    Create { destination: PathBuf },
+    /// Preview a .apexbackup archive without restoring it.
+    Inspect { path: PathBuf },
+    /// Replace this workspace from a backup after reviewing the target summary.
+    Restore {
+        path: PathBuf,
+        /// Confirm the full workspace replacement without an interactive prompt.
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum WorkspaceCommand {
+    /// Rename the current workspace.
+    Rename { name: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -373,21 +431,17 @@ fn run(args: Args) -> Result<(), CliError> {
         Some(Command::Assets { action }) => run_asset_command(&app, action, json)?,
         Some(Command::Trash { action }) => run_trash_command(&app, action, json)?,
         Some(Command::Vehicles { action }) => run_vehicle_command(action, json)?,
-        Some(Command::Workspace) => {
-            let info = app.workspace_info().map_err(CliError::from)?;
-            if args.json {
-                println!(
-                    "{}",
-                    serde_json::to_string(&info).map_err(|error| CliError {
-                        code: "serialization_error".into(),
-                        message: error.to_string(),
-                    })?
-                );
+        Some(Command::Packages { action }) => run_package_command(&app, action, json)?,
+        Some(Command::Backups { action }) => run_backup_command(&app, action, json)?,
+        Some(Command::Workspace { action: None }) => print_workspace(&app, json)?,
+        Some(Command::Workspace {
+            action: Some(WorkspaceCommand::Rename { name }),
+        }) => {
+            let info = app.rename_workspace(&name).map_err(CliError::from)?;
+            if json {
+                print_json(&info)?;
             } else {
-                println!("{}", info.name);
-                println!("Path: {}", info.root);
-                println!("Database schema: {}", info.schema_version);
-                println!("Managed files: {}", info.managed_file_count);
+                println!("Workspace renamed to {}", info.name);
             }
         }
         None => {
@@ -408,6 +462,200 @@ fn run(args: Args) -> Result<(), CliError> {
                 message: error.to_string(),
             })?;
         }
+    }
+    Ok(())
+}
+
+fn print_workspace(app: &ApplicationServices, json: bool) -> Result<(), CliError> {
+    let info = app.workspace_info().map_err(CliError::from)?;
+    if json {
+        print_json(&info)?;
+    } else {
+        println!("{}", info.name);
+        println!("Path: {}", info.root);
+        println!("Database schema: {}", info.schema_version);
+        println!("Managed files: {}", info.managed_file_count);
+    }
+    Ok(())
+}
+
+fn run_package_command(
+    app: &ApplicationServices,
+    action: PackageCommand,
+    json: bool,
+) -> Result<(), CliError> {
+    match action {
+        PackageCommand::Inspect { path } => {
+            let (_archive, preview) = snapshot_archive(app, &path)?;
+            if preview.kind != "project" {
+                return Err(CliError {
+                    code: "wrong_archive_kind".into(),
+                    message: "Choose an .apexstd project package.".into(),
+                });
+            }
+            print_archive_preview(&preview, json)?;
+        }
+        PackageCommand::Export {
+            project,
+            destination,
+            metadata_only,
+            exclude_notes,
+        } => {
+            app.export_project_package(
+                &project,
+                !metadata_only,
+                !metadata_only && !exclude_notes,
+                &destination,
+            )
+            .map_err(CliError::from)?;
+            print_action(
+                &format!("Exported project package to {}", destination.display()),
+                json,
+            );
+        }
+        PackageCommand::Import { path, yes } => {
+            let (archive, preview) = snapshot_archive(app, &path)?;
+            if preview.kind != "project" {
+                return Err(CliError {
+                    code: "wrong_archive_kind".into(),
+                    message: "Choose an .apexstd project package.".into(),
+                });
+            }
+            confirm_action(
+                &format!(
+                    "import '{}' as a new project ({} assets, {} notes, {} bytes)",
+                    preview.title, preview.assets, preview.notes, preview.bytes
+                ),
+                yes,
+                json,
+            )?;
+            let id = app
+                .import_project_package(&archive)
+                .map_err(CliError::from)?;
+            let project = app.project(&id).map_err(CliError::from)?;
+            if json {
+                print_json(&serde_json::json!({"project":project,"archive":preview}))?;
+            } else {
+                println!("Imported {} ({})", project.fields.name, project.id);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_backup_command(
+    app: &ApplicationServices,
+    action: BackupCommand,
+    json: bool,
+) -> Result<(), CliError> {
+    match action {
+        BackupCommand::Create { destination } => {
+            app.create_workspace_backup(&destination)
+                .map_err(CliError::from)?;
+            print_action(
+                &format!("Created workspace backup at {}", destination.display()),
+                json,
+            );
+        }
+        BackupCommand::Inspect { path } => {
+            let (_archive, preview) = snapshot_archive(app, &path)?;
+            if preview.kind != "workspace" {
+                return Err(CliError {
+                    code: "wrong_archive_kind".into(),
+                    message: "Choose an .apexbackup workspace backup.".into(),
+                });
+            }
+            print_archive_preview(&preview, json)?;
+        }
+        BackupCommand::Restore { path, yes } => {
+            let (archive, preview) = snapshot_archive(app, &path)?;
+            if preview.kind != "workspace" {
+                return Err(CliError {
+                    code: "wrong_archive_kind".into(),
+                    message: "Choose an .apexbackup workspace backup.".into(),
+                });
+            }
+            let current = app.workspace_info().map_err(CliError::from)?;
+            confirm_action(
+                &format!(
+                    "replace workspace '{}' with '{}' ({} bytes); a safety backup will be created first",
+                    current.name, preview.title, preview.bytes
+                ),
+                yes,
+                json,
+            )?;
+            let safety_backup = app
+                .restore_workspace_backup(&archive)
+                .map_err(CliError::from)?;
+            let restored = app.workspace_info().map_err(CliError::from)?;
+            if json {
+                print_json(&serde_json::json!({
+                    "workspace": restored,
+                    "safetyBackup": safety_backup,
+                    "archive": preview
+                }))?;
+            } else {
+                println!("Restored workspace {}", restored.name);
+                println!("Safety backup: {}", safety_backup.display());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn snapshot_archive(
+    app: &ApplicationServices,
+    path: &std::path::Path,
+) -> Result<(tempfile::TempPath, apex_application::PackagePreview), CliError> {
+    let mut source = fs::File::open(path).map_err(|error| CliError {
+        code: "archive_read_failed".into(),
+        message: format!("{}: {error}", path.display()),
+    })?;
+    let metadata = source.metadata().map_err(|error| CliError {
+        code: "archive_read_failed".into(),
+        message: format!("{}: {error}", path.display()),
+    })?;
+    if !metadata.is_file() {
+        return Err(CliError {
+            code: "invalid_archive_path".into(),
+            message: "Choose a regular archive file.".into(),
+        });
+    }
+    if metadata.len() > 2 * 1024 * 1024 * 1024 {
+        return Err(CliError {
+            code: "archive_too_large".into(),
+            message: "Choose an archive smaller than 2 GB.".into(),
+        });
+    }
+    let mut staged = tempfile::NamedTempFile::new().map_err(|error| CliError {
+        code: "archive_staging_failed".into(),
+        message: error.to_string(),
+    })?;
+    io::copy(&mut source, &mut staged).map_err(|error| CliError {
+        code: "archive_staging_failed".into(),
+        message: error.to_string(),
+    })?;
+    staged.as_file().sync_all().map_err(|error| CliError {
+        code: "archive_staging_failed".into(),
+        message: error.to_string(),
+    })?;
+    let staged = staged.into_temp_path();
+    let preview = app.preview_archive(&staged).map_err(CliError::from)?;
+    Ok((staged, preview))
+}
+
+fn print_archive_preview(
+    preview: &apex_application::PackagePreview,
+    json: bool,
+) -> Result<(), CliError> {
+    if json {
+        print_json(preview)?;
+    } else {
+        println!("{}", preview.title);
+        println!("Type: {}", preview.kind);
+        println!("Assets: {}", preview.assets);
+        println!("Notes: {}", preview.notes);
+        println!("Stored bytes: {}", preview.bytes);
     }
     Ok(())
 }

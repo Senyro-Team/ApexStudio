@@ -1,6 +1,6 @@
 #![allow(clippy::expect_used)]
 
-use apex_core::ProjectInput;
+use apex_core::{ProjectInput, WorkspaceRepository};
 use apex_storage::Workspace;
 use std::{
     fs,
@@ -628,6 +628,322 @@ fn livery_folder_import_uses_official_vehicle_and_filename_slot_suggestions() {
         .expect("vehicle list")
         .iter()
         .any(|item| item["id"] == vehicle.id));
+}
+
+#[test]
+fn package_backup_and_workspace_commands_preview_confirm_and_roundtrip_safely() {
+    let temp = tempdir().expect("temporary directory");
+    let root = temp.path().join("workspace");
+    let workspace = Workspace::open(&root).expect("workspace");
+    let project = workspace
+        .save_project(
+            None,
+            ProjectInput {
+                name: "Packaged project".into(),
+                description: "Disposable package fixture".into(),
+                ..Default::default()
+            },
+        )
+        .expect("project");
+    drop(workspace);
+
+    let source_file = temp.path().join("design.psd");
+    fs::write(&source_file, b"package asset bytes").expect("fixture asset");
+    let imported = cli_json(
+        &root,
+        &[
+            "assets",
+            "import",
+            &project.id,
+            source_file.to_str().expect("asset path"),
+        ],
+    );
+    assert!(imported.status.success());
+    let imported: serde_json::Value = serde_json::from_slice(&imported.stdout).expect("asset");
+    let source_hash = imported["imported"][0]["hash"]
+        .as_str()
+        .expect("asset hash")
+        .to_owned();
+
+    let note_source = temp.path().join("package-note.md");
+    fs::write(&note_source, "# Package note\n\nPackage round-trip.").expect("note source");
+    let note = cli_json(
+        &root,
+        &[
+            "notes",
+            "create",
+            "--project",
+            &project.id,
+            "--title",
+            "Package note",
+            "--input",
+            note_source.to_str().expect("note path"),
+        ],
+    );
+    assert!(
+        note.status.success(),
+        "{}",
+        String::from_utf8_lossy(&note.stderr)
+    );
+
+    let package = temp.path().join("project.apexstd");
+    let exported = cli_json(
+        &root,
+        &[
+            "packages",
+            "export",
+            &project.id,
+            package.to_str().expect("package path"),
+        ],
+    );
+    assert!(exported.status.success());
+    let inspected = cli_json(
+        &root,
+        &[
+            "packages",
+            "inspect",
+            package.to_str().expect("package path"),
+        ],
+    );
+    assert!(inspected.status.success());
+    let preview: serde_json::Value = serde_json::from_slice(&inspected.stdout).expect("preview");
+    assert_eq!(preview["kind"], "project");
+    assert_eq!(preview["assets"], 1);
+    assert_eq!(preview["notes"], 1);
+    let metadata_only = temp.path().join("metadata-only.apexstd");
+    assert!(cli_json(
+        &root,
+        &[
+            "packages",
+            "export",
+            &project.id,
+            metadata_only.to_str().expect("metadata package path"),
+            "--metadata-only"
+        ]
+    )
+    .status
+    .success());
+    let metadata_preview = cli_json(
+        &root,
+        &[
+            "packages",
+            "inspect",
+            metadata_only.to_str().expect("metadata package path"),
+        ],
+    );
+    let metadata_preview: serde_json::Value =
+        serde_json::from_slice(&metadata_preview.stdout).expect("metadata preview");
+    assert_eq!(metadata_preview["assets"], 0);
+    assert_eq!(metadata_preview["notes"], 0);
+
+    let refused = cli_json(
+        &root,
+        &[
+            "packages",
+            "import",
+            package.to_str().expect("package path"),
+        ],
+    );
+    assert!(!refused.status.success());
+    let error: serde_json::Value = serde_json::from_slice(&refused.stderr).expect("JSON error");
+    assert_eq!(error["error"]["code"], "confirmation_required");
+    let imported_package = cli_json(
+        &root,
+        &[
+            "packages",
+            "import",
+            package.to_str().expect("package path"),
+            "--yes",
+        ],
+    );
+    assert!(
+        imported_package.status.success(),
+        "{}",
+        String::from_utf8_lossy(&imported_package.stderr)
+    );
+    let imported_package: serde_json::Value =
+        serde_json::from_slice(&imported_package.stdout).expect("imported package");
+    let imported_id = imported_package["project"]["id"]
+        .as_str()
+        .expect("new project ID");
+    let imported_board = cli_json(&root, &["assets", "list", imported_id]);
+    assert!(imported_board.status.success());
+    let imported_board: serde_json::Value =
+        serde_json::from_slice(&imported_board.stdout).expect("imported board");
+    assert_eq!(imported_board["assets"][0]["hash"], source_hash);
+    let imported_notes = cli_json(&root, &["notes", "list", "--project", imported_id]);
+    assert!(imported_notes.status.success());
+    let imported_notes: serde_json::Value =
+        serde_json::from_slice(&imported_notes.stdout).expect("imported notes");
+    assert_eq!(imported_notes[0]["title"], "Package note");
+
+    let backup = temp.path().join("workspace.apexbackup");
+    let created = cli_json(
+        &root,
+        &["backups", "create", backup.to_str().expect("backup path")],
+    );
+    assert!(created.status.success());
+    let backup_preview = cli_json(
+        &root,
+        &["backups", "inspect", backup.to_str().expect("backup path")],
+    );
+    assert!(backup_preview.status.success());
+    let backup_preview: serde_json::Value =
+        serde_json::from_slice(&backup_preview.stdout).expect("backup preview");
+    assert_eq!(backup_preview["kind"], "workspace");
+    assert!(backup_preview["bytes"].as_u64().expect("archive bytes") > 0);
+    assert!(!cli_json(
+        &root,
+        &["packages", "inspect", backup.to_str().expect("backup path")]
+    )
+    .status
+    .success());
+
+    let renamed = cli_json(&root, &["workspace", "rename", "Changed Workspace"]);
+    assert!(renamed.status.success());
+    let renamed_info = cli_json(&root, &["workspace"]);
+    assert!(renamed_info.status.success());
+    assert!(String::from_utf8_lossy(&renamed_info.stdout).contains("Changed Workspace"));
+    let extra = Workspace::open(&root)
+        .expect("workspace after rename")
+        .save_project(
+            None,
+            ProjectInput {
+                name: "Created after backup".into(),
+                ..Default::default()
+            },
+        )
+        .expect("post-backup project");
+    let restore_refused = cli_json(
+        &root,
+        &["backups", "restore", backup.to_str().expect("backup path")],
+    );
+    assert!(!restore_refused.status.success());
+    let error: serde_json::Value =
+        serde_json::from_slice(&restore_refused.stderr).expect("restore refusal");
+    assert_eq!(error["error"]["code"], "confirmation_required");
+
+    let restored = cli_json(
+        &root,
+        &[
+            "backups",
+            "restore",
+            backup.to_str().expect("backup path"),
+            "--yes",
+        ],
+    );
+    assert!(
+        restored.status.success(),
+        "{}",
+        String::from_utf8_lossy(&restored.stderr)
+    );
+    let restored: serde_json::Value = serde_json::from_slice(&restored.stdout).expect("restore");
+    assert_eq!(restored["workspace"]["name"], "My workspace");
+    let safety_backup = restored["safetyBackup"]
+        .as_str()
+        .expect("safety backup path");
+    assert!(Path::new(safety_backup).is_file());
+    let workspace = Workspace::open(&root).expect("reopened restored workspace");
+    assert!(workspace.project(&extra.id).is_err());
+    let restored_project = workspace.project(&project.id).expect("project restored");
+    assert_eq!(restored_project.asset_count, 1);
+    let file = root.join("files").join(&source_hash);
+    assert_eq!(
+        fs::read(file).expect("restored managed bytes"),
+        b"package asset bytes"
+    );
+    assert_eq!(
+        workspace
+            .notes(Some(&project.id))
+            .expect("restored notes")
+            .len(),
+        1
+    );
+
+    let corrupt = temp.path().join("broken.apexstd");
+    fs::write(&corrupt, b"not an Apex archive").expect("corrupt fixture");
+    assert!(!cli_json(
+        &root,
+        &[
+            "packages",
+            "inspect",
+            corrupt.to_str().expect("corrupt path")
+        ]
+    )
+    .status
+    .success());
+    let oversized = temp.path().join("oversized.apexbackup");
+    let oversized_file = fs::File::create(&oversized).expect("oversized sparse file");
+    oversized_file
+        .set_len(2 * 1024 * 1024 * 1024 + 1)
+        .expect("extend sparse archive fixture");
+    let oversized_result = cli_json(
+        &root,
+        &[
+            "backups",
+            "inspect",
+            oversized.to_str().expect("large path"),
+        ],
+    );
+    assert!(!oversized_result.status.success());
+    let oversized_error: serde_json::Value =
+        serde_json::from_slice(&oversized_result.stderr).expect("large archive error");
+    assert_eq!(oversized_error["error"]["code"], "archive_too_large");
+    let corrupt_backup = temp.path().join("broken.apexbackup");
+    fs::write(&corrupt_backup, b"not a workspace backup").expect("corrupt backup fixture");
+    assert!(!cli_json(
+        &root,
+        &[
+            "backups",
+            "restore",
+            corrupt_backup.to_str().expect("corrupt backup path"),
+            "--yes"
+        ]
+    )
+    .status
+    .success());
+    assert_eq!(
+        Workspace::open(&root)
+            .expect("unchanged workspace")
+            .info()
+            .expect("info")
+            .name,
+        "My workspace"
+    );
+
+    let existing_backup = temp.path().join("existing.apexbackup");
+    fs::write(&existing_backup, b"keep this backup destination").expect("existing backup");
+    assert!(!cli_json(
+        &root,
+        &[
+            "backups",
+            "create",
+            existing_backup.to_str().expect("existing backup path")
+        ]
+    )
+    .status
+    .success());
+    assert_eq!(
+        fs::read(&existing_backup).expect("destination unchanged"),
+        b"keep this backup destination"
+    );
+    let existing = temp.path().join("existing.apexstd");
+    fs::write(&existing, b"keep this destination").expect("existing destination");
+    assert!(!cli_json(
+        &root,
+        &[
+            "packages",
+            "export",
+            &project.id,
+            existing.to_str().expect("existing path")
+        ]
+    )
+    .status
+    .success());
+    assert_eq!(
+        fs::read(existing).expect("destination remains unchanged"),
+        b"keep this destination"
+    );
 }
 
 fn cli_json(root: &Path, args: &[&str]) -> std::process::Output {

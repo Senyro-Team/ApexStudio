@@ -1,6 +1,6 @@
 # Apex Studio CLI Roadmap
 
-Status: Phases 1 and 2 are complete; Phase 3 is next.
+Status: Phases 1–3 are complete; Phase 4 is next.
 
 ## Product shape
 
@@ -53,7 +53,7 @@ Window layout, drag-and-drop gestures, native file-picker dialogs, and browser-o
 
 **Exit gate:** Dummy project with nested folders, text/image/PNG and arbitrary file types survives import, edit, version restore, trash recovery and app/CLI reopen with originals unchanged.
 
-### Phase 3 — Packages, backups and local settings
+### Phase 3 — Packages, backups and local settings (complete)
 
 - Add `.apexstd` preview/import/export and whole-workspace backup/restore with the same validation and pre-restore safety backup behavior as desktop.
 - Add local workspace and supported application settings; show explicit confirmations and recovery details.
