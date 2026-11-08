@@ -3,7 +3,7 @@ use apex_core::{Error, WorkspaceInfo, WorkspaceRepository};
 use rusqlite::{params, Connection, OptionalExtension};
 use sha2::{Digest, Sha256};
 use std::{
-    fs,
+    fs::{self, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -74,6 +74,16 @@ impl Workspace {
         for directory in ["files", "staging", "backups", "thumbnails"] {
             fs::create_dir_all(workspace.root.join(directory)).map_err(storage)?;
         }
+        // Serialize migrations across desktop/CLI processes. The lock is held
+        // only during initialization; normal workspace operations stay concurrent.
+        let migration_lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(workspace.root.join(".workspace-migration.lock"))
+            .map_err(storage)?;
+        migration_lock.lock().map_err(storage)?;
         let mut connection = workspace.connection()?;
         let version: u32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))

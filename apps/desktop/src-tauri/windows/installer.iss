@@ -66,6 +66,8 @@ english.RobloxComponent=Roblox uploads and Group Revenue
 german.RobloxComponent=Roblox-Uploads und Group Revenue
 english.ErlcxComponent=ERLCX uploads with the Chrome extension
 german.ErlcxComponent=ERLCX-Uploads mit der Chrome-Erweiterung
+english.CliComponent=Interactive command-line interface
+german.CliComponent=Interaktive Kommandozeilenoberfläche
 english.LaunchApex=Launch Apex Studio
 german.LaunchApex=Apex Studio starten
 english.WebView2Title=Microsoft WebView2 Runtime
@@ -84,6 +86,7 @@ Name: "custom"; Description: "{cm:CustomInstall}"; Flags: iscustom
 [Components]
 Name: "roblox"; Description: "{cm:RobloxComponent}"; Types: full custom
 Name: "erlcx"; Description: "{cm:ErlcxComponent}"; Types: full custom
+Name: "cli"; Description: "{cm:CliComponent}"; Types: full custom
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -92,9 +95,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#StageDir}\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 Source: "{#StageDir}\apex-chrome-bridge.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 Source: "{#StageDir}\apex-erlcx-extension.zip"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#StageDir}\apex-studio-cli.exe"; DestDir: "{app}"; Components: cli; Flags: ignoreversion restartreplace
 
 [Icons]
 Name: "{autoprograms}\Apex Studio\Apex Studio"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
+Name: "{autoprograms}\Apex Studio\Apex Studio CLI"; Filename: "{app}\apex-studio-cli.exe"; WorkingDir: "{app}"; Components: cli
 Name: "{autodesktop}\Apex Studio"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]

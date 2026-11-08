@@ -1,4 +1,4 @@
-use apex_core::{WorkspaceInfo, WorkspaceRepository};
+use apex_core::WorkspaceInfo;
 use apex_storage::Workspace;
 use tauri::{Emitter, Manager};
 mod assets;
@@ -175,14 +175,15 @@ async fn workspace_info(
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<WorkspaceInfo, CommandError> {
     let workspace = workspace.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || workspace.info())
-        .await
-        .map_err(|_| CommandError {
-            code: "task_failed".into(),
-            message: "The workspace task could not finish. Restart Apex Studio and try again."
-                .into(),
-        })?
-        .map_err(Into::into)
+    tauri::async_runtime::spawn_blocking(move || {
+        apex_application::ApplicationServices::new(workspace).workspace_info()
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "task_failed".into(),
+        message: "The workspace task could not finish. Restart Apex Studio and try again.".into(),
+    })?
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -191,14 +192,15 @@ async fn rename_workspace(
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<WorkspaceInfo, CommandError> {
     let workspace = workspace.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || apex_core::rename_workspace(&workspace, &name))
-        .await
-        .map_err(|_| CommandError {
-            code: "task_failed".into(),
-            message: "The workspace task could not finish. Restart Apex Studio and try again."
-                .into(),
-        })?
-        .map_err(Into::into)
+    tauri::async_runtime::spawn_blocking(move || {
+        apex_application::ApplicationServices::new(workspace).rename_workspace(&name)
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "task_failed".into(),
+        message: "The workspace task could not finish. Restart Apex Studio and try again.".into(),
+    })?
+    .map_err(Into::into)
 }
 
 #[tauri::command]

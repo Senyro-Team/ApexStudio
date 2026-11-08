@@ -31,13 +31,16 @@ try {
   cargo build --release --locked -p apex-desktop --bin apex-chrome-bridge --features custom-protocol
   if ($LASTEXITCODE -ne 0) { throw 'Building the Chrome bridge failed.' }
 
+  cargo build --release --locked -p apex-cli
+  if ($LASTEXITCODE -ne 0) { throw 'Building the Apex Studio CLI failed.' }
+
   npm run tauri --workspace @apex/desktop -- build --no-bundle --config src-tauri/tauri.bundle.conf.json --ci
   if ($LASTEXITCODE -ne 0) { throw 'Building Apex Studio failed.' }
 
   $version = (Get-Content -Raw (Join-Path $root 'apps/desktop/src-tauri/tauri.conf.json') | ConvertFrom-Json).version
   $stage = Join-Path $root 'target/release/inno-stage'
   New-Item -ItemType Directory -Path $stage -Force | Out-Null
-  foreach ($file in @('apex-desktop.exe', 'apex-chrome-bridge.exe')) {
+  foreach ($file in @('apex-desktop.exe', 'apex-chrome-bridge.exe', 'apex-studio-cli.exe')) {
     $source = Join-Path $root "target/release/$file"
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Required build output is missing: $source" }
     Copy-Item -LiteralPath $source -Destination $stage -Force

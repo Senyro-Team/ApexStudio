@@ -21,6 +21,8 @@ cargo build --locked -p apex-desktop --features custom-protocol
 .\target\debug\apex-desktop.exe
 ```
 
+The Rust workspace also contains `apex-studio-cli`. Run `cargo run -p apex-cli` for the interactive terminal interface, or use `cargo run -p apex-cli -- projects list --json` for scriptable output. The CLI opens the same local workspace as the desktop app; pass `--workspace <PATH>` to use a disposable or alternate workspace. The Windows installer offers the CLI as a selectable component.
+
 The native Windows build and project/file persistence across restart have been verified. Current check results are available in the repository's GitHub Actions workflow.
 
 ## Windows installer
