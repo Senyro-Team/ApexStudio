@@ -340,6 +340,9 @@ pub fn browser_status(
 }
 fn launch(config: &protocol::ChromeConfig, fragment: &str) -> Result<(), Error> {
     let mut cmd = std::process::Command::new(&config.chrome_path);
+    if !config.user_data_dir.trim().is_empty() {
+        cmd.arg(format!("--user-data-dir={}", config.user_data_dir));
+    }
     cmd.arg(format!("--profile-directory={}", config.profile))
         .arg(format!(
             "chrome-extension://{}/handoff.html#{fragment}",
@@ -353,6 +356,31 @@ fn launch(config: &protocol::ChromeConfig, fragment: &str) -> Result<(), Error> 
     cmd.spawn().map_err(|e| Error::Storage(e.to_string()))?;
     Ok(())
 }
+#[cfg(windows)]
+fn register_opera_host(manifest: &Path) -> Result<(), Error> {
+    use std::os::windows::process::CommandExt;
+
+    // Opera's Windows documentation requires the Chrome-compatible machine registry key.
+    // Ask for elevation only when Opera is selected; the host remains scoped to this extension ID.
+    let key = r"HKLM\SOFTWARE\Google\Chrome\NativeMessagingHosts\com.apexstudio.erlcx";
+    let args = format!(
+        "ADD \"{key}\" /ve /t REG_SZ /d \"{}\" /f",
+        manifest.display()
+    );
+    let escaped_args = args.replace('\'', "''");
+    let script = format!(
+        "$p = Start-Process -FilePath \"$env:SystemRoot\\System32\\reg.exe\" -ArgumentList '{escaped_args}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
+    );
+    let status = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .creation_flags(0x08000000)
+        .status()
+        .map_err(|e| Error::Storage(e.to_string()))?;
+    if !status.success() {
+        return Err(invalid("Opera GX native messaging setup was cancelled or failed. Approve the Windows permission prompt and save the browser settings again.").into());
+    }
+    Ok(())
+}
 #[tauri::command]
 pub fn save_chrome_settings(
     app: tauri::AppHandle,
@@ -363,7 +391,8 @@ pub fn save_chrome_settings(
         || !Path::new(&config.chrome_path).is_file()
         || Path::new(&config.chrome_path)
             .file_name()
-            .is_none_or(|n| !n.to_string_lossy().eq_ignore_ascii_case("chrome.exe"))
+            .is_none_or(|n| !n.to_string_lossy().to_ascii_lowercase().ends_with(".exe"))
+        || (!config.user_data_dir.trim().is_empty() && !Path::new(&config.user_data_dir).is_dir())
         || config.profile.is_empty()
         || config.profile.len() > 80
         || config
@@ -372,7 +401,7 @@ pub fn save_chrome_settings(
             .any(|c| !c.is_ascii_alphanumeric() && c != ' ' && c != '-' && c != '_')
     {
         return Err(invalid(
-            "Choose chrome.exe, a Chrome profile directory and the installed extension ID.",
+            "Choose a Chromium browser executable, an existing user data folder, a profile name and the installed extension ID.",
         )
         .into());
     }
@@ -410,22 +439,30 @@ pub fn save_chrome_settings(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        let status = std::process::Command::new("reg.exe")
-            .args([
-                "ADD",
-                r"HKCU\Software\Google\Chrome\NativeMessagingHosts\com.apexstudio.erlcx",
-                "/ve",
-                "/t",
-                "REG_SZ",
-                "/d",
-            ])
-            .arg(&manifest)
-            .arg("/f")
-            .creation_flags(0x08000000)
-            .output()
-            .map_err(|e| Error::Storage(e.to_string()))?;
-        if !status.status.success() {
-            return Err(invalid("Cannot register the Chrome bridge for this Windows user.").into());
+        // Chromium browsers use the Chrome host location as a compatibility fallback.
+        // Edge also checks its product-specific key. Opera GX documents the Chrome key.
+        for key in [
+            r"HKCU\Software\Google\Chrome\NativeMessagingHosts\com.apexstudio.erlcx",
+            r"HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.apexstudio.erlcx",
+        ] {
+            let status = std::process::Command::new("reg.exe")
+                .args(["ADD", key, "/ve", "/t", "REG_SZ", "/d"])
+                .arg(&manifest)
+                .arg("/f")
+                .creation_flags(0x08000000)
+                .output()
+                .map_err(|e| Error::Storage(e.to_string()))?;
+            if !status.status.success() {
+                return Err(
+                    invalid("Cannot register the browser bridge for this Windows user.").into(),
+                );
+            }
+        }
+        if Path::new(&config.chrome_path)
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("opera.exe"))
+        {
+            register_opera_host(&manifest)?;
         }
     }
     std::fs::write(

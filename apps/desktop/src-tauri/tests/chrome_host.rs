@@ -24,6 +24,7 @@ fn windows_host_forwards_bounded_frames_without_opening_a_workspace() {
         settings.join("settings.json"),
         serde_json::to_vec(&protocol::ChromeConfig {
             chrome_path: String::new(),
+            user_data_dir: String::new(),
             profile: "Default".into(),
             extension_id: "a".repeat(32),
             pipe: pipe.clone(),

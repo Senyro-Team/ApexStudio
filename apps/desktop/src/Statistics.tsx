@@ -268,7 +268,7 @@ export default function Statistics({
               disabled={stats.salesBusy || stats.busy}
               onClick={() => void stats.refreshSales()}
             >
-              {stats.salesBusy ? "Connecting…" : "Refresh sales in Chrome"}
+              {stats.salesBusy ? "Connecting…" : "Refresh sales in browser"}
             </button>
           </div>
           {stats.sales && (

@@ -9,6 +9,8 @@ pub const MAX_FRAME: usize = 1024 * 1024;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChromeConfig {
     pub chrome_path: String,
+    #[serde(default)]
+    pub user_data_dir: String,
     pub profile: String,
     pub extension_id: String,
     #[serde(default)]

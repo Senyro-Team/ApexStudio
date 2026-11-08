@@ -963,7 +963,7 @@ export default function Publishing({
                 Prepare on ERLCX
               </button>
               {!browser?.connected && (
-                <p>Verify the Chrome connection in Settings.</p>
+                <p>Verify the browser connection in Settings.</p>
               )}
               {browser?.postId === draftId && (
                 <>

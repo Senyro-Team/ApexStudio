@@ -622,6 +622,7 @@ export const exportPost = (id: string, revision: number, reviewed: boolean) =>
   invoke<boolean>("export_post", { id, revision, reviewed });
 export interface ChromeConfig {
   chromePath: string;
+  userDataDir: string;
   profile: string;
   extensionId: string;
   pipe?: string;

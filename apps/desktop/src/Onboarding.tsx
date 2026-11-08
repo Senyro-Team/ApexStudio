@@ -76,7 +76,7 @@ export default function Onboarding({
     {
       id: "erlcx" as const,
       name: "ERLCX publishing",
-      description: "Prepare your ERLCX submission with the Chrome extension.",
+      description: "Prepare your ERLCX submission with the browser extension.",
       icon: Chrome,
     },
   ];
@@ -166,13 +166,13 @@ export default function Onboarding({
             ) : (
               <>
                 <p className="onboarding-intro">
-                  The Apex extension helps prepare your ERLCX submission. Load it into Chrome separately;
+                  The Apex extension helps prepare your ERLCX submission. Load it into a Chromium browser separately;
                   Apex does not change browser security settings.
                 </p>
                 <ol className="onboarding-steps">
-                  <li><span>1</span><div><strong>Open the extension package</strong><small>Extract it to a permanent folder so Chrome can find it again.</small></div></li>
-                  <li><span>2</span><div><strong>Load it in Chrome</strong><small>Open chrome://extensions, turn on Developer mode, then choose “Load unpacked”.</small></div></li>
-                  <li><span>3</span><div><strong>Connect it to Apex</strong><small>Enter Chrome's path, profile, and extension ID in Apex Studio, then check the connection.</small></div></li>
+                  <li><span>1</span><div><strong>Open the extension package</strong><small>Extract it to a permanent folder so the browser can find it again.</small></div></li>
+                  <li><span>2</span><div><strong>Load it in the browser</strong><small>Open the browser’s extensions page, turn on Developer mode, then choose “Load unpacked”.</small></div></li>
+                  <li><span>3</span><div><strong>Connect it to Apex</strong><small>Enter the browser executable, user data folder, profile name and extension ID in Apex Studio, then check the connection.</small></div></li>
                 </ol>
                 <div className="onboarding-extension-action">
                   <button className="secondary" type="button" disabled={extensionBusy} onClick={() => void getExtension()}>
@@ -180,7 +180,7 @@ export default function Onboarding({
                   </button>
                   {extensionStatus && <p role="status">{extensionStatus}</p>}
                 </div>
-                <p className="onboarding-note">The Chrome Web Store listing is not available yet, so load the extension manually in Chrome.</p>
+                <p className="onboarding-note">The extension is not listed in a browser store, so load it manually in Chrome, Opera GX or another Chromium browser.</p>
               </>
             )}
             <div className="onboarding-actions onboarding-guide-actions">
@@ -192,7 +192,7 @@ export default function Onboarding({
                   </button>
                 )}
                 <button className="primary" type="button" onClick={() => onOpenSettings(active === "roblox" ? "roblox" : "chrome")}>
-                  {active === "roblox" ? "Open Roblox settings" : "Open Chrome settings"}
+                  {active === "roblox" ? "Open Roblox settings" : "Open browser settings"}
                 </button>
               </div>
             </div>

@@ -10,6 +10,7 @@ import {
 } from "./bridge";
 const empty: ChromeConfig = {
   chromePath: "",
+  userDataDir: "",
   profile: "Default",
   extensionId: "",
 };
@@ -72,7 +73,7 @@ export default function ChromeSettings({
   }
   return (
     <section className="roblox-settings" id="settings-chrome">
-      <h2>ERLCX · Chrome</h2>
+      <h2>ERLCX · Browser</h2>
       {error && (
         <p role="alert" className="error">
           {error}
@@ -86,10 +87,10 @@ export default function ChromeSettings({
         }}
       >
         <label>
-          Chrome executable
+          Chromium browser executable
           <input
             value={config.chromePath}
-            placeholder="C:\Program Files\Google\Chrome\Application\chrome.exe"
+            placeholder="…\Opera GX\opera.exe"
             disabled={busy}
             onChange={(e) =>
               setConfig({ ...config, chromePath: e.target.value })
@@ -97,7 +98,18 @@ export default function ChromeSettings({
           />
         </label>
         <label>
-          Profile directory
+          Browser user data folder
+          <input
+            value={config.userDataDir}
+            placeholder="…\Opera Software\Opera GX Stable"
+            disabled={busy}
+            onChange={(e) =>
+              setConfig({ ...config, userDataDir: e.target.value })
+            }
+          />
+        </label>
+        <label>
+          Profile folder name
           <input
             value={config.profile}
             placeholder="Default or Profile 1"
@@ -119,7 +131,7 @@ export default function ChromeSettings({
         </label>
         <div className="button-row">
           <button className="primary" disabled={busy || !dirty}>
-            Save Chrome connection
+            Save browser connection
           </button>
           {dirty && (
             <button
@@ -141,10 +153,13 @@ export default function ChromeSettings({
           </button>
         </div>
       </form>
+      <p className="settings-help">
+        Chrome, Opera GX, Edge and other Chromium browsers are supported. Set the browser’s user data folder and profile name (usually Default) to open the correct signed-in profile. Saving Opera GX settings asks Windows to approve its required native messaging registration.
+      </p>
       <p role="status">
         {status?.connected
-          ? "Chrome connected"
-          : "Chrome connection not verified"}
+          ? "Browser connected"
+          : "Browser connection not verified"}
       </p>
     </section>
   );
