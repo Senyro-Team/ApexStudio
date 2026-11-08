@@ -20,6 +20,7 @@ const files = [
   "handoff.css",
   "handoff.js",
   "creator-statistics.js",
+  "group-revenue.js",
   "bundle.js",
   "icon32.png",
   "icon128.png",

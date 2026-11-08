@@ -12,12 +12,6 @@ window.apexHandoffStarted = () => {
   clearTimeout(startupTimer);
 };
 
-document.getElementById("handoff-module").addEventListener("error", () => {
-  step.textContent = "Extension failed to load";
-  status.textContent =
-    "Apex Studio’s handoff script could not load. Reload the extension and try again.";
-});
-
 const startupTimer = setTimeout(() => {
   if (started) return;
   step.textContent = "Extension failed to start";
@@ -30,7 +24,6 @@ if (checkParams.has("check")) {
   started = true;
   clearTimeout(startupTimer);
   window.apexConnectionCheckActive = true;
-  document.getElementById("handoff-module")?.remove();
   const token = checkParams.get("check");
   try {
     history.replaceState(null, "", location.pathname);
@@ -81,4 +74,15 @@ if (checkParams.has("check")) {
   } catch (error) {
     showCheckError(error instanceof Error ? error.message : String(error));
   }
+} else {
+  const moduleScript = document.createElement("script");
+  moduleScript.id = "handoff-module";
+  moduleScript.type = "module";
+  moduleScript.src = "handoff.js";
+  moduleScript.addEventListener("error", () => {
+    step.textContent = "Extension failed to load";
+    status.textContent =
+      "Apex Studio’s handoff script could not load. Reload the extension and try again.";
+  });
+  document.body.append(moduleScript);
 }
