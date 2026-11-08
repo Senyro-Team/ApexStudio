@@ -61,8 +61,13 @@ jobs:
           if ($tagVersion -ne $version) { throw "Release tag $env:RELEASE_TAG does not match app version $version." }
           $bundle = Get-ChildItem -LiteralPath $bundleDir -Filter '*setup.exe' | Select-Object -First 1
           if (-not $bundle) { throw 'The NSIS updater installer was not generated.' }
-          $signaturePath = "$($bundle.FullName).sig"
-          if (-not (Test-Path -LiteralPath $signaturePath -PathType Leaf)) { throw 'The NSIS updater signature was not generated.' }
+          $sourceSignaturePath = "$($bundle.FullName).sig"
+          if (-not (Test-Path -LiteralPath $sourceSignaturePath -PathType Leaf)) { throw 'The NSIS updater signature was not generated.' }
+          $bundlePath = Join-Path $bundleDir "ApexStudio-$version-windows-nsis-updater.exe"
+          $signaturePath = "$bundlePath.sig"
+          Move-Item -LiteralPath $bundle.FullName -Destination $bundlePath -Force
+          Move-Item -LiteralPath $sourceSignaturePath -Destination $signaturePath -Force
+          $bundle = Get-Item -LiteralPath $bundlePath
           $signature = (Get-Content -LiteralPath $signaturePath -Raw).Trim()
           $encodedAssetName = [Uri]::EscapeDataString($bundle.Name)
           $assetUrl = "https://github.com/Senyro-Team/ApexStudio/releases/download/$env:RELEASE_TAG/$encodedAssetName"
