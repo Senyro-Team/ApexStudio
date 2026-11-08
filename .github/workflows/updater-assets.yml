@@ -1,0 +1,73 @@
+name: Publish signed updater assets
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-updater:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: npm ci
+
+      - name: Prepare bundled features
+        shell: pwsh
+        run: |
+          npm run build:extension
+          if ($LASTEXITCODE -ne 0) { throw 'Building the ERLCX extension failed.' }
+          $extension = Get-ChildItem 'dist/apex-erlcx-extension-*.zip' | Sort-Object Name | Select-Object -Last 1
+          if (-not $extension) { throw 'The versioned ERLCX extension archive was not created.' }
+          Copy-Item -LiteralPath $extension.FullName -Destination 'dist/apex-erlcx-extension.zip' -Force
+          cargo build --release --locked -p apex-desktop --bin apex-chrome-bridge --features custom-protocol
+          if ($LASTEXITCODE -ne 0) { throw 'Building the Chrome bridge failed.' }
+
+      - name: Build signed NSIS updater bundle
+        run: npm run tauri --workspace @apex/desktop -- build --config src-tauri/tauri.updater.conf.json --bundles nsis --ci
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Create updater manifest and upload assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          $bundleDir = 'target/release/bundle/nsis'
+          $version = (Get-Content -Raw 'apps/desktop/src-tauri/tauri.conf.json' | ConvertFrom-Json).version
+          $tagVersion = $env:RELEASE_TAG.TrimStart('v')
+          if ($tagVersion -ne $version) { throw "Release tag $env:RELEASE_TAG does not match app version $version." }
+          $bundle = Get-ChildItem -LiteralPath $bundleDir -Filter '*setup.exe' | Select-Object -First 1
+          if (-not $bundle) { throw 'The NSIS updater installer was not generated.' }
+          $signaturePath = "$($bundle.FullName).sig"
+          if (-not (Test-Path -LiteralPath $signaturePath -PathType Leaf)) { throw 'The NSIS updater signature was not generated.' }
+          $signature = (Get-Content -LiteralPath $signaturePath -Raw).Trim()
+          $encodedAssetName = [Uri]::EscapeDataString($bundle.Name)
+          $assetUrl = "https://github.com/Senyro-Team/ApexStudio/releases/download/$env:RELEASE_TAG/$encodedAssetName"
+          $manifest = @{
+            version = $version
+            notes = 'Apex Studio update'
+            pub_date = (Get-Date).ToUniversalTime().ToString('o')
+            platforms = @{
+              'windows-x86_64' = @{
+                signature = $signature
+                url = $assetUrl
+              }
+            }
+          } | ConvertTo-Json -Depth 6
+          Set-Content -LiteralPath 'latest.json' -Value $manifest -Encoding utf8NoBOM
+          gh release upload $env:RELEASE_TAG $bundle.FullName $signaturePath 'latest.json' --clobber

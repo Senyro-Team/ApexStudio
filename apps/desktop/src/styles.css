@@ -5214,3 +5214,32 @@ select {
 }
 :root[data-wallpaper="true"] .app .theme-color-control:hover { border-color: rgb(255 255 255 / 0.46); }
 :root[data-wallpaper="true"] .app .theme-color-control input[type="color"] { border-color: rgb(255 255 255 / 0.36); background: transparent; backdrop-filter: none; }
+.updater-settings {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.updater-settings h2,
+.updater-settings p {
+  margin-top: 0;
+}
+
+.updater-settings p:last-child {
+  margin-bottom: 0;
+}
+
+.updater-available {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.updater-progress {
+  width: 100%;
+  accent-color: var(--button);
+}

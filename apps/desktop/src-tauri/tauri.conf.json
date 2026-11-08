@@ -28,5 +28,16 @@
   },
   "bundle": {
     "active": false
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI5NzUzMEREQzE1QzAzNTkKUldSWkExekIzVEIxdWZ2c3dhNlZyZnk4WnNsN2ZtWWtVWHVLWVNMNHBUVEZGSFg4dldWNVpXL1EK",
+      "endpoints": [
+        "https://github.com/Senyro-Team/ApexStudio/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

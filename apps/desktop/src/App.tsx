@@ -3,6 +3,7 @@ import AppSelect from "./AppSelect";
 import ChromeSettings from "./ChromeSettings";
 import RobloxSettings from "./RobloxSettings";
 import TeamSyncSettings from "./TeamSyncSettings";
+import UpdaterSettings from "./UpdaterSettings";
 import Onboarding from "./Onboarding";
 import useTeamProjectSync from "./useTeamProjectSync";
 import Statistics, { StatisticsSettings, useStatistics } from "./Statistics";
@@ -74,6 +75,7 @@ type Section = (typeof sections)[number]["name"];
 
 const settingsCategories = [
   ["setup", "Setup guide"],
+  ["updates", "Updates"],
   ["appearance", "Appearance"],
   ["dashboard", "Dashboard"],
   ["performance", "Performance"],
@@ -602,6 +604,7 @@ function AppContent() {
           </span>
         </header>
         <main id="main" tabIndex={-1}>
+          <UpdaterSettings enabled={desktopAvailable} visible={section === "Settings"} />
           {!desktopAvailable && (
             <p className="preview-notice">
               Browser preview · Workspace storage is available in the desktop

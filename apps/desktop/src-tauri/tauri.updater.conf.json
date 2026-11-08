@@ -1,0 +1,17 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
+    "resources": {
+      "../../../target/release/apex-chrome-bridge.exe": "apex-chrome-bridge.exe",
+      "../../../dist/apex-erlcx-extension.zip": "apex-erlcx-extension.zip"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "startMenuFolder": "Apex Studio"
+      }
+    }
+  }
+}

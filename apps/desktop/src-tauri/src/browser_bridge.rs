@@ -355,6 +355,7 @@ fn launch(config: &protocol::ChromeConfig, fragment: &str) -> Result<(), Error> 
 }
 #[tauri::command]
 pub fn save_chrome_settings(
+    app: tauri::AppHandle,
     mut config: protocol::ChromeConfig,
     bridge: tauri::State<'_, BrowserBridge>,
 ) -> Result<(), CommandError> {
@@ -387,9 +388,19 @@ pub fn save_chrome_settings(
     }
     config.pipe = state.config.pipe.clone();
     let dir = protocol::directory().map_err(|e| Error::Storage(e.to_string()))?;
-    let helper = std::env::current_exe()
+    let adjacent_helper = std::env::current_exe()
         .map_err(|e| Error::Storage(e.to_string()))?
         .with_file_name("apex-chrome-bridge.exe");
+    let helper = if adjacent_helper.is_file() {
+        adjacent_helper
+    } else {
+        app.path()
+            .resolve(
+                "apex-chrome-bridge.exe",
+                tauri::path::BaseDirectory::Resource,
+            )
+            .map_err(|e| Error::Storage(e.to_string()))?
+    };
     if !helper.exists() {
         return Err(invalid("The Chrome bridge executable is missing beside Apex Studio.").into());
     }

@@ -282,6 +282,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(roblox::RobloxState::default())
         .manage(team_sync::TeamSyncState::default())
         .manage(notes::PendingArchives::default())
