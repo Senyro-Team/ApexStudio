@@ -25,6 +25,9 @@ try {
   }
   Copy-Item -LiteralPath $versionedExtension -Destination $bundledExtension -Force
 
+  npm run build
+  if ($LASTEXITCODE -ne 0) { throw 'Building the Apex Studio frontend failed.' }
+
   cargo build --release --locked -p apex-desktop --bin apex-chrome-bridge --features custom-protocol
   if ($LASTEXITCODE -ne 0) { throw 'Building the Chrome bridge failed.' }
 
