@@ -3,6 +3,7 @@ import { storage } from "./storage.js";
 import { nativeConnection } from "./native.js";
 import { readCreatorStatistics } from "./creator-statistics.js";
 import { readGroupRevenue } from "./group-revenue.js";
+window.apexHandoffStarted?.();
 const $ = (id) => document.getElementById(id);
 let native = null,
   timer = null;
@@ -35,14 +36,16 @@ $("cancel").onclick = () =>
     .then(update)
     .catch((e) => ($("status").textContent = e.message));
 async function init() {
-  const params = new URLSearchParams(location.hash.slice(1));
-  history.replaceState(null, "", location.pathname);
-  if (!params.size) {
-    await update();
-    timer = setInterval(update, 1000);
-    return;
-  }
   try {
+    const params = new URLSearchParams(location.hash.slice(1));
+    history.replaceState(null, "", location.pathname);
+    if (!params.size) {
+      await update();
+      timer = setInterval(update, 1000);
+      return;
+    }
+    $("step").textContent = "Connecting to Apex Studio…";
+    $("status").textContent = "Opening the native messaging connection…";
     native = nativeConnection();
     if (params.has("check")) {
       await native.request({ kind: "check", token: params.get("check") });
@@ -107,15 +110,19 @@ async function init() {
       });
       try {
         $("step").textContent = "Roblox Group Revenue";
-        $("status").textContent = "Reading group experiences, Game Passes, and available sales…";
+        $("status").textContent =
+          "Reading group experiences, Game Passes, and available sales…";
         await readGroupRevenue(claim.groupId, claim.session, native);
-        $("status").textContent = "Roblox data refresh complete. You can return to Apex Studio.";
+        $("status").textContent =
+          "Roblox data refresh complete. You can return to Apex Studio.";
       } catch (e) {
-        await native.request({
-          kind: "group_revenue_error",
-          session: claim.session,
-          reason: e.code || "unavailable",
-        }).catch(() => {});
+        await native
+          .request({
+            kind: "group_revenue_error",
+            session: claim.session,
+            reason: e.code || "unavailable",
+          })
+          .catch(() => {});
         throw e;
       }
       return;

@@ -95,6 +95,20 @@ impl BrowserBridge {
     fn snapshot(&self) -> Result<BrowserStatus, Error> {
         let mut state = self.lock()?;
         if state
+            .check
+            .as_ref()
+            .is_some_and(|(_, deadline)| Instant::now() > *deadline)
+        {
+            state.check = None;
+            state.status = BrowserStatus {
+                connected: false,
+                state: "failed".into(),
+                step: "Connection check".into(),
+                message: "Chrome did not confirm the connection. Check that the Apex Studio extension is enabled in this browser profile, then try again.".into(),
+                post_id: None,
+            };
+        }
+        if state
             .transfer
             .as_ref()
             .is_some_and(|t| Instant::now() > t.expires)
@@ -127,12 +141,23 @@ impl BrowserBridge {
         let kind = r["kind"].as_str().unwrap_or("");
         if kind == "check" {
             let Some((token, deadline)) = s.check.take() else {
+                if s.status.state == "checking" {
+                    s.status.state = "failed".into();
+                    s.status.step = "Connection check".into();
+                    s.status.message =
+                        "The browser connection check expired. Try again from Settings.".into();
+                }
                 return Err(invalid("Connection check expired."));
             };
             if r["token"].as_str() != Some(&token) || Instant::now() > deadline {
+                s.status.state = "failed".into();
+                s.status.step = "Connection check".into();
+                s.status.message = "The browser returned an invalid or expired connection check. Try again from Settings.".into();
                 return Err(invalid("Connection check expired."));
             }
             s.checked = Some(Instant::now());
+            s.status.state = "connected".into();
+            s.status.step = "Connected".into();
             s.status.message = "Chrome connection verified.".into();
             return Ok(json!({"ok":true}));
         }
@@ -596,7 +621,19 @@ pub fn check_browser(bridge: tauri::State<'_, BrowserBridge>) -> Result<(), Comm
     let token = secret();
     state.check = Some((token.clone(), Instant::now() + Duration::from_secs(60)));
     state.checked = None;
-    launch(&state.config, &format!("check={token}"))?;
+    state.status = BrowserStatus {
+        connected: false,
+        state: "checking".into(),
+        step: "Connection check".into(),
+        message: "Waiting for the Chrome extension to confirm the connection…".into(),
+        post_id: None,
+    };
+    if let Err(error) = launch(&state.config, &format!("check={token}")) {
+        state.check = None;
+        state.status.state = "failed".into();
+        state.status.message = format!("Could not open the configured browser: {error}");
+        return Err(error.into());
+    }
     Ok(())
 }
 

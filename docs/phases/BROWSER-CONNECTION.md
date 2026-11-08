@@ -1,0 +1,7 @@
+# Browser connection diagnostics
+
+The ERLCX browser check uses Chrome Native Messaging. Apex Studio creates a short lived challenge, opens the configured Chromium profile, and waits for the extension to return that challenge through the registered `com.apexstudio.erlcx` host and the app's named pipe.
+
+The Settings page reports `checking` while waiting, `connected` after a valid one time response, and `failed` if the browser does not answer within 60 seconds or cannot be launched. The extension handoff page reports native messaging errors and detects when its module script cannot load or start.
+
+After changing extension files, reload the unpacked extension from `dist/erlcx-extension` in the configured browser profile, then run **Check connection** in Settings. The extension ID must match the ID saved in Apex Studio and the native host manifest's allowed origin.

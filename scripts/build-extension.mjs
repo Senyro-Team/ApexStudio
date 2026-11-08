@@ -16,6 +16,7 @@ const files = [
   "automation.js",
   "service-worker.js",
   "handoff.html",
+  "handoff-bootstrap.js",
   "handoff.css",
   "handoff.js",
   "creator-statistics.js",
