@@ -6,7 +6,7 @@ Apex Studio checks for updates when the desktop app starts. Users can also check
 
 Inno Setup remains the first-install download. When a GitHub Release is published, `.github/workflows/updater-assets.yml` builds a signed Tauri NSIS updater bundle, creates `latest.json`, and uploads both along with the signature to that release. The NSIS bundle includes the Chrome bridge and ERLCX extension resources needed by the installed app.
 
-The updater feed is the public `latest.json` asset on the latest GitHub Release. Releases published before the updater was added do not contain this asset. Therefore, the already published `v0.1.0` app cannot update itself; users need a later updater-enabled app installation before in-app updates can be received.
+The updater feed is the public `latest.json` asset on the latest GitHub Release. The already published `v0.1.0` app predates the updater and cannot update itself; `v0.1.1` is the first updater-enabled installation and can receive subsequent signed updates.
 
 ## Signing key
 
