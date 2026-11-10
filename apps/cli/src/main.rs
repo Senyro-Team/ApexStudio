@@ -1,7 +1,9 @@
 use apex_application::{
     ApplicationServices, PostSummary, QueueSnapshot, RobloxLiverySummary, TrashItem, UploadJob,
 };
-use apex_core::{AssetBoard, Error, Note, Project, ProjectInput, PublishingDraft, Vehicle};
+use apex_core::{
+    AssetBoard, Error, Note, Project, ProjectInput, PublishingDraft, PublishingInput, Vehicle,
+};
 use base64::Engine as _;
 use clap::{Parser, Subcommand};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -2269,6 +2271,7 @@ enum Screen {
     Trash,
     Posts,
     PostDetail,
+    PostEditor,
     RobloxQueue,
     RobloxCancelReview,
     RobloxLiveries,
@@ -2283,6 +2286,43 @@ struct RobloxBatchReviewState {
     upload_passes: usize,
     account_id: String,
     reupload: bool,
+}
+
+#[derive(Clone, Debug)]
+struct PostEditorState {
+    id: Option<String>,
+    revision: u64,
+    data: PublishingInput,
+    tags_text: String,
+    youtube_text: String,
+    active_field: usize,
+    cursor: usize,
+    return_to_detail: bool,
+    error: Option<String>,
+}
+
+impl PostEditorState {
+    fn new(
+        id: Option<String>,
+        revision: u64,
+        data: PublishingInput,
+        return_to_detail: bool,
+    ) -> Self {
+        let tags_text = data.tags.join(", ");
+        let youtube_text = data.youtube_url.clone().unwrap_or_default();
+        let cursor = data.title.len();
+        Self {
+            id,
+            revision,
+            data,
+            tags_text,
+            youtube_text,
+            active_field: 0,
+            cursor,
+            return_to_detail,
+            error: None,
+        }
+    }
 }
 
 struct TuiState {
@@ -2301,6 +2341,7 @@ struct TuiState {
     posts: Vec<PostSummary>,
     selected_post: Option<String>,
     post_detail: Option<PublishingDraft>,
+    post_editor: Option<PostEditorState>,
     upload_queue: Option<QueueSnapshot>,
     selected_batch: usize,
     queue_batches_focused: bool,
@@ -2331,6 +2372,7 @@ impl TuiState {
             posts: Vec::new(),
             selected_post: None,
             post_detail: None,
+            post_editor: None,
             upload_queue: None,
             selected_batch: 0,
             queue_batches_focused: true,
@@ -2497,9 +2539,31 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                     Screen::Posts => {
                         handle_posts_key(&mut state, key.code, &app).map_err(io::Error::other)?
                     }
+                    Screen::PostEditor
+                        if key.code == KeyCode::Char('s')
+                            && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        if let Err(error) = save_post_editor(&mut state, &app) {
+                            if let Some(editor) = &mut state.post_editor {
+                                editor.error = Some(error.to_string());
+                            }
+                        }
+                    }
+                    Screen::PostEditor => handle_post_editor_key(&mut state, key.code),
                     Screen::PostDetail => match key.code {
                         KeyCode::Esc | KeyCode::Backspace => state.screen = Screen::Posts,
                         KeyCode::Char('q') => state.screen = Screen::Home,
+                        KeyCode::Char('e') => {
+                            if let Some(draft) = state.post_detail.clone() {
+                                state.post_editor = Some(PostEditorState::new(
+                                    state.selected_post.clone(),
+                                    draft.revision,
+                                    draft.data,
+                                    true,
+                                ));
+                                state.screen = Screen::PostEditor;
+                            }
+                        }
                         _ => {}
                     },
                     Screen::RobloxQueue if !state.searching && key.code == KeyCode::Char('r') => {
@@ -2572,10 +2636,15 @@ fn refresh_trash(state: &mut TuiState, app: &ApplicationServices) -> Result<(), 
 }
 
 fn refresh_posts(state: &mut TuiState, app: &ApplicationServices) -> Result<(), Error> {
+    let selected_id = state
+        .visible_posts()
+        .get(state.selected)
+        .map(|post| post.id.clone());
     state.posts = app.posts()?;
-    state.selected = state
-        .selected
-        .min(state.visible_posts().len().saturating_sub(1));
+    let visible = state.visible_posts();
+    state.selected = selected_id
+        .and_then(|id| visible.iter().position(|post| post.id == id))
+        .unwrap_or_else(|| state.selected.min(visible.len().saturating_sub(1)));
     Ok(())
 }
 
@@ -2812,6 +2881,15 @@ fn handle_posts_key(
             state.selected = 0;
         }
         KeyCode::Char('/') => state.searching = true,
+        KeyCode::Char('n') => {
+            state.post_editor = Some(PostEditorState::new(
+                None,
+                0,
+                PublishingInput::default(),
+                false,
+            ));
+            state.screen = Screen::PostEditor;
+        }
         KeyCode::Up | KeyCode::Char('k') => state.selected = state.selected.saturating_sub(1),
         KeyCode::Down | KeyCode::Char('j') => {
             state.selected = (state.selected + 1).min(state.visible_posts().len().saturating_sub(1))
@@ -2828,6 +2906,125 @@ fn handle_posts_key(
         }
         _ => {}
     }
+    Ok(())
+}
+
+fn post_editor_value(editor: &PostEditorState) -> &str {
+    match editor.active_field {
+        0 => &editor.data.title,
+        1 => &editor.data.description,
+        2 => &editor.tags_text,
+        _ => &editor.youtube_text,
+    }
+}
+
+fn post_editor_value_mut(editor: &mut PostEditorState) -> &mut String {
+    match editor.active_field {
+        0 => &mut editor.data.title,
+        1 => &mut editor.data.description,
+        2 => &mut editor.tags_text,
+        _ => &mut editor.youtube_text,
+    }
+}
+
+fn handle_post_editor_key(state: &mut TuiState, key: KeyCode) {
+    let Some(editor) = &mut state.post_editor else {
+        state.screen = Screen::Posts;
+        return;
+    };
+    match key {
+        KeyCode::Esc => {
+            let return_to_detail = editor.return_to_detail;
+            state.post_editor = None;
+            state.screen = if return_to_detail {
+                Screen::PostDetail
+            } else {
+                Screen::Posts
+            };
+        }
+        KeyCode::Tab => {
+            editor.active_field = (editor.active_field + 1) % 4;
+            editor.cursor = post_editor_value(editor).len();
+            editor.error = None;
+        }
+        KeyCode::Enter if editor.active_field == 1 => {
+            let cursor = editor.cursor;
+            post_editor_value_mut(editor).insert(cursor, '\n');
+            editor.cursor += 1;
+            editor.error = None;
+        }
+        KeyCode::Enter => {
+            editor.active_field = (editor.active_field + 1) % 4;
+            editor.cursor = post_editor_value(editor).len();
+            editor.error = None;
+        }
+        KeyCode::Left => {
+            let value = post_editor_value(editor);
+            editor.cursor = value[..editor.cursor]
+                .char_indices()
+                .next_back()
+                .map_or(0, |(index, _)| index);
+        }
+        KeyCode::Right => {
+            let value = post_editor_value(editor);
+            if let Some(character) = value[editor.cursor..].chars().next() {
+                editor.cursor += character.len_utf8();
+            }
+        }
+        KeyCode::Home => editor.cursor = 0,
+        KeyCode::End => editor.cursor = post_editor_value(editor).len(),
+        KeyCode::Backspace if editor.cursor > 0 => {
+            let value = post_editor_value(editor);
+            let start = value[..editor.cursor]
+                .char_indices()
+                .next_back()
+                .map_or(0, |(index, _)| index);
+            let end = editor.cursor;
+            post_editor_value_mut(editor).replace_range(start..end, "");
+            editor.cursor = start;
+            editor.error = None;
+        }
+        KeyCode::Char(character) if !character.is_control() => {
+            let cursor = editor.cursor;
+            post_editor_value_mut(editor).insert(cursor, character);
+            editor.cursor += character.len_utf8();
+            editor.error = None;
+        }
+        _ => {}
+    }
+}
+
+fn save_post_editor(state: &mut TuiState, app: &ApplicationServices) -> Result<(), Error> {
+    let editor = state
+        .post_editor
+        .as_ref()
+        .ok_or_else(|| Error::InvalidContent("No ERLCX draft is open for editing.".into()))?;
+    let mut data = editor.data.clone();
+    data.tags = editor
+        .tags_text
+        .split(',')
+        .map(str::trim)
+        .filter(|tag| !tag.is_empty())
+        .map(str::to_owned)
+        .collect();
+    let youtube = editor.youtube_text.trim();
+    data.youtube_url = (!youtube.is_empty()).then(|| youtube.to_owned());
+    data.validate(false)?;
+
+    let (id, revision) = if let Some(id) = editor.id.as_deref() {
+        (id.to_owned(), editor.revision)
+    } else {
+        let id = app.create_post()?;
+        let revision = app.post(&id)?.revision;
+        (id, revision)
+    };
+    let saved = app.save_post(&id, revision, data)?;
+    let _ = app.release_post_image_pins(&id);
+    state.selected_post = Some(id);
+    state.post_detail = Some(saved);
+    state.post_editor = None;
+    state.screen = Screen::PostDetail;
+    refresh_posts(state, app)?;
     Ok(())
 }
 
@@ -3257,6 +3454,7 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Trash => draw_trash(frame, state, regions[1], accent, muted),
         Screen::Posts => draw_posts(frame, state, regions[1], accent, muted),
         Screen::PostDetail => draw_post_detail(frame, state, regions[1], accent, muted),
+        Screen::PostEditor => draw_post_editor(frame, state, regions[1], accent, muted),
         Screen::RobloxQueue => draw_roblox_queue(frame, state, regions[1], accent, muted),
         Screen::RobloxCancelReview => {
             draw_roblox_cancel_review(frame, state, regions[1], accent, muted)
@@ -3283,8 +3481,9 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Trash if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::Trash => " ↑/↓ Select   / Search   r Refresh   Esc Back ",
         Screen::Posts if state.searching => " Type to filter   Enter/Esc Finish search ",
-        Screen::Posts => " ↑/↓ Select   Enter Open   / Search   r Refresh   Esc Back ",
-        Screen::PostDetail => " Esc Back   q Home ",
+        Screen::Posts => " ↑/↓ Select   Enter Open   n New draft   / Search   r Refresh   Esc Back ",
+        Screen::PostDetail => " e Edit metadata   Esc Back   q Home ",
+        Screen::PostEditor => " Tab Next field   ←/→ Edit   Enter Next/new line   Ctrl+S Save   Esc Discard ",
         Screen::RobloxQueue if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::RobloxQueue if regions[2].width < 64 => {
             "Tab Focus · ↑↓ Select · p Pause\nt Retry · c Cancel · u Upload\n/ Search · r Refresh · Esc Back"
@@ -4010,6 +4209,99 @@ fn draw_post_detail(
     );
 }
 
+fn draw_post_editor(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let Some(editor) = &state.post_editor else {
+        frame.render_widget(
+            Paragraph::new("No ERLCX draft is open for editing.")
+                .block(Block::default().borders(Borders::ALL)),
+            area,
+        );
+        return;
+    };
+    let fields = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(4),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+        ])
+        .split(area);
+    let values = [
+        editor.data.title.as_str(),
+        editor.data.description.as_str(),
+        editor.tags_text.as_str(),
+        editor.youtube_text.as_str(),
+    ];
+    let labels = [
+        format!("Title · {}/50", editor.data.title.chars().count()),
+        format!(
+            "Description · {}/2000",
+            editor.data.description.chars().count()
+        ),
+        "Tags · comma-separated, up to 10".to_owned(),
+        format!(
+            "YouTube URL · {} preview image(s) · {} livery/liveries",
+            editor.data.media.len(),
+            editor.data.liveries.len()
+        ),
+    ];
+    for index in 0..4 {
+        let active = editor.active_field == index;
+        let shown = if active {
+            let cursor = editor.cursor.min(values[index].len());
+            format!("{}▏{}", &values[index][..cursor], &values[index][cursor..])
+        } else if values[index].is_empty() {
+            "(empty)".to_owned()
+        } else {
+            values[index].to_owned()
+        };
+        let title = if active {
+            format!("▶ {}", labels[index])
+        } else {
+            labels[index].clone()
+        };
+        frame.render_widget(
+            Paragraph::new(shown)
+                .block(
+                    Block::default()
+                        .title(title)
+                        .borders(Borders::ALL)
+                        .border_style(if active {
+                            Style::default().fg(accent)
+                        } else {
+                            Style::default().fg(muted)
+                        }),
+                )
+                .style(Style::default().fg(muted))
+                .wrap(Wrap { trim: true }),
+            fields[index],
+        );
+    }
+    let notice = editor
+        .error
+        .as_deref()
+        .unwrap_or("Ctrl+S saves this snapshot.");
+    frame.render_widget(
+        Paragraph::new(notice)
+            .block(Block::default().title("Validation").borders(Borders::ALL))
+            .style(Style::default().fg(if editor.error.is_some() {
+                Color::Red
+            } else {
+                muted
+            }))
+            .wrap(Wrap { trim: true }),
+        fields[4],
+    );
+}
+
 fn draw_roblox_queue(
     frame: &mut Frame<'_>,
     state: &TuiState,
@@ -4602,6 +4894,120 @@ mod tests {
     }
 
     #[test]
+    fn post_editor_creates_a_validated_snapshot_without_losing_multiline_fields() {
+        let directory = tempfile::tempdir().expect("temporary workspace directory");
+        let app = ApplicationServices::open(directory.path()).expect("open dummy workspace");
+        let mut state = TuiState::new(Vec::new());
+        state.screen = Screen::Posts;
+        handle_posts_key(&mut state, KeyCode::Char('n'), &app).expect("open new draft editor");
+        assert!(app.posts().expect("list drafts").is_empty());
+
+        for character in "Demo Livery Pack".chars() {
+            handle_post_editor_key(&mut state, KeyCode::Char(character));
+        }
+        handle_post_editor_key(&mut state, KeyCode::Tab);
+        for character in "First line".chars() {
+            handle_post_editor_key(&mut state, KeyCode::Char(character));
+        }
+        handle_post_editor_key(&mut state, KeyCode::Enter);
+        for character in "Second line".chars() {
+            handle_post_editor_key(&mut state, KeyCode::Char(character));
+        }
+        handle_post_editor_key(&mut state, KeyCode::Tab);
+        for character in "ems, highway patrol".chars() {
+            handle_post_editor_key(&mut state, KeyCode::Char(character));
+        }
+        handle_post_editor_key(&mut state, KeyCode::Tab);
+        for character in "https://youtu.be/example".chars() {
+            handle_post_editor_key(&mut state, KeyCode::Char(character));
+        }
+
+        save_post_editor(&mut state, &app).expect("save new draft");
+        let id = state
+            .selected_post
+            .as_deref()
+            .expect("selected saved draft");
+        let saved = app.post(id).expect("read saved draft");
+        assert_eq!(saved.data.title, "Demo Livery Pack");
+        assert_eq!(saved.data.description, "First line\nSecond line");
+        assert_eq!(saved.data.tags, ["ems", "highway patrol"]);
+        assert_eq!(
+            saved.data.youtube_url.as_deref(),
+            Some("https://youtu.be/example")
+        );
+        assert_eq!(state.screen, Screen::PostDetail);
+    }
+
+    #[test]
+    fn post_editor_keeps_invalid_content_open_for_correction() {
+        let directory = tempfile::tempdir().expect("temporary workspace directory");
+        let app = ApplicationServices::open(directory.path()).expect("open dummy workspace");
+        let mut state = TuiState::new(Vec::new());
+        state.post_editor = Some(PostEditorState::new(
+            None,
+            0,
+            PublishingInput {
+                title: "x".repeat(51),
+                ..Default::default()
+            },
+            false,
+        ));
+        state.screen = Screen::PostEditor;
+
+        assert!(save_post_editor(&mut state, &app).is_err());
+        assert_eq!(state.screen, Screen::PostEditor);
+        assert!(app.posts().expect("list drafts").is_empty());
+    }
+
+    #[test]
+    fn post_metadata_edit_preserves_existing_livery_codes() {
+        let directory = tempfile::tempdir().expect("temporary workspace directory");
+        let app = ApplicationServices::open(directory.path()).expect("open dummy workspace");
+        let id = app.create_post().expect("create source draft");
+        let empty = app.post(&id).expect("read source revision");
+        let initial = app
+            .save_post(
+                &id,
+                empty.revision,
+                PublishingInput {
+                    liveries: vec![apex_core::PublishingLivery {
+                        source: None,
+                        vehicle: "Falcon Interceptor Utility".into(),
+                        primary_color: "#FFFFFF".into(),
+                        secondary_color: None,
+                        opacity: 100,
+                        sides: vec![apex_core::PublishingSide {
+                            side: "Frontplate 1".into(),
+                            decal_id: "123456789".into(),
+                        }],
+                    }],
+                    ..Default::default()
+                },
+            )
+            .expect("save source livery code");
+        let mut state = TuiState::new(Vec::new());
+        state.screen = Screen::PostDetail;
+        state.selected_post = Some(id.clone());
+        state.post_detail = Some(initial.clone());
+        state.post_editor = Some(PostEditorState::new(
+            Some(id.clone()),
+            initial.revision,
+            initial.data,
+            true,
+        ));
+
+        for character in "Updated post title".chars() {
+            handle_post_editor_key(&mut state, KeyCode::Char(character));
+        }
+        save_post_editor(&mut state, &app).expect("save metadata change");
+        let saved = app.post(&id).expect("read edited draft");
+        assert_eq!(saved.data.title, "Updated post title");
+        assert_eq!(saved.data.liveries.len(), 1);
+        assert_eq!(saved.data.liveries[0].vehicle, "Falcon Interceptor Utility");
+        assert_eq!(saved.data.liveries[0].sides[0].decal_id, "123456789");
+    }
+
+    #[test]
     fn roblox_api_key_is_not_an_accepted_command_line_argument() {
         let error = Args::try_parse_from([
             "apex-studio-cli",
@@ -4652,6 +5058,7 @@ mod tests {
                 Screen::Trash,
                 Screen::Posts,
                 Screen::PostDetail,
+                Screen::PostEditor,
                 Screen::RobloxQueue,
                 Screen::RobloxCancelReview,
                 Screen::RobloxLiveries,
@@ -4691,6 +5098,16 @@ mod tests {
                     },
                     revision: 1,
                 });
+                state.post_editor = Some(PostEditorState::new(
+                    Some("post-1".into()),
+                    1,
+                    PublishingInput {
+                        title: "Dummy ERLCX post".into(),
+                        description: "Editor fixture".into(),
+                        ..Default::default()
+                    },
+                    true,
+                ));
                 state.upload_queue = Some(QueueSnapshot::default());
                 state.roblox_account_id = Some("123456789".into());
                 state.roblox_liveries = vec![RobloxLiverySummary {
