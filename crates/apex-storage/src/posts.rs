@@ -840,7 +840,7 @@ mod tests {
         ws.save_publishing(&p.id, 0, d).unwrap();
         ws.connection()
             .unwrap()
-            .execute_batch("DROP TABLE post_media;DROP TABLE posts;DROP TABLE project_sync;ALTER TABLE upload_jobs DROP COLUMN passes_required;ALTER TABLE managed_files DROP COLUMN local_available;PRAGMA user_version=8;")
+            .execute_batch("DROP TABLE post_markdown_media;DROP TABLE post_media;DROP TABLE posts;DROP TABLE project_sync;DROP TABLE shared_decal_codes;DROP TABLE roblox_group_revenue_passes;DROP TABLE roblox_group_revenue_sales;DROP TABLE roblox_group_revenue_groups;DROP TABLE media_library;DROP TABLE overlay_templates;DROP TABLE markdown_presets;DROP TABLE overlay_render_versions;DROP TABLE statistics_snapshots;DROP TABLE statistics_sales;ALTER TABLE upload_jobs DROP COLUMN passes_required;ALTER TABLE managed_files DROP COLUMN local_available;PRAGMA user_version=8;")
             .unwrap();
         let reopened = Workspace::open(dir.path().join("ws")).unwrap();
         assert_eq!(reopened.post(&p.id).unwrap().data.title, "Old post");

@@ -225,7 +225,7 @@ mod tests {
         ws.set_statistics_profile("123").unwrap();
         ws.connection()
             .unwrap()
-            .execute_batch("DROP TABLE statistics_sales;DROP TABLE project_sync;ALTER TABLE upload_jobs DROP COLUMN passes_required;ALTER TABLE managed_files DROP COLUMN local_available; PRAGMA user_version=10;")
+            .execute_batch("DROP TABLE post_markdown_media;DROP TABLE shared_decal_codes;DROP TABLE roblox_group_revenue_passes;DROP TABLE roblox_group_revenue_sales;DROP TABLE roblox_group_revenue_groups;DROP TABLE media_library;DROP TABLE overlay_templates;DROP TABLE markdown_presets;DROP TABLE overlay_render_versions;DROP TABLE statistics_sales;DROP TABLE project_sync;ALTER TABLE upload_jobs DROP COLUMN passes_required;ALTER TABLE managed_files DROP COLUMN local_available; PRAGMA user_version=10;")
             .unwrap();
         drop(ws);
         let reopened = Workspace::open(dir.path()).unwrap();
