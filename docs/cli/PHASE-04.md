@@ -10,12 +10,13 @@ Status: In progress.
 - `roblox liveries --account-id <ID>` and `roblox queue` expose read-only account-specific livery coverage and persisted queue state. These commands do not start network transfers or perform startup recovery.
 - `roblox batch start` creates an explicitly confirmed durable batch; pause/resume/cancel/retry controls operate on the shared queue. The existing desktop worker handles network requests while the desktop app is running, using credentials configured in Settings.
 - `roblox double-upload --enable|--disable` changes the persisted preference used by future batches.
-- Disposable integration coverage checks multi-post Markdown output, escaping, no-overwrite, livery listing, queue creation/pause, and the double-upload preference without any live Roblox requests.
+- The TUI includes searchable ERLCX draft and Roblox queue views, with post snapshot details, batch status, texture pass state, and both decal IDs.
+- Disposable integration coverage checks multi-post Markdown output, escaping, no-overwrite, livery listing, queue creation/pause, and the double-upload preference without any live Roblox requests. TUI rendering coverage includes the new screens at compact and standard widths.
 
 ## Current limitations
 
 - Roblox credential configuration and an upload worker that can run without the desktop app have not been implemented in the CLI yet. A CLI-created batch is durable, but it waits for the existing desktop worker.
-- Drafts can be edited through typed JSON files; interactive selection/editing and preview image ordering in the TUI remain to be added.
+- Drafts can be edited through typed JSON files; the new TUI draft and queue views are currently read-only.
 - `.apexpublish` export is available; a CLI importer and direct Chrome bridge handoff are not yet available.
 - The planned Chrome path is confirmed: request a handoff through the running desktop bridge; retain `.apexpublish` as the manual fallback.
 
@@ -45,7 +46,7 @@ Status: In progress.
 3. Add hidden credential configuration and double-upload preference commands; verify no secret appears in stdout/stderr or process arguments and failed validation leaves previous credentials intact.
 4. Add batch preview/confirm/start and queue controls with offline mock transport tests, including retries, throttling, interrupted operations, account changes, and pass-one/pass-two behavior.
 5. Add ERLCX draft commands, PNG media import, source-staleness review, `.apexpublish` import/export and the supported Chrome bridge request.
-6. Add searchable TUI views and selection workflows for Roblox and ERLCX; test rendering, filtering, multi-selection and confirmations in PTY and test backends.
+6. ~~Add searchable TUI views and selection workflows for Roblox and ERLCX.~~ Read-only searchable draft/queue views are implemented; TUI selection workflows and confirmation actions remain for future iteration.
 7. Run debug/release checks, application and desktop adapter checks, and all mock/disposable workspace tests. Do not perform a live Roblox upload or ERLCX submission as part of routine verification.
 
 ## Exit gate

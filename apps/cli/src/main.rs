@@ -1,5 +1,5 @@
-use apex_application::{ApplicationServices, TrashItem};
-use apex_core::{AssetBoard, Error, Note, Project, ProjectInput, Vehicle};
+use apex_application::{ApplicationServices, PostSummary, QueueSnapshot, TrashItem, UploadJob};
+use apex_core::{AssetBoard, Error, Note, Project, ProjectInput, PublishingDraft, Vehicle};
 use base64::Engine as _;
 use clap::{Parser, Subcommand};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
@@ -2105,6 +2105,9 @@ enum Screen {
     AssetProjects,
     Assets,
     Trash,
+    Posts,
+    PostDetail,
+    RobloxQueue,
 }
 
 struct TuiState {
@@ -2120,6 +2123,10 @@ struct TuiState {
     selected_asset_project: Option<String>,
     selected_asset: usize,
     trash: Vec<TrashItem>,
+    posts: Vec<PostSummary>,
+    selected_post: Option<String>,
+    post_detail: Option<PublishingDraft>,
+    upload_queue: Option<QueueSnapshot>,
     no_color: bool,
 }
 
@@ -2138,6 +2145,10 @@ impl TuiState {
             selected_asset_project: None,
             selected_asset: 0,
             trash: Vec::new(),
+            posts: Vec::new(),
+            selected_post: None,
+            post_detail: None,
+            upload_queue: None,
             no_color: std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty()),
         }
     }
@@ -2173,6 +2184,33 @@ impl TuiState {
             })
             .collect()
     }
+
+    fn visible_posts(&self) -> Vec<&PostSummary> {
+        let query = self.search.to_lowercase();
+        self.posts
+            .iter()
+            .filter(|post| {
+                query.is_empty()
+                    || post.title.to_lowercase().contains(&query)
+                    || post.id.to_lowercase().contains(&query)
+            })
+            .collect()
+    }
+
+    fn visible_upload_jobs(&self) -> Vec<&UploadJob> {
+        let query = self.search.to_lowercase();
+        self.upload_queue
+            .iter()
+            .flat_map(|queue| queue.jobs.iter())
+            .filter(|job| {
+                query.is_empty()
+                    || job.name.to_lowercase().contains(&query)
+                    || job.account_id.to_lowercase().contains(&query)
+                    || job.state.to_lowercase().contains(&query)
+                    || job.message.to_lowercase().contains(&query)
+            })
+            .collect()
+    }
 }
 
 fn run_tui(app: ApplicationServices) -> io::Result<()> {
@@ -2192,7 +2230,7 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                             state.selected = state.selected.saturating_sub(1)
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
-                            state.selected = (state.selected + 1).min(4)
+                            state.selected = (state.selected + 1).min(6)
                         }
                         KeyCode::Enter if state.selected == 0 => {
                             state.screen = Screen::Projects;
@@ -2213,6 +2251,16 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                             state.screen = Screen::Trash;
                             state.selected = 0;
                             refresh_trash(&mut state, &app).map_err(io::Error::other)?;
+                        }
+                        KeyCode::Enter if state.selected == 4 => {
+                            state.screen = Screen::Posts;
+                            state.selected = 0;
+                            refresh_posts(&mut state, &app).map_err(io::Error::other)?;
+                        }
+                        KeyCode::Enter if state.selected == 5 => {
+                            state.screen = Screen::RobloxQueue;
+                            state.selected = 0;
+                            refresh_upload_queue(&mut state, &app).map_err(io::Error::other)?;
                         }
                         KeyCode::Enter => break Ok(()),
                         _ => {}
@@ -2239,6 +2287,21 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         refresh_trash(&mut state, &app).map_err(io::Error::other)?;
                     }
                     Screen::Trash => handle_trash_key(&mut state, key.code),
+                    Screen::Posts if !state.searching && key.code == KeyCode::Char('r') => {
+                        refresh_posts(&mut state, &app).map_err(io::Error::other)?;
+                    }
+                    Screen::Posts => {
+                        handle_posts_key(&mut state, key.code, &app).map_err(io::Error::other)?
+                    }
+                    Screen::PostDetail => match key.code {
+                        KeyCode::Esc | KeyCode::Backspace => state.screen = Screen::Posts,
+                        KeyCode::Char('q') => state.screen = Screen::Home,
+                        _ => {}
+                    },
+                    Screen::RobloxQueue if !state.searching && key.code == KeyCode::Char('r') => {
+                        refresh_upload_queue(&mut state, &app).map_err(io::Error::other)?;
+                    }
+                    Screen::RobloxQueue => handle_queue_key(&mut state, key.code),
                     Screen::Detail => match key.code {
                         KeyCode::Esc | KeyCode::Backspace => state.screen = Screen::Projects,
                         KeyCode::Char('q') => break Ok(()),
@@ -2285,6 +2348,100 @@ fn refresh_trash(state: &mut TuiState, app: &ApplicationServices) -> Result<(), 
         .selected
         .min(state.visible_trash().len().saturating_sub(1));
     Ok(())
+}
+
+fn refresh_posts(state: &mut TuiState, app: &ApplicationServices) -> Result<(), Error> {
+    state.posts = app.posts()?;
+    state.selected = state
+        .selected
+        .min(state.visible_posts().len().saturating_sub(1));
+    Ok(())
+}
+
+fn refresh_upload_queue(state: &mut TuiState, app: &ApplicationServices) -> Result<(), Error> {
+    state.upload_queue = Some(app.upload_queue()?);
+    state.selected = state
+        .selected
+        .min(state.visible_upload_jobs().len().saturating_sub(1));
+    Ok(())
+}
+
+fn handle_posts_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    if state.searching {
+        match key {
+            KeyCode::Esc | KeyCode::Enter => state.searching = false,
+            KeyCode::Backspace => {
+                state.search.pop();
+                state.selected = 0;
+            }
+            KeyCode::Char(value) if !value.is_control() => {
+                state.search.push(value);
+                state.selected = 0;
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
+    match key {
+        KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
+            state.screen = Screen::Home;
+            state.search.clear();
+            state.selected = 0;
+        }
+        KeyCode::Char('/') => state.searching = true,
+        KeyCode::Up | KeyCode::Char('k') => state.selected = state.selected.saturating_sub(1),
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.selected = (state.selected + 1).min(state.visible_posts().len().saturating_sub(1))
+        }
+        KeyCode::Enter => {
+            state.selected_post = state
+                .visible_posts()
+                .get(state.selected)
+                .map(|post| post.id.clone());
+            if let Some(id) = state.selected_post.as_deref() {
+                state.post_detail = Some(app.post(id)?);
+                state.screen = Screen::PostDetail;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn handle_queue_key(state: &mut TuiState, key: KeyCode) {
+    if state.searching {
+        match key {
+            KeyCode::Esc | KeyCode::Enter => state.searching = false,
+            KeyCode::Backspace => {
+                state.search.pop();
+                state.selected = 0;
+            }
+            KeyCode::Char(value) if !value.is_control() => {
+                state.search.push(value);
+                state.selected = 0;
+            }
+            _ => {}
+        }
+        return;
+    }
+    match key {
+        KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
+            state.screen = Screen::Home;
+            state.search.clear();
+            state.selected = 0;
+        }
+        KeyCode::Char('/') => state.searching = true,
+        KeyCode::Up | KeyCode::Char('k') => state.selected = state.selected.saturating_sub(1),
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.selected =
+                (state.selected + 1).min(state.visible_upload_jobs().len().saturating_sub(1))
+        }
+        _ => {}
+    }
 }
 
 fn handle_project_key(state: &mut TuiState, key: KeyCode) {
@@ -2601,6 +2758,9 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::AssetProjects => draw_asset_projects(frame, state, regions[1], accent, muted),
         Screen::Assets => draw_assets(frame, state, regions[1], accent, muted),
         Screen::Trash => draw_trash(frame, state, regions[1], accent, muted),
+        Screen::Posts => draw_posts(frame, state, regions[1], accent, muted),
+        Screen::PostDetail => draw_post_detail(frame, state, regions[1], accent, muted),
+        Screen::RobloxQueue => draw_roblox_queue(frame, state, regions[1], accent, muted),
     }
     let footer = match state.screen {
         Screen::Home => " ↑/↓ Select   Enter Open   q Quit ",
@@ -2618,6 +2778,11 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Assets => " ↑/↓ Select   / Search   r Refresh   Esc Projects ",
         Screen::Trash if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::Trash => " ↑/↓ Select   / Search   r Refresh   Esc Back ",
+        Screen::Posts if state.searching => " Type to filter   Enter/Esc Finish search ",
+        Screen::Posts => " ↑/↓ Select   Enter Open   / Search   r Refresh   Esc Back ",
+        Screen::PostDetail => " Esc Back   q Home ",
+        Screen::RobloxQueue if state.searching => " Type to filter   Enter/Esc Finish search ",
+        Screen::RobloxQueue => " ↑/↓ Select   / Search   r Refresh   Esc Back ",
     };
     frame.render_widget(
         Paragraph::new(footer)
@@ -2643,9 +2808,11 @@ fn draw_home(
         ListItem::new("Notes"),
         ListItem::new("Assets"),
         ListItem::new("Trash"),
+        ListItem::new("ERLCX drafts"),
+        ListItem::new("Roblox uploads"),
         ListItem::new("Quit"),
     ];
-    let mut list_state = ListState::default().with_selected(Some(state.selected.min(4)));
+    let mut list_state = ListState::default().with_selected(Some(state.selected.min(6)));
     frame.render_stateful_widget(
         List::new(items)
             .block(Block::default().title("Menu").borders(Borders::ALL))
@@ -2655,11 +2822,13 @@ fn draw_home(
         &mut list_state,
     );
     frame.render_widget(
-        Paragraph::new(match state.selected.min(4) {
-            0 => "Create, inspect, edit, archive, and search projects.",
-            1 => "Open project and general Markdown notes.",
-            2 => "Browse project folders, liveries, and files.",
-            3 => "Review and recover deleted project assets.",
+        Paragraph::new(match state.selected.min(6) {
+            0 => "Browse, search, and inspect project records.",
+            1 => "Browse and read project or general notes.",
+            2 => "Inspect project folders, liveries, and files.",
+            3 => "Browse deleted project assets.",
+            4 => "Browse global ERLCX post drafts and their saved snapshots.",
+            5 => "Inspect Roblox upload batches and texture processing status.",
             _ => "Close the terminal workspace.",
         })
         .block(Block::default().title("Apex Studio").borders(Borders::ALL))
@@ -3167,6 +3336,273 @@ fn draw_trash(
     );
 }
 
+fn draw_posts(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let (list_area, detail_area) = if area.width < 88 {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
+            .split(area);
+        (split[0], split[1])
+    } else {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+            .split(area);
+        (split[0], split[1])
+    };
+    let visible = state.visible_posts();
+    let items = visible
+        .iter()
+        .map(|post| {
+            ListItem::new(format!(
+                "{} · {} livery/liveries · rev {}",
+                post.title, post.liveries, post.revision
+            ))
+        })
+        .collect::<Vec<_>>();
+    let mut list_state = ListState::default()
+        .with_selected((!visible.is_empty()).then(|| state.selected.min(visible.len() - 1)));
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(
+                Block::default()
+                    .title(format!("ERLCX drafts · {}", visible.len()))
+                    .borders(Borders::ALL),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        list_area,
+        &mut list_state,
+    );
+    let detail = visible.get(state.selected.min(visible.len().saturating_sub(1)));
+    let lines = if let Some(post) = detail {
+        vec![
+            Line::styled(
+                &post.title,
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Line::raw(format!("{} livery/liveries", post.liveries)),
+            Line::raw(format!(
+                "Revision {} · updated {}",
+                post.revision, post.updated_at
+            )),
+            Line::raw(format!("ID: {}", post.id)),
+            Line::raw(""),
+            Line::raw("Press Enter to inspect the saved post snapshot."),
+        ]
+    } else {
+        vec![Line::raw(if state.posts.is_empty() {
+            "No ERLCX drafts."
+        } else {
+            "No drafts match this search."
+        })]
+    };
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().title("Selection").borders(Borders::ALL))
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        detail_area,
+    );
+}
+
+fn draw_post_detail(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let Some(draft) = &state.post_detail else {
+        frame.render_widget(
+            Paragraph::new("This draft is no longer available.")
+                .block(Block::default().borders(Borders::ALL)),
+            area,
+        );
+        return;
+    };
+    let mut lines = vec![
+        Line::styled(
+            draft.data.title.as_str(),
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ),
+        Line::raw(format!("Revision {}", draft.revision)),
+        Line::raw(""),
+        Line::raw(draft.data.description.as_str()),
+        Line::raw(""),
+        Line::raw(format!(
+            "Tags: {}",
+            if draft.data.tags.is_empty() {
+                "—".to_owned()
+            } else {
+                draft.data.tags.join(", ")
+            }
+        )),
+        Line::raw(format!(
+            "Preview images: {} · YouTube: {}",
+            draft.data.media.len(),
+            draft.data.youtube_url.as_deref().unwrap_or("—")
+        )),
+        Line::raw(""),
+    ];
+    for (index, livery) in draft.data.liveries.iter().enumerate() {
+        lines.push(Line::styled(
+            format!("{}. {}", index + 1, livery.vehicle),
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ));
+        for side in &livery.sides {
+            lines.push(Line::raw(format!(
+                "   {}: {}",
+                side.side,
+                if side.decal_id.is_empty() {
+                    "Not uploaded"
+                } else {
+                    side.decal_id.as_str()
+                }
+            )));
+        }
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title("Saved ERLCX snapshot")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
+fn draw_roblox_queue(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(36), Constraint::Percentage(64)])
+        .split(area);
+    let job_sections = if sections[1].width < 88 {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
+            .split(sections[1])
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .split(sections[1])
+    };
+    let batches = state
+        .upload_queue
+        .as_ref()
+        .map(|queue| {
+            queue
+                .batches
+                .iter()
+                .map(|batch| {
+                    ListItem::new(format!(
+                        "{} · {} · account {}",
+                        batch.id, batch.state, batch.account_id
+                    ))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    frame.render_widget(
+        List::new(batches).block(
+            Block::default()
+                .title("Upload batches")
+                .borders(Borders::ALL),
+        ),
+        sections[0],
+    );
+
+    let visible = state.visible_upload_jobs();
+    let items = visible
+        .iter()
+        .map(|job| {
+            ListItem::new(format!(
+                "{} · {} · pass {}/{}",
+                job.name, job.state, job.pass, job.passes_required
+            ))
+        })
+        .collect::<Vec<_>>();
+    let mut list_state = ListState::default()
+        .with_selected((!visible.is_empty()).then(|| state.selected.min(visible.len() - 1)));
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(
+                Block::default()
+                    .title(format!("Texture jobs · {}", visible.len()))
+                    .borders(Borders::ALL),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        job_sections[0],
+        &mut list_state,
+    );
+    if let Some(job) = visible.get(state.selected.min(visible.len().saturating_sub(1))) {
+        let details = vec![
+            Line::styled(
+                &job.name,
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Line::raw(format!(
+                "State: {} · pass {}/{}",
+                job.state, job.pass, job.passes_required
+            )),
+            Line::raw(format!("Account: {}", job.account_id)),
+            Line::raw(format!(
+                "First decal ID: {}",
+                job.first_id.as_deref().unwrap_or("—")
+            )),
+            Line::raw(format!(
+                "Second decal ID: {}",
+                job.second_id.as_deref().unwrap_or("—")
+            )),
+            Line::raw(job.message.as_str()),
+        ];
+        frame.render_widget(
+            Paragraph::new(details)
+                .block(Block::default().title("Selected job").borders(Borders::ALL))
+                .style(Style::default().fg(muted))
+                .wrap(Wrap { trim: true }),
+            job_sections[1],
+        );
+    } else {
+        let message = if state.visible_upload_jobs().is_empty() {
+            if state
+                .upload_queue
+                .as_ref()
+                .is_some_and(|queue| queue.jobs.is_empty())
+            {
+                "No texture jobs yet."
+            } else {
+                "No texture jobs match this search."
+            }
+        } else {
+            "Select a texture job to inspect its status."
+        };
+        frame.render_widget(
+            Paragraph::new(message)
+                .block(Block::default().title("Selected job").borders(Borders::ALL))
+                .style(Style::default().fg(muted)),
+            job_sections[1],
+        );
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
@@ -3235,6 +3671,54 @@ mod tests {
     }
 
     #[test]
+    fn phase_four_views_filter_posts_and_upload_jobs() {
+        let mut state = TuiState::new(Vec::new());
+        state.posts = vec![
+            PostSummary {
+                id: "post-1".into(),
+                title: "Highway Patrol".into(),
+                updated_at: String::new(),
+                revision: 1,
+                liveries: 1,
+            },
+            PostSummary {
+                id: "post-2".into(),
+                title: "Fire Rescue".into(),
+                updated_at: String::new(),
+                revision: 1,
+                liveries: 2,
+            },
+        ];
+        state.upload_queue = Some(QueueSnapshot {
+            jobs: vec![UploadJob {
+                id: "job-1".into(),
+                account_id: "123456".into(),
+                hash: "a".repeat(64),
+                name: "Patrol Left".into(),
+                state: "processing".into(),
+                pass: 2,
+                passes_required: 2,
+                next_at: 0,
+                message: "Waiting for Roblox".into(),
+                operation: Some("operations/demo".into()),
+                first_id: Some("111".into()),
+                second_id: None,
+                moderation: "unknown".into(),
+                generation: 1,
+                poll_attempts: 1,
+            }],
+            ..Default::default()
+        });
+
+        state.search = "patrol".into();
+        assert_eq!(state.visible_posts().len(), 1);
+        assert_eq!(state.visible_upload_jobs().len(), 1);
+        state.search = "fire".into();
+        assert_eq!(state.visible_posts().len(), 1);
+        assert!(state.visible_upload_jobs().is_empty());
+    }
+
+    #[test]
     fn phase_two_screens_render_in_compact_and_wide_terminals() {
         let project = Project {
             id: "project-1".into(),
@@ -3268,6 +3752,9 @@ mod tests {
                 Screen::AssetProjects,
                 Screen::Assets,
                 Screen::Trash,
+                Screen::Posts,
+                Screen::PostDetail,
+                Screen::RobloxQueue,
             ] {
                 let backend = TestBackend::new(width, height);
                 let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
@@ -3277,6 +3764,33 @@ mod tests {
                 state.selected_project = Some(project.id.clone());
                 state.selected_note = Some(note.id.clone());
                 state.selected_asset_project = Some(project.id.clone());
+                state.posts = vec![PostSummary {
+                    id: "post-1".into(),
+                    title: "Dummy ERLCX post".into(),
+                    updated_at: "2026-11-08".into(),
+                    revision: 1,
+                    liveries: 1,
+                }];
+                state.post_detail = Some(PublishingDraft {
+                    data: apex_core::PublishingInput {
+                        title: "Dummy ERLCX post".into(),
+                        description: "Fixture description".into(),
+                        liveries: vec![apex_core::PublishingLivery {
+                            source: None,
+                            vehicle: "Fixture vehicle".into(),
+                            primary_color: "#FFFFFF".into(),
+                            secondary_color: None,
+                            opacity: 100,
+                            sides: vec![apex_core::PublishingSide {
+                                side: "Left 1".into(),
+                                decal_id: "123456".into(),
+                            }],
+                        }],
+                        ..Default::default()
+                    },
+                    revision: 1,
+                });
+                state.upload_queue = Some(QueueSnapshot::default());
                 state.asset_board = Some(AssetBoard {
                     assets: Vec::new(),
                     folders: Vec::new(),

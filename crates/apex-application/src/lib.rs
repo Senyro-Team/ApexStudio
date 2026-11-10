@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 pub use apex_storage::{
     LiveryUploads, PackagePreview, PostSourceStatus, PostSummary, QueueSnapshot,
-    RobloxLiverySummary, TrashItem, TrashPreview,
+    RobloxLiverySummary, TrashItem, TrashPreview, UploadJob,
 };
 
 #[derive(Clone)]
