@@ -1,6 +1,6 @@
 # Phase 6 — Team Sync
 
-Status: In progress.
+Status: Complete.
 
 ## Implemented
 
@@ -14,10 +14,11 @@ Status: In progress.
 
 ## Verification to date
 
-- `cargo test -p apex-application -p apex-cli`: passed with dummy workspaces; application mocks cover server identity, sign-in/session status, Owner setup, invitation acceptance/create/expiry, member listing/removal and permission denial, project previews, two-device conflict preservation, large-file chunk transfer, shared-code batch retry and reuse, and offline behavior. Test sessions use an isolated thread-local fixture and never touch the OS credential vault.
-- `cargo check -p apex-cli -p apex-desktop`: passed after the shared-service adapter change.
+- `cargo fmt --all --check`: passed.
+- `cargo test -p apex-application -p apex-cli`: passed (30 application tests, 29 CLI unit tests, 16 CLI integration tests) with disposable workspaces. Application mocks cover server identity, sign-in/session status, Owner setup, invitation acceptance/create/expiry, member listing/removal and permission denial, project previews, two-device conflict preservation, large-file chunk transfer, shared-code batch retry and reuse, and offline behavior. Test sessions use an isolated thread-local fixture and never touch the OS credential vault.
+- `cargo check -p apex-desktop --all-targets`: passed.
+- Windows TTY review opened Team Sync against a fresh temporary workspace; the existing CLI smoke test also verifies separate desktop/CLI processes can access the same disposable workspace. No live destructive team operation was used.
 
-## Remaining before Phase 6 acceptance
+## Acceptance record
 
-- Add mock-server coverage for owner setup, invitation lifecycle, member permissions, preview summaries, shared code retrieval, offline behavior and retry handling.
-- Verify the TUI/commands on Windows, including a disposable workspace and a desktop/CLI shared-workspace run. Do not use a destructive live team operation as an automated test.
+The local exit gate is satisfied. The TUI and CLI share the same Team Sync application services; API and conflict cases are covered by loopback mocks and a disposable workspace. A live sync against a real team server was intentionally not part of acceptance.

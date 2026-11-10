@@ -1,6 +1,6 @@
 # Apex Studio CLI Roadmap
 
-Status: Phases 1–5 are complete; Phase 6 (Team Sync) is in progress; Phase 7 (MCP contract and release hardening) remains.
+Status: Phases 1–6 are complete; Phase 7 (MCP contract and release hardening) is in progress.
 
 ## Product shape
 
@@ -79,9 +79,9 @@ See [Phase 5 acceptance record](PHASE-05.md#acceptance-record) for the Windows t
 
 ### Phase 6 — Team Sync (in progress)
 
-- The shared `apex-application::team_sync` service now owns API identity/status, owner setup, Credential Manager sessions, invitation acceptance/creation, member listing/removal, project bindings, chunked project transfer, conflict resolution, streamed livery previews and shared Roblox decal codes. The desktop Tauri module is now an adapter to those services.
+- **Complete:** the shared `apex-application::team_sync` service owns API identity/status, owner setup, Credential Manager sessions, invitation acceptance/creation, member listing/removal, project bindings, chunked project transfer, conflict resolution, streamed livery previews and shared Roblox decal codes. The desktop Tauri module is now an adapter to those services. Loopback mocks cover authentication and team workflows; the interactive TUI shows project/member state, links/unlinks projects, syncs, and reviews/resolves conflicts.
 - CLI commands cover `sync check`, `setup`, `status`, `sign-in`, `accept-invitation`, `invite`, `members`, `remove-member`, `projects`, `bindings`, `link`, `unlink`, `run`, `resolve`, `codes` and `disconnect`. Sync and destructive actions show their target and require confirmation; passwords and bootstrap/invitation acceptance secrets use non-echoing prompts rather than command-line arguments or JSON output.
-- The TUI now shows Team Sync server/account/team status, searchable remote projects, members, confirmed project linking/unlinking, confirmed team sync, and a per-project sync report with conflict details and separately confirmed local/server resolution. Remaining: broaden mock-server coverage for auth/member/preview flows, verify CLI and desktop behavior together on Windows, and complete the Phase 6 exit gate.
+- Windows verification passed with a fresh disposable TUI workspace, application/CLI tests, and `cargo check -p apex-desktop --all-targets`; no real team data was modified during automated tests.
 - Keep credentials in the OS credential store; show account/team/target summaries before sync or member removal.
 
 **Exit gate:** Local mock-server cases cover invite expiry, role access, offline state, project conflict, retry and shared-code reuse. No live destructive team action is part of automated verification.
