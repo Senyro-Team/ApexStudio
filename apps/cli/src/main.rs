@@ -4191,6 +4191,9 @@ struct TuiState {
     team_sync_confirm_binding: bool,
     team_sync_pending_project: Option<String>,
     team_sync_confirm_sync: bool,
+    team_sync_report: Option<apex_application::team_sync::project::SyncReport>,
+    team_sync_view_report: bool,
+    team_sync_report_selected: usize,
     team_sync_worker_active: bool,
     team_sync_status_message: Option<(String, bool)>,
     group_revenue: Option<RobloxGroupRevenueData>,
@@ -4272,6 +4275,9 @@ impl TuiState {
             team_sync_confirm_binding: false,
             team_sync_pending_project: None,
             team_sync_confirm_sync: false,
+            team_sync_report: None,
+            team_sync_view_report: false,
+            team_sync_report_selected: 0,
             team_sync_worker_active: false,
             team_sync_status_message: None,
             group_revenue: None,
@@ -4899,6 +4905,7 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                     }
                     match result {
                         Ok(report) => {
+                            state.team_sync_report_selected = 0;
                             state.team_sync_status_message = Some((
                                 format!(
                                     "{} checked · {} uploaded · {} downloaded · {} up to date",
@@ -4909,6 +4916,7 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                                 ),
                                 report.errors.is_empty(),
                             ));
+                            state.team_sync_report = Some(report);
                         }
                         Err(error) => {
                             state.team_sync_status_message = Some((error, false));
@@ -7583,6 +7591,7 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::TeamSync if state.team_sync_selecting_local => " ↑/↓ Select local project   / Search   Enter Continue   Esc Cancel ",
         Screen::TeamSync if state.team_sync_confirm_binding => " y Confirm project change   n/Esc Cancel ",
         Screen::TeamSync if state.team_sync_confirm_sync => " y Synchronize reviewed team   n/Esc Cancel ",
+        Screen::TeamSync if state.team_sync_view_report => " ↑/↓ Review sync results   Esc Close ",
         Screen::TeamSync if state.team_sync_worker_active => " Working…   Esc Back to menu ",
         Screen::TeamSync if state.team_sync_panel == TeamSyncPanel::Members => " Tab Projects   ↑/↓ Members   / Search   r Refresh   Esc Back ",
         Screen::TeamSync => " Tab Members   [ / ] Team   / Search   l Link   u Unlink   r Refresh   s Sync   Esc Back ",
@@ -7869,6 +7878,26 @@ fn handle_team_sync_key(
         }
         return;
     }
+    if state.team_sync_view_report {
+        let length = state
+            .team_sync_report
+            .as_ref()
+            .map_or(0, |report| report.entries.len());
+        match key {
+            KeyCode::Esc | KeyCode::Char('v') => state.team_sync_view_report = false,
+            KeyCode::Up | KeyCode::Char('k') => {
+                state.team_sync_report_selected = state.team_sync_report_selected.saturating_sub(1);
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                state.team_sync_report_selected = state
+                    .team_sync_report_selected
+                    .saturating_add(1)
+                    .min(length.saturating_sub(1));
+            }
+            _ => {}
+        }
+        return;
+    }
     if state.team_sync_selecting_local {
         match key {
             KeyCode::Esc => {
@@ -8051,6 +8080,10 @@ fn handle_team_sync_key(
                 }) =>
         {
             state.team_sync_confirm_sync = true;
+        }
+        KeyCode::Char('v') if state.team_sync_report.is_some() => {
+            state.team_sync_view_report = true;
+            state.team_sync_report_selected = 0;
         }
         KeyCode::Char('l') | KeyCode::Char('u') if !state.team_sync_worker_active => {
             let unlink = key == KeyCode::Char('u');
@@ -8389,6 +8422,78 @@ fn draw_team_sync(
                 .block(
                     Block::default()
                         .title("Confirm project link")
+                        .borders(Borders::ALL),
+                )
+                .wrap(Wrap { trim: true }),
+            overlay,
+        );
+    }
+    if state.team_sync_view_report {
+        let width = area.width.saturating_sub(4).min(82);
+        let height = area.height.saturating_sub(2).min(14);
+        let overlay = ratatui::layout::Rect {
+            x: area.x + area.width.saturating_sub(width) / 2,
+            y: area.y + area.height.saturating_sub(height) / 2,
+            width,
+            height,
+        };
+        let report = state.team_sync_report.as_ref();
+        let entries = report.map_or(&[][..], |report| report.entries.as_slice());
+        let selected_entry = entries.get(state.team_sync_report_selected);
+        let mut lines = vec![Line::from(report.map_or_else(
+            || "No sync report is available".to_owned(),
+            |report| {
+                format!(
+                "{} checked · {} uploaded · {} downloaded · {} already up to date · {} issue(s)",
+                report.checked,
+                report.uploaded,
+                report.downloaded,
+                report.up_to_date,
+                report.errors.len()
+            )
+            },
+        ))];
+        lines.push(Line::styled(
+            format!(
+                "Result {} of {}",
+                state.team_sync_report_selected.saturating_add(1),
+                entries.len()
+            ),
+            Style::default().fg(muted),
+        ));
+        if let Some(entry) = selected_entry {
+            lines.push(Line::styled(
+                format!("{} · {}", entry.status, single_line(&entry.project_name)),
+                Style::default().fg(if entry.status == "error" {
+                    Color::LightRed
+                } else {
+                    accent
+                }),
+            ));
+            lines.push(Line::from(format!(
+                "Project ID: {}",
+                single_line(&entry.project_id)
+            )));
+            lines.push(Line::from(single_line(&entry.message)));
+            if entry.message.to_lowercase().contains("conflict") {
+                lines.push(Line::styled(
+                    "Resolve with `apex-studio-cli sync resolve --project <ID> --use-server` or `--use-local`.",
+                    Style::default().fg(muted),
+                ));
+            }
+        } else {
+            lines.push(Line::from("No project entries were returned."));
+        }
+        lines.push(Line::styled(
+            "↑/↓ Select result   Esc Close",
+            Style::default().fg(accent),
+        ));
+        frame.render_widget(Clear, overlay);
+        frame.render_widget(
+            Paragraph::new(lines)
+                .block(
+                    Block::default()
+                        .title("Last sync report")
                         .borders(Borders::ALL),
                 )
                 .wrap(Wrap { trim: true }),
@@ -11161,6 +11266,26 @@ mod tests {
             terminal
                 .draw(|frame| draw(frame, &state))
                 .expect("render project link confirmation");
+            state.team_sync_confirm_binding = false;
+            state.team_sync_report = Some(apex_application::team_sync::project::SyncReport {
+                uploaded: 0,
+                downloaded: 0,
+                checked: 1,
+                up_to_date: 0,
+                shared_local: 1,
+                remote_projects: 1,
+                errors: vec!["A conflict occurred".into()],
+                entries: vec![apex_application::team_sync::project::SyncEntry {
+                    project_id: "project-1".into(),
+                    project_name: "Test project".into(),
+                    status: "error",
+                    message: "Conflict: both this device and server changed".into(),
+                }],
+            });
+            state.team_sync_view_report = true;
+            terminal
+                .draw(|frame| draw(frame, &state))
+                .expect("render sync report review");
             assert_eq!(terminal.backend().buffer().area.width, width);
             assert_eq!(terminal.backend().buffer().area.height, height);
         }
