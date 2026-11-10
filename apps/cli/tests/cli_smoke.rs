@@ -199,6 +199,14 @@ fn statistics_and_group_revenue_read_saved_snapshots_from_a_dummy_workspace() {
     assert_eq!(summary["views"]["knownPosts"], 1);
     assert_eq!(summary["copies"]["knownPosts"], 1);
     assert_eq!(summary["favourites"]["total"], serde_json::Value::Null);
+    assert!(matches!(
+        summary["freshness"].as_str(),
+        Some("fresh" | "stale" | "clock skew" | "unknown")
+    ));
+    assert!(matches!(
+        summary["creatorSalesFreshness"].as_str(),
+        Some("fresh" | "stale" | "clock skew" | "unknown")
+    ));
 
     let output = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
         .args([

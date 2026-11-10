@@ -1,6 +1,6 @@
 # CLI Phase 5 — Statistics and Group Revenue
 
-Status: In progress. Planning recorded on 2026-11-10; public statistics, Group Revenue commands, CSV import, interactive Group Revenue workflows, authenticated creator-sales bridge refresh, and detailed statistics panels implemented on 2026-11-10.
+Status: Complete on 2026-11-10. Public statistics, Group Revenue commands, CSV import, interactive Group Revenue workflows, authenticated creator-sales bridge refresh, detailed analytics, and the acceptance matrix are implemented and verified.
 
 ## Implemented baseline
 
@@ -11,16 +11,22 @@ Status: In progress. Planning recorded on 2026-11-10; public statistics, Group R
 - `revenue import-csv` reads Creator Hub exports without changing them, supports multi-file preview, bounded UTF-8 CSV parsing, quoted fields, header aliases, UTC normalization, safe Robux values, and transaction-ID deduplication. It reports ignored rows and possible duplicates before import; writing requires interactive `YES` or explicit `--yes`. Buyer IDs and raw rows are never saved or printed.
 - The TUI has Statistics and Group Revenue pages. Statistics shows coverage-aware totals and a compact view-history chart. Group Revenue supports searching, add/edit forms, pass selection, CSV file selection and preview, and confirmed group removal.
 - `statistics refresh-sales` and the Statistics TUI `s` action request authenticated creator sales through the running desktop's existing Chrome bridge. Requests use a typed allowlist; the CLI does not read cookies or scrape pages. Refresh runs in the background in the TUI and waits for completion before exit.
-- The Statistics TUI has Overview, Posts, Changes and Sales panels; `w/m/y/a` filters history to 7/30/90 days or all available history. Posts are ranked by views, Changes compares matching posts across the two most recent snapshots in range, and Sales charts daily net Robux from the latest authenticated snapshot.
+- The Statistics TUI has Overview, Posts, Changes, Sales and Compare panels; `w/m/y/a` filters history to 7/30/90 days or all available history. Posts are ranked by views, Changes shows total movement plus matching/new/removed posts, and Sales charts daily net Robux from the latest authenticated snapshot. Snapshot status is labeled fresh, stale, unknown or clock-skewed.
 - `statistics summary --json` includes coverage-aware totals, aggregate deltas from the previous snapshot and the top ten posts by views. Signed deltas are strings so large values remain lossless in JSON clients.
 - `statistics compare --range 7d|30d|90d|all [--json]` uses a shared application-layer comparison contract for ERLCX creator sales and selected Roblox passes. The report restricts daily figures to overlapping UTC dates, labels Roblox `price`/`revenue` separately from ERLCX `netRobux`, and reports CSV/partial dates as observed rows rather than treating missing days as zero. ERLCX gross Robux is identified as the full snapshot window because the source exposes no per-day gross series.
 - TUI CSV imports use a preview screen before confirmation, do not touch source files, and show skipped rows and duplicate estimates. The pass list combines discovered passes, imported sale IDs, and manually mapped IDs.
 - Public profile refresh runs in a background thread in the TUI. A disposable Windows terminal review confirmed both pages render, the empty Group Revenue state is understandable, and the terminal is restored after exit.
 - Dummy-workspace smoke coverage verifies saved statistics/revenue JSON output. The profile HTTP test uses a local mock server and confirms the only requested path is `/users/roblox/{id}/bundles`.
 
-## Remaining in Phase 5
+## Acceptance record
 
-- A final acceptance matrix across CLI, TUI, JSON and dummy workspaces, including the stable JSON contracts expected by future MCP clients.
+- `cargo fmt --all --check`: passed.
+- `cargo test -p apex-application -p apex-cli`: passed — 16 application tests, 28 CLI/TUI unit tests and 15 disposable-workspace smoke tests.
+- Targeted Clippy across application, CLI and desktop targets: passed with the repository's existing lint allowlist.
+- `cargo build --release -p apex-cli -p apex-desktop`: passed on Windows.
+- Statistics panels render in Ratatui's test backend at 40, 80 and 120 columns. A real 80×24 Windows PTY run navigated Overview, Posts, Changes, Sales, Compare and date ranges; exit restored the terminal.
+- The same synthetic snapshot is checked against the TUI ranking/totals and `statistics summary --json`; tests cover freshness, missing metric coverage, new-post deltas, UTC comparison windows, incomplete Roblox coverage, CSV duplicates and creator-sales bridge message allowlisting.
+- The desktop bridge unit-test binary compiled but Windows terminated it before test execution with `STATUS_ENTRYPOINT_NOT_FOUND (0xc0000139)`. Desktop Clippy and release compilation succeeded. No live browser account or creator-sales refresh was used.
 
 ## User workflows
 
@@ -30,7 +36,7 @@ Status: In progress. Planning recorded on 2026-11-10; public statistics, Group R
 - Read ERLCX creator sales snapshots captured through the existing authenticated Chrome/desktop integration. The CLI must not scrape creator-dashboard pages itself or store browser cookies.
 - List and configure Roblox groups, experience IDs, pass mappings, selected passes, imported sales and API refresh coverage using the existing Group Revenue storage contract.
 - Import Roblox CSV sales with a preview, source-file identity, skipped-row count and duplicate count before explicit confirmation. Re-imports remain safe through the storage service's current deduplication rules.
-- Compare Roblox group sales with ERLCX creator sales only over explicitly overlapping UTC dates. Label Roblox `price`/`revenue` and ERLCX `grossRobux`/`netRobux` separately and show coverage gaps rather than presenting them as equivalent accounting values.
+- Compare Roblox group sales with ERLCX creator sales only over explicitly overlapping UTC dates. Label Roblox `price`/`revenue` separately from ERLCX daily `netRobux`; ERLCX `grossRobux` is shown only as a snapshot-window total because the source has no per-day gross series. Show coverage gaps rather than treating unknown days as zero.
 - Provide compact dashboard summaries and detailed searchable tables/charts in the TUI, plus stable JSON output for MCP clients.
 
 ## Architecture and safety

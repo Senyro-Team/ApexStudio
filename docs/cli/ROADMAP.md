@@ -1,6 +1,6 @@
 # Apex Studio CLI Roadmap
 
-Status: Phases 1–4 are complete; Phase 5 implementation is in progress.
+Status: Phases 1–5 are complete; Phase 6 (Team Sync) and Phase 7 (MCP contract and release hardening) remain.
 
 ## Product shape
 
@@ -60,7 +60,7 @@ Window layout, drag-and-drop gestures, native file-picker dialogs, and browser-o
 
 **Exit gate:** Round-trip disposable projects and backups, verify contents and file hashes, test conflicts and interrupted/invalid archives without changing the active real workspace.
 
-### Phase 4 — Roblox and ERLCX (in progress)
+### Phase 4 — Roblox and ERLCX (complete)
 
 - Add Roblox account configuration through the OS credential store, livery selection, queue controls, double-upload preference, progress/retry/recovery, and Markdown-formatted code export.
 - Add global ERLCX draft management, preview/livery selection, `.apexpublish` export and the existing Chrome Native Messaging handoff.
@@ -68,14 +68,16 @@ Window layout, drag-and-drop gestures, native file-picker dialogs, and browser-o
 
 **Exit gate:** Offline/mock transport tests cover selection, durable queue transitions, credential absence/expiry and retry states. Live upload remains a separate explicit test with user-chosen assets.
 
-### Phase 5 — Statistics and Group Revenue
+### Phase 5 — Statistics and Group Revenue (complete)
 
 - Add public ERLCX profile snapshots, authenticated browser refresh handoff, imported sales summaries and group-revenue CSV import after the current Group Revenue service/data contract stabilizes.
 - Display labeled text charts, totals, date ranges, source freshness and limitations without conflating Roblox and ERLCX metrics.
 
 **Exit gate:** Synthetic history and CSV fixtures validate calculations, duplicate-safe imports, empty/partial periods, and the distinction between gross, held, released and cancelled amounts.
 
-### Phase 6 — Team Sync
+See [Phase 5 acceptance record](PHASE-05.md#acceptance-record) for the Windows test counts, release build, PTY review and the desktop test-harness limitation.
+
+### Phase 6 — Team Sync (not started)
 
 - Add server connection, sign-in, invitation codes, member roles/removal, project sync, conflict resolution and shared Roblox decal-code views.
 - Keep credentials in the OS credential store; show account/team/target summaries before sync or member removal.

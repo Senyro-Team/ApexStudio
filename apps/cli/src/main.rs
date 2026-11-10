@@ -1678,54 +1678,10 @@ fn run_statistics_command(
             let profile_id = app.statistics_profile().map_err(CliError::from)?;
             let history = app.statistics_history().map_err(CliError::from)?;
             let latest = history.last();
+            let sales = app.statistics_sales().map_err(CliError::from)?;
             let posts = latest.map_or(&[][..], |snapshot| snapshot.posts.as_slice());
             let previous = history.iter().rev().nth(1);
-            let ratings = posts
-                .iter()
-                .filter_map(|post| post.rating_average)
-                .collect::<Vec<_>>();
-            let rating_average =
-                (!ratings.is_empty()).then(|| ratings.iter().sum::<f64>() / ratings.len() as f64);
-            let mut ranked_posts = posts.iter().collect::<Vec<_>>();
-            ranked_posts.sort_by(|left, right| right.views.cmp(&left.views));
-            let changes = |select: fn(&StatisticsPost) -> Option<u64>| {
-                previous.and_then(|previous| {
-                    Some(format!(
-                        "{:+}",
-                        i128::from(statistics_total(posts, select)?)
-                            - i128::from(statistics_total(&previous.posts, select)?)
-                    ))
-                })
-            };
-            let summary = serde_json::json!({
-                "profileId": profile_id.clone(),
-                "snapshotCount": history.len(),
-                "collectedAt": latest.map(|snapshot| snapshot.collected_at.as_str()),
-                "previousCollectedAt": previous.map(|snapshot| snapshot.collected_at.as_str()),
-                "postCount": posts.len(),
-                "views": statistics_metric(posts, |post| post.views),
-                "likes": statistics_metric(posts, |post| post.likes),
-                "copies": statistics_metric(posts, |post| post.copies),
-                "favourites": statistics_metric(posts, |post| post.favourites),
-                "ratingCount": statistics_metric(posts, |post| post.rating_count),
-                "ratingAverage": rating_average,
-                "changes": {
-                    "views": changes(|post| post.views),
-                    "likes": changes(|post| post.likes),
-                    "copies": changes(|post| post.copies),
-                    "favourites": changes(|post| post.favourites)
-                },
-                "topPosts": ranked_posts.into_iter().take(10).map(|post| serde_json::json!({
-                    "bundleId": post.bundle_id,
-                    "title": post.title,
-                    "views": post.views,
-                    "likes": post.likes,
-                    "copies": post.copies,
-                    "favourites": post.favourites,
-                    "ratingCount": post.rating_count,
-                    "ratingAverage": post.rating_average
-                })).collect::<Vec<_>>()
-            });
+            let summary = statistics_summary_value(profile_id.as_deref(), &history, sales.as_ref());
             if json {
                 print_json(&summary)?;
             } else if profile_id.is_none() {
@@ -1738,6 +1694,10 @@ fn run_statistics_command(
                 println!(
                     "ERLCX public statistics · {}",
                     summary["collectedAt"].as_str().unwrap_or("unknown time")
+                );
+                println!(
+                    "Data freshness: {}",
+                    summary["freshness"].as_str().unwrap_or("unknown")
                 );
                 println!("Posts: {}", posts.len());
                 for name in ["views", "likes", "copies", "favourites", "ratingCount"] {
@@ -1791,6 +1751,65 @@ fn statistics_metric(
     serde_json::json!({
         "total": (!values.is_empty()).then(|| values.iter().fold(0u64, |sum, value| sum.saturating_add(*value))),
         "knownPosts": values.len()
+    })
+}
+
+fn statistics_summary_value(
+    profile_id: Option<&str>,
+    history: &[StatisticsSnapshot],
+    sales: Option<&apex_application::SalesSnapshot>,
+) -> serde_json::Value {
+    let latest = history.last();
+    let posts = latest.map_or(&[][..], |snapshot| snapshot.posts.as_slice());
+    let previous = history.iter().rev().nth(1);
+    let ratings = posts
+        .iter()
+        .filter_map(|post| post.rating_average)
+        .collect::<Vec<_>>();
+    let rating_average =
+        (!ratings.is_empty()).then(|| ratings.iter().sum::<f64>() / ratings.len() as f64);
+    let mut ranked_posts = posts.iter().collect::<Vec<_>>();
+    ranked_posts.sort_by(|left, right| right.views.cmp(&left.views));
+    let changes = |select: fn(&StatisticsPost) -> Option<u64>| {
+        previous.and_then(|previous| {
+            Some(format!(
+                "{:+}",
+                i128::from(statistics_total(posts, select)?)
+                    - i128::from(statistics_total(&previous.posts, select)?)
+            ))
+        })
+    };
+    serde_json::json!({
+        "profileId": profile_id,
+        "snapshotCount": history.len(),
+        "collectedAt": latest.map(|snapshot| snapshot.collected_at.as_str()),
+        "freshness": latest.map_or("never", |snapshot| statistics_freshness(&snapshot.collected_at)),
+        "previousCollectedAt": previous.map(|snapshot| snapshot.collected_at.as_str()),
+        "creatorSalesCollectedAt": sales.map(|snapshot| snapshot.collected_at.as_str()),
+        "creatorSalesFreshness": sales.map_or("never", |snapshot| statistics_freshness(&snapshot.collected_at)),
+        "postCount": posts.len(),
+        "views": statistics_metric(posts, |post| post.views),
+        "likes": statistics_metric(posts, |post| post.likes),
+        "copies": statistics_metric(posts, |post| post.copies),
+        "favourites": statistics_metric(posts, |post| post.favourites),
+        "ratingCount": statistics_metric(posts, |post| post.rating_count),
+        "ratingAverage": rating_average,
+        "changes": {
+            "views": changes(|post| post.views),
+            "likes": changes(|post| post.likes),
+            "copies": changes(|post| post.copies),
+            "favourites": changes(|post| post.favourites)
+        },
+        "topPosts": ranked_posts.into_iter().take(10).map(|post| serde_json::json!({
+            "bundleId": post.bundle_id,
+            "title": post.title,
+            "views": post.views,
+            "likes": post.likes,
+            "copies": post.copies,
+            "favourites": post.favourites,
+            "ratingCount": post.rating_count,
+            "ratingAverage": post.rating_average
+        })).collect::<Vec<_>>()
     })
 }
 
@@ -8023,14 +8042,9 @@ fn draw_statistics(
     let latest = state.statistics_history.last();
     let posts = latest.map_or(&[][..], |snapshot| snapshot.posts.as_slice());
     let total = |select: fn(&StatisticsPost) -> Option<u64>| {
-        let values = posts.iter().filter_map(select).collect::<Vec<_>>();
         (
-            values.len(),
-            (!values.is_empty()).then(|| {
-                values
-                    .iter()
-                    .fold(0u64, |sum, value| sum.saturating_add(*value))
-            }),
+            posts.iter().filter(|post| select(post).is_some()).count(),
+            statistics_total(posts, select),
         )
     };
     let metrics = [
@@ -8058,6 +8072,12 @@ fn draw_statistics(
             "Latest collection: {}",
             latest.map_or("—", |snapshot| snapshot.collected_at.as_str())
         )),
+        Line::raw(format!(
+            "Snapshot status: {}",
+            latest.map_or("Never collected", |snapshot| {
+                statistics_freshness(&snapshot.collected_at)
+            })
+        )),
         Line::raw(format!("Posts: {}", posts.len())),
         Line::raw(""),
     ];
@@ -8075,8 +8095,11 @@ fn draw_statistics(
             Style::default().fg(accent).add_modifier(Modifier::BOLD),
         ));
         summary.push(Line::raw(format!(
-            "{} · {} sales · {} net Robux",
-            sales.collected_at, sales.data.sales, sales.data.net_robux
+            "{} · {} sales · {} net Robux · {}",
+            sales.collected_at,
+            sales.data.sales,
+            sales.data.net_robux,
+            statistics_freshness(&sales.collected_at)
         )));
     }
     if state.statistics_profile.is_none() {
@@ -8209,32 +8232,53 @@ fn statistics_panel_lines(
                         .iter()
                         .map(|post| (post.bundle_id, post))
                         .collect::<BTreeMap<_, _>>();
-                    let mut deltas = current
-                        .posts
-                        .iter()
-                        .filter_map(|post| {
-                            let prior = before.remove(&post.bundle_id)?;
-                            let views = signed_delta(prior.views, post.views)?;
-                            Some((views, post))
-                        })
-                        .collect::<Vec<_>>();
+                    let mut deltas = Vec::new();
+                    let mut added = Vec::new();
+                    for post in &current.posts {
+                        if let Some(prior) = before.remove(&post.bundle_id) {
+                            if let Some(views) = signed_delta(prior.views, post.views) {
+                                deltas.push((views, post));
+                            }
+                        } else {
+                            added.push(post);
+                        }
+                    }
                     deltas.sort_by(|left, right| right.0.cmp(&left.0));
                     let mut rows = vec![Line::raw(format!(
                         "{} → {} · matched posts",
                         previous.collected_at.get(0..10).unwrap_or("previous"),
                         current.collected_at.get(0..10).unwrap_or("latest")
                     ))];
-                    rows.extend(
-                        deltas
-                            .into_iter()
-                            .take(max_lines.saturating_sub(1).min(10))
-                            .map(|(views, post)| {
-                                Line::raw(format!(
-                                    "{views:+} views · {}",
-                                    clean_statistics_title(&post.title)
-                                ))
-                            }),
+                    let profile_views = signed_delta(
+                        statistics_total(&previous.posts, |post| post.views),
+                        statistics_total(&current.posts, |post| post.views),
                     );
+                    rows.push(Line::raw(format!(
+                        "Profile total views: {} (includes added/removed posts)",
+                        profile_views.map_or("unknown".into(), |value| format!("{value:+}"))
+                    )));
+                    rows.extend(deltas.into_iter().map(|(views, post)| {
+                        Line::raw(format!(
+                            "{views:+} views · {}",
+                            clean_statistics_title(&post.title)
+                        ))
+                    }));
+                    rows.extend(added.into_iter().map(|post| {
+                        Line::raw(format!(
+                            "NEW · {} views · {}",
+                            stat_number(post.views),
+                            clean_statistics_title(&post.title)
+                        ))
+                    }));
+                    rows.extend(before.into_values().filter_map(|post| {
+                        post.views.map(|views| {
+                            Line::raw(format!(
+                                "REMOVED · -{views} views · {}",
+                                clean_statistics_title(&post.title)
+                            ))
+                        })
+                    }));
+                    rows.truncate(max_lines.clamp(1, 12));
                     if rows.len() == 1 {
                         rows.push(Line::raw(
                             "No matched posts have view counts in both snapshots.",
@@ -8414,6 +8458,27 @@ fn statistics_total(
     let mut values = posts.iter().filter_map(select);
     let first = values.next()?;
     Some(values.fold(first, u64::saturating_add))
+}
+
+fn statistics_freshness(collected_at: &str) -> &'static str {
+    statistics_freshness_at(collected_at, chrono::Utc::now())
+}
+
+fn statistics_freshness_at(collected_at: &str, now: chrono::DateTime<chrono::Utc>) -> &'static str {
+    let Some(collected) = chrono::DateTime::parse_from_rfc3339(collected_at)
+        .ok()
+        .map(|timestamp| timestamp.with_timezone(&chrono::Utc))
+    else {
+        return "unknown";
+    };
+    let age = now.signed_duration_since(collected);
+    if age < chrono::Duration::zero() {
+        "clock skew"
+    } else if age <= chrono::Duration::hours(24) {
+        "fresh"
+    } else {
+        "stale"
+    }
 }
 
 fn signed_delta(previous: Option<u64>, current: Option<u64>) -> Option<i128> {
@@ -9426,23 +9491,34 @@ mod tests {
                 },
             ],
         };
+        let history = vec![first, second];
+        let summary = statistics_summary_value(Some("123"), &history, None);
         let mut state = TuiState::new(Vec::new());
-        state.statistics_history = vec![first, second];
+        state.statistics_history = history;
         assert_eq!(
             statistics_history_in_range(&state.statistics_history, StatisticsRange::SevenDays)
                 .len(),
             1
         );
         state.statistics_range = StatisticsRange::All;
+        assert_eq!(
+            summary["views"]["total"].as_u64(),
+            statistics_total(&state.statistics_history[1].posts, |post| post.views)
+        );
 
         state.statistics_panel = StatisticsPanel::Posts;
         let (_, ranked) = statistics_panel_lines(&state, 80, 8);
         assert!(statistics_lines_text(&ranked).contains("Rescue livery"));
         assert!(statistics_lines_text(&ranked).contains("Night patrol"));
+        assert_eq!(summary["topPosts"][0]["title"], "Rescue livery");
+        assert_eq!(summary["changes"]["views"], "+24");
 
         state.statistics_panel = StatisticsPanel::Changes;
         let (_, changes) = statistics_panel_lines(&state, 80, 8);
-        assert!(statistics_lines_text(&changes).contains("+15 views"));
+        let changes = statistics_lines_text(&changes);
+        assert!(changes.contains("Profile total views: +24"));
+        assert!(changes.contains("+15 views"));
+        assert!(changes.contains("NEW · 9 views · Night patrol"));
 
         state.statistics_sales = Some(apex_application::SalesSnapshot {
             collected_at: "2026-10-25T00:00:00.000Z".into(),
@@ -9542,6 +9618,26 @@ mod tests {
                     .expect("statistics panel renders at all widths");
             }
         }
+    }
+
+    #[test]
+    fn statistics_freshness_distinguishes_fresh_stale_unknown_and_clock_skew() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-10T12:00:00Z")
+            .expect("fixed test time")
+            .with_timezone(&chrono::Utc);
+        assert_eq!(
+            statistics_freshness_at("2026-11-10T11:00:00Z", now),
+            "fresh"
+        );
+        assert_eq!(
+            statistics_freshness_at("2026-11-09T11:00:00Z", now),
+            "stale"
+        );
+        assert_eq!(statistics_freshness_at("not-a-timestamp", now), "unknown");
+        assert_eq!(
+            statistics_freshness_at("2026-11-10T13:00:00Z", now),
+            "clock skew"
+        );
     }
 
     fn statistics_lines_text(lines: &[Line<'_>]) -> String {
