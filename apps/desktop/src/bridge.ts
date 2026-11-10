@@ -535,6 +535,18 @@ export interface MarkdownBlock {
   inviteUrl: string;
   mediaHash: string | null;
 }
+export interface MarkdownPreset {
+  id: string;
+  name: string;
+  block: MarkdownBlock;
+  createdAt: string;
+  updatedAt: string;
+}
+export const listMarkdownPresets = () => invoke<MarkdownPreset[]>("list_markdown_presets");
+export const saveMarkdownPreset = (name: string, block: MarkdownBlock) =>
+  invoke<MarkdownPreset>("save_markdown_preset", { name, block });
+export const deleteMarkdownPreset = (id: string) =>
+  invoke<void>("delete_markdown_preset", { id });
 export interface PublishingDraft {
   data: PublishingData;
   revision: number;

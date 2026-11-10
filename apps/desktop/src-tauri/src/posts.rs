@@ -1,6 +1,6 @@
 use super::{projects::work, CommandError};
-use apex_core::{Error, PublishingDraft, PublishingInput, PublishingPreview};
-use apex_storage::{PostSourceStatus, PostSummary, Workspace};
+use apex_core::{Error, MarkdownBlock, PublishingDraft, PublishingInput, PublishingPreview};
+use apex_storage::{MarkdownPreset, PostSourceStatus, PostSummary, Workspace};
 use base64::Engine;
 use serde::Deserialize;
 use tauri_plugin_dialog::DialogExt;
@@ -68,6 +68,34 @@ pub async fn list_posts(
     let ws = workspace.inner().clone();
     work(move || ws.posts()).await
 }
+
+#[tauri::command]
+pub async fn list_markdown_presets(
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<Vec<MarkdownPreset>, CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || ws.markdown_presets()).await
+}
+
+#[tauri::command]
+pub async fn save_markdown_preset(
+    name: String,
+    block: MarkdownBlock,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<MarkdownPreset, CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || ws.save_markdown_preset(&name, &block)).await
+}
+
+#[tauri::command]
+pub async fn delete_markdown_preset(
+    id: String,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<(), CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || ws.delete_markdown_preset(&id)).await
+}
+
 #[tauri::command]
 pub async fn create_post(workspace: tauri::State<'_, Workspace>) -> Result<String, CommandError> {
     let ws = workspace.inner().clone();

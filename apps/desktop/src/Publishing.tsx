@@ -3,7 +3,7 @@ import AppSelect from "./AppSelect";
 import OverlayStudio from "./OverlayStudio";
 import { readyForPublishing, publishingLivery } from "./RobloxUpload";
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, BookmarkPlus, Copy, Plus, Trash2 } from "lucide-react";
 import SlotEditor from "./SlotEditor";
 import {
   browserStatus,
@@ -27,6 +27,9 @@ import {
   importOverlayPreviews,
   assetBoard,
   mediaLibrary,
+  listMarkdownPresets,
+  saveMarkdownPreset,
+  deleteMarkdownPreset,
   syncImageLibrary,
   syncServiceAvailability,
   syncListInviteCampaigns,
@@ -46,6 +49,7 @@ import {
   type MediaLibraryItem,
   type Asset,
   type InviteCampaign,
+  type MarkdownPreset,
 } from "./bridge";
 const steps = ["Liveries", "Details", "Previews", "Markdown", "Review"] as const;
 export default function Publishing({
@@ -109,6 +113,10 @@ export default function Publishing({
   const [projectImages, setProjectImages] = useState<Asset[]>([]);
   const [projectImageChoice, setProjectImageChoice] = useState("");
   const [inviteCampaigns, setInviteCampaigns] = useState<InviteCampaign[]>([]);
+  const [markdownPresets, setMarkdownPresets] = useState<MarkdownPreset[]>([]);
+  const [markdownPresetChoice, setMarkdownPresetChoice] = useState("");
+  const [savingMarkdownBlockId, setSavingMarkdownBlockId] = useState("");
+  const [markdownPresetName, setMarkdownPresetName] = useState("");
   const [inviteTrackingAvailable, setInviteTrackingAvailable] = useState(false);
   const [inviteCampaignBusy, setInviteCampaignBusy] = useState(false);
   const inviteRequestId = useRef<{ id: string; payload: string } | null>(null);
@@ -120,6 +128,7 @@ export default function Publishing({
   const [inviteMaxUses, setInviteMaxUses] = useState(0);
   useEffect(() => {
     let active = true;
+    void listMarkdownPresets().then((presets) => { if (active) setMarkdownPresets(presets); }).catch(() => {});
     const load = async () => {
       const [library, assets] = await Promise.all([mediaLibrary(), listAssets(null)]);
       let combined = library;
@@ -240,6 +249,33 @@ export default function Publishing({
   }
   const markdownBlocks = data?.markdownBlocks ?? [];
   function updateMarkdown(blocks: MarkdownBlock[]) { edit({ markdownBlocks: blocks }); }
+  async function saveReusableBlock(block: MarkdownBlock) {
+    if (!markdownPresetName.trim()) return;
+    setError("");
+    try {
+      const preset = await saveMarkdownPreset(markdownPresetName.trim(), block);
+      setMarkdownPresets((current) => [preset, ...current.filter((item) => item.id !== preset.id)]);
+      setMarkdownPresetChoice(preset.id);
+      setSavingMarkdownBlockId("");
+      setMarkdownPresetName("");
+      setNotice("Reusable Markdown block saved in this workspace.");
+    } catch (cause) { setError(errorMessage(cause)); }
+  }
+  function insertReusableBlock() {
+    const preset = markdownPresets.find((item) => item.id === markdownPresetChoice);
+    if (!preset || markdownBlocks.length >= 100) return;
+    updateMarkdown([...markdownBlocks, { ...preset.block, id: crypto.randomUUID(), mediaHash: null }]);
+    setNotice("Reusable block added to this post.");
+  }
+  async function removeReusableBlock() {
+    const preset = markdownPresets.find((item) => item.id === markdownPresetChoice);
+    if (!preset || !window.confirm(`Delete reusable block “${preset.name}”? Existing posts will not change.`)) return;
+    try {
+      await deleteMarkdownPreset(preset.id);
+      setMarkdownPresets((current) => current.filter((item) => item.id !== preset.id));
+      setMarkdownPresetChoice("");
+    } catch (cause) { setError(errorMessage(cause)); }
+  }
   function addMarkdown(kind: MarkdownBlock["kind"]) {
     const block: MarkdownBlock = { id: crypto.randomUUID(), kind, text: kind === "invite" ? "Join our Discord" : "", imageUrl: "", altText: "", linkUrl: "", inviteUrl: "", mediaHash: null };
     updateMarkdown([...markdownBlocks, block]);
@@ -1056,6 +1092,14 @@ export default function Publishing({
             {projectImages.length > 0 && <><select aria-label="Choose a project image" value={projectImageChoice} disabled={locked} onChange={(event) => setProjectImageChoice(event.target.value)}><option value="">Choose project image</option>{projectImages.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !projectImageChoice || markdownBlocks.length >= 100} onClick={() => void addProjectLibraryImage()}>Add project image</button></>}
             {libraryItems.length > 0 && <><select aria-label="Choose an image from Image Library" value={libraryChoice} disabled={locked} onChange={(event) => setLibraryChoice(event.target.value)}><option value="">Choose library image</option>{libraryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !libraryChoice || markdownBlocks.length >= 100} onClick={addLibraryImage}>Add library image</button></>}
           </div>
+          <section className="publishing-reusable-markdown" aria-label="Reusable Markdown blocks">
+            <div><strong>Reusable blocks</strong><p>{markdownPresets.length ? "Saved text, image and invite blocks are available in this workspace." : "Save a block below to reuse it in other posts."}</p></div>
+            <div className="button-row">
+              <select aria-label="Choose reusable Markdown block" value={markdownPresetChoice} disabled={locked || !markdownPresets.length} onChange={(event) => setMarkdownPresetChoice(event.target.value)}><option value="">Choose a saved block</option>{markdownPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name} · {preset.block.kind}</option>)}</select>
+              <button className="secondary" type="button" disabled={locked || !markdownPresetChoice || markdownBlocks.length >= 100} onClick={insertReusableBlock}>Insert block</button>
+              <button className="text-button" type="button" disabled={locked || !markdownPresetChoice} onClick={() => void removeReusableBlock()}>Delete saved block</button>
+            </div>
+          </section>
           {inviteTrackingAvailable && <section className="publishing-invite-tracker">
             <div><h3>Tracked Discord invites</h3><p className="field-hint">Create an invite for a specific post or add an existing team invite link.</p></div>
             <div className="publishing-invite-form">
@@ -1075,7 +1119,8 @@ export default function Publishing({
           {markdownBlocks.map((block, index) => {
             const patchBlock = (patch: Partial<MarkdownBlock>) => updateMarkdown(markdownBlocks.map((current, i) => i === index ? { ...current, ...patch } : current));
             return <article className="publishing-markdown-block" key={block.id}>
-              <header><strong>{block.kind === "text" ? "Text" : block.kind === "image" ? "Image" : "Invite link"}</strong><div className="button-row"><button className="icon-button" aria-label="Move block up" disabled={locked || index === 0} onClick={() => moveMarkdown(index, -1)}><ArrowUp size={16} /></button><button className="icon-button" aria-label="Move block down" disabled={locked || index === markdownBlocks.length - 1} onClick={() => moveMarkdown(index, 1)}><ArrowDown size={16} /></button><button className="icon-button" aria-label="Remove block" disabled={locked} onClick={() => updateMarkdown(markdownBlocks.filter((_, i) => i !== index))}><Trash2 size={16} /></button></div></header>
+              <header><strong>{block.kind === "text" ? "Text" : block.kind === "image" ? "Image" : "Invite link"}</strong><div className="button-row"><button className="text-button" type="button" disabled={locked} onClick={() => { setSavingMarkdownBlockId((current) => current === block.id ? "" : block.id); setMarkdownPresetName(block.text.slice(0, 100)); }}><BookmarkPlus size={15} /> Save to reusable</button><button className="icon-button" aria-label="Move block up" disabled={locked || index === 0} onClick={() => moveMarkdown(index, -1)}><ArrowUp size={16} /></button><button className="icon-button" aria-label="Move block down" disabled={locked || index === markdownBlocks.length - 1} onClick={() => moveMarkdown(index, 1)}><ArrowDown size={16} /></button><button className="icon-button" aria-label="Remove block" disabled={locked} onClick={() => updateMarkdown(markdownBlocks.filter((_, i) => i !== index))}><Trash2 size={16} /></button></div></header>
+              {savingMarkdownBlockId === block.id && <div className="publishing-reusable-save"><label>Reusable block name<input autoFocus maxLength={100} value={markdownPresetName} disabled={locked} onChange={(event) => setMarkdownPresetName(event.target.value)} placeholder="Studio footer" /></label><button className="secondary" type="button" disabled={locked || !markdownPresetName.trim()} onClick={() => void saveReusableBlock(block)}>Save block</button><button className="text-button" type="button" disabled={locked} onClick={() => setSavingMarkdownBlockId("")}>Cancel</button></div>}
               {block.kind === "text" ? <label>Markdown text<textarea rows={5} maxLength={20000} value={block.text} disabled={locked} onChange={(event) => patchBlock({ text: event.target.value })} placeholder="Write Markdown text…" /></label> : block.kind === "invite" ? <><label>Link label<input maxLength={300} value={block.text} disabled={locked} onChange={(event) => patchBlock({ text: event.target.value })} /></label><label>Invite URL<input type="url" value={block.inviteUrl} disabled={locked} onChange={(event) => patchBlock({ inviteUrl: event.target.value })} placeholder="https://discord.gg/…" /></label></> : <><label>Alt text<input maxLength={500} value={block.altText} disabled={locked} onChange={(event) => patchBlock({ altText: event.target.value })} /></label><label>Public image URL<input type="url" value={block.imageUrl} disabled={locked} onChange={(event) => patchBlock({ imageUrl: event.target.value })} placeholder="https://…" /></label><label>Click-through URL <span className="optional">(optional)</span><input type="url" value={block.linkUrl} disabled={locked} onChange={(event) => patchBlock({ linkUrl: event.target.value })} placeholder="https://…" /></label>{block.mediaHash && <small>Saved image bytes are retained with this post snapshot.</small>}</>}
               <pre>{block.kind === "text" ? block.text : block.kind === "invite" ? `[${block.text || "Discord invite"}](${block.inviteUrl || "invite-url"})` : block.imageUrl ? `${block.linkUrl ? "[" : ""}![${block.altText}](${block.imageUrl})${block.linkUrl ? `](${block.linkUrl})` : ""}` : "Public image URL required before Markdown can be copied"}</pre>
             </article>;
