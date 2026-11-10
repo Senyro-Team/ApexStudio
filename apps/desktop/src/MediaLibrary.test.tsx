@@ -71,3 +71,13 @@ it("keeps local library editing available while shared images are still loading"
 
   finishRemote({ images: [], errors: [] });
 });
+
+it("loads and edits local library items while project assets are still loading", async () => {
+  const user = userEvent.setup();
+  vi.mocked(listAssets).mockImplementation(() => new Promise(() => {}));
+  render(<MediaLibrary onBusy={vi.fn()} />);
+
+  expect(await screen.findByText("Local banner")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Add image URL" }));
+  expect((screen.getByLabelText("Public image URL") as HTMLInputElement).disabled).toBe(false);
+});

@@ -388,6 +388,36 @@ it("shows local library images in the composer without waiting for optional serv
   await vi.waitFor(() => expect(screen.getByText("Local banner")).toBeTruthy());
 });
 
+it("loads local composer images while project assets are still loading", async () => {
+  const user = userEvent.setup();
+  const localImage: MediaLibraryItem = {
+    id: "local-banner",
+    hash: "e".repeat(64),
+    name: "Local banner",
+    altText: "Reusable local banner",
+    imageUrl: "https://images.example/banner.png",
+    defaultLinkUrl: null,
+    folder: "",
+    tags: [],
+    overlayVersionGroup: null,
+    overlayVersion: null,
+    overlayTarget: null,
+    ownerScope: "personal",
+    teamId: null,
+    providerImageId: null,
+    createdAt: "2026-11-10T00:00:00Z",
+    updatedAt: "2026-11-10T00:00:00Z",
+    preview: null,
+  };
+  vi.mocked(mediaLibrary).mockResolvedValue([localImage]);
+  vi.mocked(listAssets).mockImplementation(() => new Promise(() => {}));
+
+  render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
+  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  const librarySelect = await screen.findByRole("combobox", { name: "Choose an image from Image Library" });
+  expect(Array.from((librarySelect as HTMLSelectElement).options).map((option) => option.textContent)).toContain("Local banner");
+});
+
 it("keeps a fast team-library response when the local media query finishes later", async () => {
   const user = userEvent.setup();
   const localImage: MediaLibraryItem = {

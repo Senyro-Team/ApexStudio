@@ -50,10 +50,17 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
     const savedTeam = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
     setServerUrl(savedUrl);
     setTeamId(savedTeam);
-    const [library, projectAssets] = await Promise.all([mediaLibrary(), listAssets(null)]);
+    void listAssets(null).then((projectAssets) => {
+      if (sequence !== refreshSequence.current) return;
+      setAssets(projectAssets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
+    }).catch(() => {
+      if (sequence === refreshSequence.current) {
+        setNotice("Project images could not be loaded. Your Image Library is still available.");
+      }
+    });
+    const library = await mediaLibrary();
     if (sequence !== refreshSequence.current) return library;
     setItems(library);
-    setAssets(projectAssets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
     const availableIds = new Set(library.filter((item) => item.hash && !item.providerImageId && !item.isRemote).map((item) => item.id));
     setSelectedForUpload((current) => current.filter((id) => availableIds.has(id)));
 

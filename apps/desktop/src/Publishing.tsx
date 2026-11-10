@@ -245,17 +245,17 @@ export default function Publishing({
     void listMarkdownPresets().then((presets) => { if (active) setMarkdownPresets(presets); }).catch(() => {});
     const serverUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
     const teamId = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
-    const loadLocalMedia = async () => {
-      const [library, assets] = await Promise.all([mediaLibrary(), listAssets(null)]);
+    void mediaLibrary().then((library) => {
       if (!active) return;
       setLibraryItems((current) => {
         const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
         const remoteItems = current.filter((item) => item.isRemote && !localRemoteIds.has(item.providerImageId));
         return [...remoteItems, ...library];
       });
-      setProjectImages(assets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
-    };
-    void loadLocalMedia().catch(() => {});
+    }).catch(() => {});
+    void listAssets(null).then((assets) => {
+      if (active) setProjectImages(assets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
+    }).catch(() => {});
     if (serverUrl && teamId) {
       void syncServiceAvailability(serverUrl, teamId).then(async (availability) => {
         if (!active) return;
