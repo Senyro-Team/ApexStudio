@@ -66,6 +66,20 @@ fn team_sync_help_exposes_member_workflows_without_password_arguments() {
 }
 
 #[test]
+fn generates_powershell_completions_without_opening_a_workspace() {
+    let output = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args(["completions", "powershell"])
+        .env_remove("LOCALAPPDATA")
+        .output()
+        .expect("generate shell completions");
+    assert!(output.status.success());
+    let script = String::from_utf8(output.stdout).expect("completion output is UTF-8");
+    assert!(script.contains("apex-studio-cli"));
+    assert!(script.contains("completions"));
+    assert!(script.contains("projects"));
+}
+
+#[test]
 fn lists_dummy_projects_as_json_from_a_disposable_workspace() {
     let temp = tempdir().expect("temporary directory");
     let root = temp.path().join("workspace");

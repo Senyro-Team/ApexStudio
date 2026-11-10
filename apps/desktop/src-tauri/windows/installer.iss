@@ -117,6 +117,93 @@ var
   PreviousInstallDir: String;
   WebView2DownloadPage: TDownloadWizardPage;
 
+function NormalizePathEntry(const Value: String): String;
+begin
+  Result := Trim(Value);
+  if (Length(Result) > 1) and (Result[1] = '"') and (Result[Length(Result)] = '"') then
+    Result := Copy(Result, 2, Length(Result) - 2);
+  while (Length(Result) > 3) and (Result[Length(Result)] = '\') do
+    Delete(Result, Length(Result), 1);
+end;
+
+function HasPathEntry(const PathValue, Entry: String): Boolean;
+var
+  Remaining, Part: String;
+  Separator: Integer;
+begin
+  Result := False;
+  Remaining := PathValue;
+  while Remaining <> '' do
+  begin
+    Separator := Pos(';', Remaining);
+    if Separator = 0 then
+    begin
+      Part := Remaining;
+      Remaining := '';
+    end
+    else
+    begin
+      Part := Copy(Remaining, 1, Separator - 1);
+      Delete(Remaining, 1, Separator);
+    end;
+    if CompareText(NormalizePathEntry(Part), NormalizePathEntry(Entry)) = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
+end;
+
+procedure UpdateUserPath(const Entry: String; const AddEntry: Boolean);
+var
+  UserPath, Remaining, Part, NewPath: String;
+  Separator: Integer;
+begin
+  if not RegQueryStringValue(HKCU, 'Environment', 'Path', UserPath) then
+    UserPath := '';
+  if AddEntry then
+  begin
+    if not HasPathEntry(UserPath, Entry) then
+    begin
+      if UserPath <> '' then
+        UserPath := UserPath + ';';
+      RegWriteExpandStringValue(HKCU, 'Environment', 'Path', UserPath + Entry);
+    end;
+    Exit;
+  end;
+
+  Remaining := UserPath;
+  NewPath := '';
+  while Remaining <> '' do
+  begin
+    Separator := Pos(';', Remaining);
+    if Separator = 0 then
+    begin
+      Part := Remaining;
+      Remaining := '';
+    end
+    else
+    begin
+      Part := Copy(Remaining, 1, Separator - 1);
+      Delete(Remaining, 1, Separator);
+    end;
+    if (Trim(Part) <> '') and
+      (CompareText(NormalizePathEntry(Part), NormalizePathEntry(Entry)) <> 0) then
+    begin
+      if NewPath <> '' then
+        NewPath := NewPath + ';';
+      NewPath := NewPath + Part;
+    end;
+  end;
+  if NewPath <> UserPath then
+  begin
+    if NewPath = '' then
+      RegDeleteValue(HKCU, 'Environment', 'Path')
+    else
+      RegWriteExpandStringValue(HKCU, 'Environment', 'Path', NewPath);
+  end;
+end;
+
 function HasWebView2At(const RootKey: Integer; const SubKeyName: String): Boolean;
 var
   RuntimeVersion: String;
@@ -212,6 +299,7 @@ begin
   if CurStep = ssPostInstall then
   begin
     InstallDir := ExpandConstant('{app}');
+    UpdateUserPath(InstallDir, WizardIsComponentSelected('cli'));
     if FreshInstall then
       RegWriteStringValue(HKCU, SetupRegistryKey, 'InitialSetupFeatures', SelectedSetupFeatures());
 
@@ -227,6 +315,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usPostUninstall then
   begin
+    UpdateUserPath(ExpandConstant('{app}'), False);
     RegDeleteValue(HKCU, SetupRegistryKey, 'InitialSetupFeatures');
     RegDeleteKeyIfEmpty(HKCU, SetupRegistryKey);
   end;

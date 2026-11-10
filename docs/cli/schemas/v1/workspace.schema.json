@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/workspace.schema.json",
+  "title": "Apex Studio workspace summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "root", "schemaVersion", "managedFileCount"],
+  "properties": {
+    "name": { "type": "string" },
+    "root": { "type": "string" },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "managedFileCount": { "type": "integer", "minimum": 0 }
+  }
+}

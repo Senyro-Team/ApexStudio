@@ -7,7 +7,8 @@ use apex_core::{
     PublishingInput, PublishingLivery, PublishingSide, PublishingSource, Vehicle,
 };
 use base64::Engine as _;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -183,6 +184,12 @@ struct Args {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Generate shell completion scripts.
+    Completions {
+        /// Shell to generate completions for.
+        #[arg(value_enum)]
+        shell: Shell,
+    },
     /// Browse and inspect projects.
     Projects {
         #[command(subcommand)]
@@ -853,6 +860,15 @@ impl From<Error> for CliError {
 
 fn run(args: Args) -> Result<(), CliError> {
     let json = args.json;
+    if let Some(Command::Completions { shell }) = args.command.as_ref() {
+        clap_complete::generate(
+            *shell,
+            &mut Args::command(),
+            "apex-studio-cli",
+            &mut io::stdout(),
+        );
+        return Ok(());
+    }
     let root = args
         .workspace
         .or_else(default_workspace_path)
@@ -865,6 +881,7 @@ fn run(args: Args) -> Result<(), CliError> {
     let app = ApplicationServices::open(&root).map_err(CliError::from)?;
 
     match args.command {
+        Some(Command::Completions { .. }) => return Ok(()),
         Some(Command::Projects { action }) => match action {
             ProjectCommand::List { search } => {
                 let mut projects = app.projects().map_err(CliError::from)?;

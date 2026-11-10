@@ -42,6 +42,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Building the Apex Studio frontend failed.' }
           cargo build --release --locked -p apex-desktop --bin apex-chrome-bridge --features custom-protocol
           if ($LASTEXITCODE -ne 0) { throw 'Building the Chrome bridge failed.' }
+          cargo build --release --locked -p apex-cli
+          if ($LASTEXITCODE -ne 0) { throw 'Building the Apex Studio CLI failed.' }
 
       - name: Build signed NSIS updater bundle
         run: npm run tauri --workspace @apex/desktop -- build --config src-tauri/tauri.updater.conf.json --bundles nsis --ci

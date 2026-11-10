@@ -77,7 +77,7 @@ Window layout, drag-and-drop gestures, native file-picker dialogs, and browser-o
 
 See [Phase 5 acceptance record](PHASE-05.md#acceptance-record) for the Windows test counts, release build, PTY review and the desktop test-harness limitation.
 
-### Phase 6 — Team Sync (in progress)
+### Phase 6 — Team Sync (complete)
 
 - **Complete:** the shared `apex-application::team_sync` service owns API identity/status, owner setup, Credential Manager sessions, invitation acceptance/creation, member listing/removal, project bindings, chunked project transfer, conflict resolution, streamed livery previews and shared Roblox decal codes. The desktop Tauri module is now an adapter to those services. Loopback mocks cover authentication and team workflows; the interactive TUI shows project/member state, links/unlinks projects, syncs, and reviews/resolves conflicts.
 - CLI commands cover `sync check`, `setup`, `status`, `sign-in`, `accept-invitation`, `invite`, `members`, `remove-member`, `projects`, `bindings`, `link`, `unlink`, `run`, `resolve`, `codes` and `disconnect`. Sync and destructive actions show their target and require confirmation; passwords and bootstrap/invitation acceptance secrets use non-echoing prompts rather than command-line arguments or JSON output.
