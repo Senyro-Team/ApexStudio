@@ -4181,10 +4181,15 @@ struct TuiState {
     team_sync_team_selected: usize,
     team_sync_project_selected: usize,
     team_sync_member_selected: usize,
+    team_sync_local_selected: usize,
     team_sync_panel: TeamSyncPanel,
     team_sync_search: String,
     team_sync_editing_server: bool,
     team_sync_searching: bool,
+    team_sync_selecting_local: bool,
+    team_sync_unlink_mode: bool,
+    team_sync_confirm_binding: bool,
+    team_sync_pending_project: Option<String>,
     team_sync_confirm_sync: bool,
     team_sync_worker_active: bool,
     team_sync_status_message: Option<(String, bool)>,
@@ -4257,10 +4262,15 @@ impl TuiState {
             team_sync_team_selected: 0,
             team_sync_project_selected: 0,
             team_sync_member_selected: 0,
+            team_sync_local_selected: 0,
             team_sync_panel: TeamSyncPanel::Projects,
             team_sync_search: String::new(),
             team_sync_editing_server: false,
             team_sync_searching: false,
+            team_sync_selecting_local: false,
+            team_sync_unlink_mode: false,
+            team_sync_confirm_binding: false,
+            team_sync_pending_project: None,
             team_sync_confirm_sync: false,
             team_sync_worker_active: false,
             team_sync_status_message: None,
@@ -4385,6 +4395,29 @@ impl TuiState {
             .collect()
     }
 
+    fn visible_team_sync_local_projects(&self) -> Vec<&Project> {
+        let query = self.team_sync_search.to_lowercase();
+        let linked_ids = self
+            .team_sync_preview
+            .as_ref()
+            .map(|preview| {
+                preview
+                    .linked_projects
+                    .iter()
+                    .map(|binding| binding.project_id.as_str())
+                    .collect::<HashSet<_>>()
+            })
+            .unwrap_or_default();
+        self.projects
+            .iter()
+            .filter(|project| {
+                !project.archived
+                    && (!self.team_sync_unlink_mode || linked_ids.contains(project.id.as_str()))
+                    && (query.is_empty() || project_matches(project, &query))
+            })
+            .collect()
+    }
+
     fn visible_revenue_groups(&self) -> Vec<&apex_application::RobloxRevenueGroup> {
         let query = self.search.to_lowercase();
         self.group_revenue
@@ -4447,6 +4480,7 @@ enum TuiWorkerEvent {
     CreatorSalesFinished(Result<Option<apex_application::SalesSnapshot>, String>),
     TeamSyncRefreshed(Result<TeamSyncDashboardData, String>),
     TeamSyncFinished(Result<apex_application::team_sync::project::SyncReport, String>),
+    TeamSyncBindingFinished(Result<(String, bool), String>),
 }
 
 struct TeamSyncDashboardData {
@@ -4537,6 +4571,40 @@ fn start_tui_team_sync_run(
             let _ = events.send(TuiWorkerEvent::TeamSyncFinished(result));
         })
         .map_err(|error| Error::Storage(format!("Could not start project sync: {error}")))
+}
+
+fn start_tui_team_sync_binding(
+    app: ApplicationServices,
+    server_url: String,
+    team_id: String,
+    project_id: String,
+    enable: bool,
+    events: std::sync::mpsc::Sender<TuiWorkerEvent>,
+) -> Result<std::thread::JoinHandle<()>, Error> {
+    std::thread::Builder::new()
+        .name("apex-team-sync-binding".into())
+        .spawn(move || {
+            let result = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())
+                .and_then(|runtime| {
+                    runtime
+                        .block_on(apex_application::team_sync::project::set_project_sync(
+                            &project_id,
+                            apex_application::team_sync::project::ProjectSyncChoice {
+                                enabled: enable,
+                                server_url: if enable { server_url } else { String::new() },
+                                team_id: if enable { team_id } else { String::new() },
+                            },
+                            app.workspace(),
+                        ))
+                        .map(|_| (project_id, enable))
+                        .map_err(|error| error.to_string())
+                });
+            let _ = events.send(TuiWorkerEvent::TeamSyncBindingFinished(result));
+        })
+        .map_err(|error| Error::Storage(format!("Could not start project binding: {error}")))
 }
 
 fn start_tui_statistics_refresh(
@@ -4871,6 +4939,42 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         }
                     }
                 }
+                TuiWorkerEvent::TeamSyncBindingFinished(result) => {
+                    state.team_sync_worker_active = false;
+                    state.team_sync_confirm_binding = false;
+                    state.team_sync_selecting_local = false;
+                    state.team_sync_pending_project = None;
+                    if let Some(handle) = team_sync_thread.take() {
+                        let _ = handle.join();
+                    }
+                    match result {
+                        Ok((project_id, enabled)) => {
+                            let name = state
+                                .projects
+                                .iter()
+                                .find(|project| project.id == project_id)
+                                .map(|project| project.fields.name.as_str())
+                                .unwrap_or("Project");
+                            state.team_sync_status_message = Some((
+                                if enabled {
+                                    format!("{name} is linked to the selected team")
+                                } else {
+                                    format!("Sync disabled for {name}; both copies were kept")
+                                },
+                                true,
+                            ));
+                            team_sync_refresh(
+                                &mut state,
+                                &app,
+                                &worker_events_tx,
+                                &mut team_sync_thread,
+                            );
+                        }
+                        Err(error) => {
+                            state.team_sync_status_message = Some((error, false));
+                        }
+                    }
+                }
             }
         }
         if quitting
@@ -4893,6 +4997,7 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                     append_bounded(&mut state.team_sync_search, &value, 256);
                     state.team_sync_project_selected = 0;
                     state.team_sync_member_selected = 0;
+                    state.team_sync_local_selected = 0;
                 }
             }
             Event::Key(key) if key.kind == KeyEventKind::Press => {
@@ -7475,10 +7580,12 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Home => " ↑/↓ Select   Enter Open   q Quit ",
         Screen::TeamSync if state.team_sync_editing_server => " Type server URL   Enter Save & connect   Esc Cancel ",
         Screen::TeamSync if state.team_sync_searching => " Type to filter   Enter/Esc Finish search ",
+        Screen::TeamSync if state.team_sync_selecting_local => " ↑/↓ Select local project   / Search   Enter Continue   Esc Cancel ",
+        Screen::TeamSync if state.team_sync_confirm_binding => " y Confirm project change   n/Esc Cancel ",
         Screen::TeamSync if state.team_sync_confirm_sync => " y Synchronize reviewed team   n/Esc Cancel ",
         Screen::TeamSync if state.team_sync_worker_active => " Working…   Esc Back to menu ",
         Screen::TeamSync if state.team_sync_panel == TeamSyncPanel::Members => " Tab Projects   ↑/↓ Members   / Search   r Refresh   Esc Back ",
-        Screen::TeamSync => " Tab Members   [ / ] Team   / Search   e Server   r Refresh   s Sync   Esc Back ",
+        Screen::TeamSync => " Tab Members   [ / ] Team   / Search   l Link   u Unlink   r Refresh   s Sync   Esc Back ",
         Screen::Projects if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::Projects => {
             " ↑/↓ Select   Enter Details   / Search   r Refresh   Esc Back   q Back "
@@ -7750,11 +7857,102 @@ fn handle_team_sync_key(
                 state.team_sync_search.pop();
                 state.team_sync_project_selected = 0;
                 state.team_sync_member_selected = 0;
+                state.team_sync_local_selected = 0;
             }
             KeyCode::Char(character) if !character.is_control() => {
                 append_bounded(&mut state.team_sync_search, &character.to_string(), 256);
                 state.team_sync_project_selected = 0;
                 state.team_sync_member_selected = 0;
+                state.team_sync_local_selected = 0;
+            }
+            _ => {}
+        }
+        return;
+    }
+    if state.team_sync_selecting_local {
+        match key {
+            KeyCode::Esc => {
+                state.team_sync_selecting_local = false;
+                state.team_sync_unlink_mode = false;
+                state.team_sync_search.clear();
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                state.team_sync_local_selected = state.team_sync_local_selected.saturating_sub(1);
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                state.team_sync_local_selected =
+                    state.team_sync_local_selected.saturating_add(1).min(
+                        state
+                            .visible_team_sync_local_projects()
+                            .len()
+                            .saturating_sub(1),
+                    );
+            }
+            KeyCode::Char('/') => {
+                state.team_sync_searching = true;
+                state.team_sync_search.clear();
+                state.team_sync_local_selected = 0;
+            }
+            KeyCode::Enter => {
+                if let Some(project) = state
+                    .visible_team_sync_local_projects()
+                    .get(state.team_sync_local_selected)
+                {
+                    state.team_sync_pending_project = Some(project.id.clone());
+                    state.team_sync_selecting_local = false;
+                    state.team_sync_confirm_binding = true;
+                } else {
+                    state.team_sync_status_message =
+                        Some(("There are no active local projects to select".into(), false));
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+    if state.team_sync_confirm_binding {
+        match key {
+            KeyCode::Char('y') | KeyCode::Char('Y') if !state.team_sync_worker_active => {
+                let Some(project_id) = state.team_sync_pending_project.clone() else {
+                    state.team_sync_confirm_binding = false;
+                    return;
+                };
+                let team_id = state
+                    .team_sync_status
+                    .as_ref()
+                    .and_then(|status| status.user.as_ref())
+                    .and_then(|user| user.teams.get(state.team_sync_team_selected))
+                    .map(|team| team.id.clone())
+                    .unwrap_or_default();
+                match start_tui_team_sync_binding(
+                    app.clone(),
+                    state.team_sync_server_url.clone(),
+                    team_id,
+                    project_id,
+                    !state.team_sync_unlink_mode,
+                    events.clone(),
+                ) {
+                    Ok(handle) => {
+                        *worker = Some(handle);
+                        state.team_sync_worker_active = true;
+                        state.team_sync_status_message = Some((
+                            if state.team_sync_unlink_mode {
+                                "Disabling project sync…".into()
+                            } else {
+                                "Linking project to the selected team…".into()
+                            },
+                            true,
+                        ));
+                    }
+                    Err(error) => {
+                        state.team_sync_confirm_binding = false;
+                        state.team_sync_status_message = Some((error.to_string(), false));
+                    }
+                }
+            }
+            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                state.team_sync_confirm_binding = false;
+                state.team_sync_pending_project = None;
             }
             _ => {}
         }
@@ -7853,6 +8051,25 @@ fn handle_team_sync_key(
                 }) =>
         {
             state.team_sync_confirm_sync = true;
+        }
+        KeyCode::Char('l') | KeyCode::Char('u') if !state.team_sync_worker_active => {
+            let unlink = key == KeyCode::Char('u');
+            if state.team_sync_status.as_ref().is_some_and(|status| {
+                status
+                    .user
+                    .as_ref()
+                    .is_some_and(|user| !user.teams.is_empty())
+            }) {
+                state.team_sync_selecting_local = true;
+                state.team_sync_unlink_mode = unlink;
+                state.team_sync_local_selected = 0;
+                state.team_sync_search.clear();
+            } else {
+                state.team_sync_status_message = Some((
+                    "Connect and select a team before changing project links".into(),
+                    false,
+                ));
+            }
         }
         KeyCode::Up | KeyCode::Char('k') if state.team_sync_panel == TeamSyncPanel::Projects => {
             state.team_sync_project_selected = state.team_sync_project_selected.saturating_sub(1);
@@ -8081,6 +8298,100 @@ fn draw_team_sync(
             ])
             .block(Block::default().title("Confirm sync").borders(Borders::ALL))
             .wrap(Wrap { trim: true }),
+            overlay,
+        );
+    }
+    if state.team_sync_selecting_local {
+        let width = area.width.saturating_sub(6).min(72);
+        let height = area.height.saturating_sub(4).min(18);
+        let overlay = ratatui::layout::Rect {
+            x: area.x + area.width.saturating_sub(width) / 2,
+            y: area.y + area.height.saturating_sub(height) / 2,
+            width,
+            height,
+        };
+        let projects = state.visible_team_sync_local_projects();
+        let items = if projects.is_empty() {
+            vec![ListItem::new(if state.team_sync_unlink_mode {
+                "No projects linked to this team"
+            } else {
+                "No active local projects"
+            })]
+        } else {
+            projects
+                .iter()
+                .map(|project| ListItem::new(single_line(&project.fields.name)))
+                .collect()
+        };
+        let selected = if projects.is_empty() {
+            None
+        } else {
+            Some(state.team_sync_local_selected.min(projects.len() - 1))
+        };
+        let mut list_state = ListState::default().with_selected(selected);
+        frame.render_widget(Clear, overlay);
+        frame.render_stateful_widget(
+            List::new(items)
+                .block(
+                    Block::default()
+                        .title(if state.team_sync_unlink_mode {
+                            "Disable sync for a linked project"
+                        } else {
+                            "Choose a local project to share"
+                        })
+                        .borders(Borders::ALL),
+                )
+                .highlight_symbol("▶ ")
+                .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+            overlay,
+            &mut list_state,
+        );
+    }
+    if state.team_sync_confirm_binding {
+        let width = area.width.saturating_sub(8).min(70);
+        let height = 7.min(area.height);
+        let overlay = ratatui::layout::Rect {
+            x: area.x + area.width.saturating_sub(width) / 2,
+            y: area.y + area.height.saturating_sub(height) / 2,
+            width,
+            height,
+        };
+        let project_name = state
+            .team_sync_pending_project
+            .as_deref()
+            .and_then(|id| state.projects.iter().find(|project| project.id == id))
+            .map(|project| single_line(&project.fields.name))
+            .unwrap_or_else(|| "selected project".into());
+        let body = if state.team_sync_unlink_mode {
+            vec![
+                Line::from(format!("Disable team sync for {project_name}?")),
+                Line::from("Local and server copies will both be kept."),
+                Line::from(""),
+                Line::styled(
+                    "y  Disable sync     n / Esc  Cancel",
+                    Style::default().fg(accent),
+                ),
+            ]
+        } else {
+            vec![
+                Line::from(format!("Share {project_name} with the selected team?")),
+                Line::from("Any existing server copy remains on its current server."),
+                Line::from(""),
+                Line::styled(
+                    "y  Link project     n / Esc  Cancel",
+                    Style::default().fg(accent),
+                ),
+            ]
+        };
+        frame.render_widget(Clear, overlay);
+        frame.render_widget(
+            Paragraph::new(body)
+                .block(
+                    Block::default()
+                        .title("Confirm project link")
+                        .borders(Borders::ALL),
+                )
+                .wrap(Wrap { trim: true }),
             overlay,
         );
     }
@@ -10841,6 +11152,15 @@ mod tests {
             terminal
                 .draw(|frame| draw(frame, &state))
                 .expect("render team sync");
+            state.team_sync_selecting_local = true;
+            terminal
+                .draw(|frame| draw(frame, &state))
+                .expect("render empty local project picker");
+            state.team_sync_selecting_local = false;
+            state.team_sync_confirm_binding = true;
+            terminal
+                .draw(|frame| draw(frame, &state))
+                .expect("render project link confirmation");
             assert_eq!(terminal.backend().buffer().area.width, width);
             assert_eq!(terminal.backend().buffer().area.height, height);
         }
