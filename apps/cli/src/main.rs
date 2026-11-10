@@ -24,6 +24,7 @@ use std::{
     path::PathBuf,
     process::ExitCode,
 };
+use zeroize::Zeroizing;
 
 mod revenue_csv;
 
@@ -242,6 +243,11 @@ enum Command {
         #[command(subcommand)]
         action: RevenueCommand,
     },
+    /// Connect to a team sync server and manage team membership.
+    Sync {
+        #[command(subcommand)]
+        action: TeamSyncCommand,
+    },
     /// Show the workspace name and storage summary.
     Workspace {
         #[command(subcommand)]
@@ -408,6 +414,54 @@ enum RevenueCommand {
         #[arg(required = true, num_args = 1..)]
         files: Vec<PathBuf>,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum TeamSyncCommand {
+    /// Check a server's identity and supported API version.
+    Check { server: String },
+    /// Show the signed-in account and its teams for a server.
+    Status { server: String },
+    /// Sign in and store the session in Windows Credential Manager.
+    SignIn {
+        server: String,
+        #[arg(long)]
+        email: String,
+    },
+    /// Accept an invitation and create the account using a hidden prompt.
+    AcceptInvitation {
+        server: String,
+        #[arg(long)]
+        email: String,
+        #[arg(long)]
+        display_name: String,
+    },
+    /// Create an invitation code for an existing team.
+    Invite {
+        server: String,
+        #[arg(long)]
+        team: String,
+        #[arg(long, value_parser = ["admin", "designer", "read_only"])]
+        role: String,
+    },
+    /// List members of a team.
+    Members {
+        server: String,
+        #[arg(long)]
+        team: String,
+    },
+    /// Remove a member after showing the resolved account and requiring confirmation.
+    RemoveMember {
+        server: String,
+        #[arg(long)]
+        team: String,
+        #[arg(long)]
+        user_id: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Revoke and forget the saved team-server session.
+    Disconnect,
 }
 
 #[derive(Debug, Subcommand)]
@@ -810,6 +864,7 @@ fn run(args: Args) -> Result<(), CliError> {
         Some(Command::Roblox { action }) => run_roblox_command(&app, action, json)?,
         Some(Command::Statistics { action }) => run_statistics_command(&app, action, json)?,
         Some(Command::Revenue { action }) => run_revenue_command(&app, action, json)?,
+        Some(Command::Sync { action }) => run_team_sync_command(action, json)?,
         Some(Command::Workspace { action: None }) => print_workspace(&app, json)?,
         Some(Command::Workspace {
             action: Some(WorkspaceCommand::Rename { name }),
@@ -1811,6 +1866,230 @@ fn statistics_summary_value(
             "ratingAverage": post.rating_average
         })).collect::<Vec<_>>()
     })
+}
+
+fn run_team_sync_command(action: TeamSyncCommand, json: bool) -> Result<(), CliError> {
+    use apex_application::team_sync as sync;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| CliError {
+            code: "runtime_error".into(),
+            message: error.to_string(),
+        })?;
+    match action {
+        TeamSyncCommand::Check { server } => {
+            let info = runtime.block_on(sync::check_server(&server))?;
+            if json {
+                print_json(&info)?;
+            } else {
+                println!(
+                    "{} · API {} · server {}",
+                    info.product, info.api_version, info.server_version
+                );
+                println!("Origin: {}", info.origin);
+                println!("Instance: {}", info.server_instance_id);
+            }
+        }
+        TeamSyncCommand::Status { server } => {
+            let status = runtime.block_on(sync::connection_status(&server))?;
+            if json {
+                print_json(&status)?;
+            } else {
+                println!(
+                    "{} · API {}",
+                    status.server.origin, status.server.api_version
+                );
+                match status.user {
+                    Some(user) => {
+                        println!("Signed in as {} ({})", user.display_name, user.email);
+                        if user.teams.is_empty() {
+                            println!("No teams are available to this account.");
+                        } else {
+                            for team in user.teams {
+                                println!("{} · {} · {}", team.name, team.role, team.id);
+                            }
+                        }
+                    }
+                    None if status.session_expired => println!("Session expired. Sign in again."),
+                    None if status.saved_session_for_different_server => {
+                        println!(
+                            "A saved session belongs to another server. Sign in here to switch."
+                        );
+                    }
+                    None => println!("Not signed in."),
+                }
+            }
+        }
+        TeamSyncCommand::SignIn { server, email } => {
+            let password = read_secret("Password: ")?;
+            let status = runtime.block_on(sync::sign_in(&server, &email, &password))?;
+            print_sync_status(&status, json)?;
+        }
+        TeamSyncCommand::AcceptInvitation {
+            server,
+            email,
+            display_name,
+        } => {
+            let token = read_secret("Invitation code: ")?;
+            let password = read_secret("Create password: ")?;
+            let status = runtime.block_on(sync::accept_invitation(
+                &server,
+                &token,
+                &email,
+                &display_name,
+                &password,
+            ))?;
+            print_sync_status(&status, json)?;
+        }
+        TeamSyncCommand::Invite { server, team, role } => {
+            let invitation = runtime.block_on(sync::create_invitation(&server, &team, &role))?;
+            if json {
+                print_json(&invitation)?;
+            } else {
+                println!("Invitation code: {}", invitation.invitation_token);
+                println!(
+                    "Role: {} · expires in {} seconds",
+                    invitation.role, invitation.expires_in_seconds
+                );
+            }
+        }
+        TeamSyncCommand::Members { server, team } => {
+            let members = runtime.block_on(sync::list_members(&server, &team))?;
+            if json {
+                print_json(&members)?;
+            } else if members.is_empty() {
+                println!("This team has no members.");
+            } else {
+                for member in members {
+                    println!(
+                        "{} · {} · {} · {}",
+                        member.display_name, member.email, member.role, member.id
+                    );
+                }
+            }
+        }
+        TeamSyncCommand::RemoveMember {
+            server,
+            team,
+            user_id,
+            yes,
+        } => {
+            let members = runtime.block_on(sync::list_members(&server, &team))?;
+            let member = members
+                .iter()
+                .find(|member| member.id == user_id)
+                .ok_or_else(|| CliError {
+                    code: "member_not_found".into(),
+                    message: "That account is not a member of the selected team.".into(),
+                })?;
+            confirm_action(
+                &format!(
+                    "remove {} ({}, {}) from this team",
+                    member.display_name, member.email, member.role
+                ),
+                yes,
+                json,
+            )?;
+            runtime.block_on(sync::remove_member(&server, &team, &user_id))?;
+            print_action("Team member removed.", json);
+        }
+        TeamSyncCommand::Disconnect => {
+            runtime.block_on(sync::disconnect())?;
+            print_action("Team-server session removed.", json);
+        }
+    }
+    Ok(())
+}
+
+fn print_sync_status(
+    status: &apex_application::team_sync::ConnectionStatus,
+    json: bool,
+) -> Result<(), CliError> {
+    if json {
+        print_json(status)?;
+    } else if let Some(user) = &status.user {
+        println!("Signed in as {} ({})", user.display_name, user.email);
+        for team in &user.teams {
+            println!("{} · {} · {}", team.name, team.role, team.id);
+        }
+    } else {
+        println!(
+            "Connected to {} but no account is signed in.",
+            status.server.origin
+        );
+    }
+    Ok(())
+}
+
+fn read_secret(prompt: &str) -> Result<Zeroizing<String>, CliError> {
+    if !io::stdin().is_terminal() {
+        return Err(CliError {
+            code: "interactive_input_required".into(),
+            message: "This action needs a terminal so the secret can be entered without echo. Use a real PowerShell or Windows Terminal session.".into(),
+        });
+    }
+    struct RawModeGuard;
+    impl Drop for RawModeGuard {
+        fn drop(&mut self) {
+            let _ = crossterm::terminal::disable_raw_mode();
+        }
+    }
+
+    eprint!("{prompt}");
+    io::stderr().flush().map_err(|error| CliError {
+        code: "terminal_error".into(),
+        message: error.to_string(),
+    })?;
+    crossterm::terminal::enable_raw_mode().map_err(|error| CliError {
+        code: "terminal_error".into(),
+        message: error.to_string(),
+    })?;
+    let _raw_mode = RawModeGuard;
+    let mut secret = Zeroizing::new(String::new());
+    loop {
+        match event::read() {
+            Ok(Event::Key(key)) if key.kind == KeyEventKind::Press => match key.code {
+                KeyCode::Enter => break,
+                KeyCode::Esc => {
+                    return Err(CliError {
+                        code: "cancelled".into(),
+                        message: "Secret entry cancelled.".into(),
+                    });
+                }
+                KeyCode::Backspace => {
+                    secret.pop();
+                }
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    return Err(CliError {
+                        code: "cancelled".into(),
+                        message: "Secret entry cancelled.".into(),
+                    });
+                }
+                KeyCode::Char(character) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    secret.push(character);
+                }
+                _ => {}
+            },
+            Ok(_) => {}
+            Err(error) => {
+                return Err(CliError {
+                    code: "terminal_error".into(),
+                    message: error.to_string(),
+                });
+            }
+        }
+    }
+    drop(_raw_mode);
+    eprintln!();
+    if secret.is_empty() {
+        return Err(CliError {
+            code: "empty_secret".into(),
+            message: "The secret cannot be empty.".into(),
+        });
+    }
+    Ok(secret)
 }
 
 fn run_revenue_command(

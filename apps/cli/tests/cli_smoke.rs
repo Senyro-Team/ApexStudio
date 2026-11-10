@@ -14,6 +14,50 @@ use std::{
 use tempfile::tempdir;
 
 #[test]
+fn team_sync_help_exposes_member_workflows_without_password_arguments() {
+    let sync_help = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args(["sync", "--help"])
+        .output()
+        .expect("run sync help");
+    assert!(sync_help.status.success());
+    let sync_help = String::from_utf8(sync_help.stdout).expect("sync help is UTF-8");
+    for command in [
+        "check",
+        "status",
+        "sign-in",
+        "accept-invitation",
+        "invite",
+        "members",
+        "remove-member",
+        "disconnect",
+    ] {
+        assert!(sync_help.contains(command), "missing command {command}");
+    }
+
+    let sign_in_help = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args(["sync", "sign-in", "--help"])
+        .output()
+        .expect("run sign-in help");
+    assert!(sign_in_help.status.success());
+    assert!(!String::from_utf8_lossy(&sign_in_help.stdout).contains("--password"));
+
+    let password_arg = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args([
+            "sync",
+            "sign-in",
+            "https://sync.example.test",
+            "--email",
+            "user@example.test",
+            "--password",
+            "not-accepted",
+        ])
+        .output()
+        .expect("reject password argument");
+    assert!(!password_arg.status.success());
+    assert!(String::from_utf8_lossy(&password_arg.stderr).contains("--password"));
+}
+
+#[test]
 fn lists_dummy_projects_as_json_from_a_disposable_workspace() {
     let temp = tempdir().expect("temporary directory");
     let root = temp.path().join("workspace");

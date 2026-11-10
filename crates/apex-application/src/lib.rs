@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 mod roblox_credentials;
 pub mod roblox_upload;
 mod statistics;
+pub mod team_sync;
 pub use roblox_credentials::{
     clear_roblox_credentials, load_roblox_credentials, prepare_roblox_credentials,
     save_roblox_credentials, store_roblox_credentials, validate_roblox_credentials,

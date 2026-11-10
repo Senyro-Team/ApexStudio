@@ -1,6 +1,6 @@
 # Apex Studio CLI Roadmap
 
-Status: Phases 1–5 are complete; Phase 6 (Team Sync) and Phase 7 (MCP contract and release hardening) remain.
+Status: Phases 1–5 are complete; Phase 6 (Team Sync) is in progress; Phase 7 (MCP contract and release hardening) remains.
 
 ## Product shape
 
@@ -77,9 +77,11 @@ Window layout, drag-and-drop gestures, native file-picker dialogs, and browser-o
 
 See [Phase 5 acceptance record](PHASE-05.md#acceptance-record) for the Windows test counts, release build, PTY review and the desktop test-harness limitation.
 
-### Phase 6 — Team Sync (not started)
+### Phase 6 — Team Sync (in progress)
 
-- Add server connection, sign-in, invitation codes, member roles/removal, project sync, conflict resolution and shared Roblox decal-code views.
+- Shared `apex-application::team_sync` service now provides API identity/status checks, Windows Credential Manager sign-in, invitation acceptance/creation, member listing/removal, and disconnect.
+- CLI commands now cover `sync check`, `status`, `sign-in`, `accept-invitation`, `invite`, `members`, `remove-member`, and `disconnect`; passwords and invitation acceptance codes use a non-echoing terminal prompt and never become command-line arguments or JSON output.
+- Remaining: move the desktop adapter onto the shared account service; add project bindings, project sync, conflict resolution and shared Roblox decal-code views to the application layer, CLI commands and interactive TUI; test the transfer flows against a local mock server.
 - Keep credentials in the OS credential store; show account/team/target summaries before sync or member removal.
 
 **Exit gate:** Local mock-server cases cover invite expiry, role access, offline state, project conflict, retry and shared-code reuse. No live destructive team action is part of automated verification.
