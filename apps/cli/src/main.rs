@@ -1,4 +1,6 @@
-use apex_application::{ApplicationServices, PostSummary, QueueSnapshot, TrashItem, UploadJob};
+use apex_application::{
+    ApplicationServices, PostSummary, QueueSnapshot, RobloxLiverySummary, TrashItem, UploadJob,
+};
 use apex_core::{AssetBoard, Error, Note, Project, ProjectInput, PublishingDraft, Vehicle};
 use base64::Engine as _;
 use clap::{Parser, Subcommand};
@@ -12,6 +14,7 @@ use ratatui::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
+    collections::HashSet,
     fmt, fs,
     io::{self, IsTerminal, Read, Write},
     path::PathBuf,
@@ -2267,6 +2270,18 @@ enum Screen {
     Posts,
     PostDetail,
     RobloxQueue,
+    RobloxLiveries,
+    RobloxBatchReview,
+}
+
+#[derive(Clone, Debug, Default)]
+struct RobloxBatchReviewState {
+    livery_count: usize,
+    texture_count: usize,
+    reusable_ids: usize,
+    upload_passes: usize,
+    account_id: String,
+    reupload: bool,
 }
 
 struct TuiState {
@@ -2286,6 +2301,11 @@ struct TuiState {
     selected_post: Option<String>,
     post_detail: Option<PublishingDraft>,
     upload_queue: Option<QueueSnapshot>,
+    roblox_account_id: Option<String>,
+    roblox_liveries: Vec<RobloxLiverySummary>,
+    selected_roblox_liveries: HashSet<String>,
+    roblox_reupload: bool,
+    roblox_batch_review: Option<RobloxBatchReviewState>,
     no_color: bool,
 }
 
@@ -2308,6 +2328,11 @@ impl TuiState {
             selected_post: None,
             post_detail: None,
             upload_queue: None,
+            roblox_account_id: None,
+            roblox_liveries: Vec::new(),
+            selected_roblox_liveries: HashSet::new(),
+            roblox_reupload: false,
+            roblox_batch_review: None,
             no_color: std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty()),
         }
     }
@@ -2367,6 +2392,19 @@ impl TuiState {
                     || job.account_id.to_lowercase().contains(&query)
                     || job.state.to_lowercase().contains(&query)
                     || job.message.to_lowercase().contains(&query)
+            })
+            .collect()
+    }
+
+    fn visible_roblox_liveries(&self) -> Vec<&RobloxLiverySummary> {
+        let query = self.search.to_lowercase();
+        self.roblox_liveries
+            .iter()
+            .filter(|livery| {
+                query.is_empty()
+                    || livery.project_name.to_lowercase().contains(&query)
+                    || livery.name.to_lowercase().contains(&query)
+                    || livery.id.to_lowercase().contains(&query)
             })
             .collect()
     }
@@ -2460,7 +2498,18 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                     Screen::RobloxQueue if !state.searching && key.code == KeyCode::Char('r') => {
                         refresh_upload_queue(&mut state, &app).map_err(io::Error::other)?;
                     }
+                    Screen::RobloxQueue if !state.searching && key.code == KeyCode::Char('u') => {
+                        open_roblox_livery_selection(&mut state, &app).map_err(io::Error::other)?;
+                    }
                     Screen::RobloxQueue => handle_queue_key(&mut state, key.code),
+                    Screen::RobloxLiveries => {
+                        handle_roblox_liveries_key(&mut state, key.code, &app)
+                            .map_err(io::Error::other)?
+                    }
+                    Screen::RobloxBatchReview => {
+                        handle_roblox_batch_review_key(&mut state, key.code, &app)
+                            .map_err(io::Error::other)?
+                    }
                     Screen::Detail => match key.code {
                         KeyCode::Esc | KeyCode::Backspace => state.screen = Screen::Projects,
                         KeyCode::Char('q') => break Ok(()),
@@ -2522,6 +2571,184 @@ fn refresh_upload_queue(state: &mut TuiState, app: &ApplicationServices) -> Resu
     state.selected = state
         .selected
         .min(state.visible_upload_jobs().len().saturating_sub(1));
+    Ok(())
+}
+
+fn open_roblox_livery_selection(
+    state: &mut TuiState,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    let credentials = apex_application::load_roblox_credentials()?;
+    state.roblox_account_id = credentials.as_ref().map(|value| value.account_id.clone());
+    state.roblox_liveries = if let Some(account_id) = &state.roblox_account_id {
+        app.roblox_liveries(account_id)?
+    } else {
+        Vec::new()
+    };
+    state.selected_roblox_liveries.clear();
+    state.roblox_reupload = false;
+    state.roblox_batch_review = None;
+    state.search.clear();
+    state.selected = 0;
+    state.searching = false;
+    state.screen = Screen::RobloxLiveries;
+    Ok(())
+}
+
+fn make_roblox_batch_review(
+    state: &TuiState,
+    app: &ApplicationServices,
+) -> Result<RobloxBatchReviewState, Error> {
+    let account_id = state
+        .roblox_account_id
+        .as_deref()
+        .ok_or_else(|| Error::InvalidContent("Configure Roblox credentials first.".into()))?;
+    let selected = state
+        .roblox_liveries
+        .iter()
+        .filter(|livery| state.selected_roblox_liveries.contains(&livery.id))
+        .collect::<Vec<_>>();
+    let mut texture_count = 0usize;
+    let mut reusable_ids = 0usize;
+    for livery in &selected {
+        let uploads = app.livery_uploads(&livery.id, account_id)?;
+        for texture in uploads.textures {
+            texture_count += 1;
+            if texture.upload.as_ref().is_some_and(|upload| {
+                upload.state == "uploaded"
+                    && upload.asset_id.is_some()
+                    && upload.moderation != "rejected"
+            }) {
+                reusable_ids += 1;
+            }
+        }
+    }
+    let uploads = if state.roblox_reupload {
+        texture_count
+    } else {
+        texture_count.saturating_sub(reusable_ids)
+    };
+    let double_upload = app.roblox_double_upload()?;
+    Ok(RobloxBatchReviewState {
+        livery_count: selected.len(),
+        texture_count,
+        reusable_ids,
+        upload_passes: uploads * if double_upload { 2 } else { 1 },
+        account_id: account_id.to_owned(),
+        reupload: state.roblox_reupload,
+    })
+}
+
+fn handle_roblox_liveries_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    if state.searching {
+        match key {
+            KeyCode::Esc | KeyCode::Enter => state.searching = false,
+            KeyCode::Backspace => {
+                state.search.pop();
+                state.selected = 0;
+            }
+            KeyCode::Char(value) if !value.is_control() => {
+                state.search.push(value);
+                state.selected = 0;
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
+    match key {
+        KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
+            state.screen = Screen::RobloxQueue;
+            state.search.clear();
+            state.selected = 0;
+        }
+        KeyCode::Char('/') => state.searching = true,
+        KeyCode::Up | KeyCode::Char('k') => state.selected = state.selected.saturating_sub(1),
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.selected =
+                (state.selected + 1).min(state.visible_roblox_liveries().len().saturating_sub(1))
+        }
+        KeyCode::Char(' ') => {
+            if let Some(id) = state
+                .visible_roblox_liveries()
+                .get(state.selected)
+                .map(|livery| livery.id.clone())
+            {
+                if !state.selected_roblox_liveries.insert(id.clone()) {
+                    state.selected_roblox_liveries.remove(&id);
+                }
+            }
+        }
+        KeyCode::Char('a') => {
+            let visible_ids = state
+                .visible_roblox_liveries()
+                .into_iter()
+                .map(|livery| livery.id.clone())
+                .collect::<Vec<_>>();
+            state.selected_roblox_liveries.extend(visible_ids);
+        }
+        KeyCode::Char('c') => state.selected_roblox_liveries.clear(),
+        KeyCode::Char('r') => state.roblox_reupload = !state.roblox_reupload,
+        KeyCode::Enter if !state.selected_roblox_liveries.is_empty() => {
+            state.roblox_batch_review = Some(make_roblox_batch_review(state, app)?);
+            state.screen = Screen::RobloxBatchReview;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn handle_roblox_batch_review_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    match key {
+        KeyCode::Esc | KeyCode::Backspace => state.screen = Screen::RobloxLiveries,
+        KeyCode::Char('r') => {
+            state.roblox_reupload = !state.roblox_reupload;
+            state.roblox_batch_review = Some(make_roblox_batch_review(state, app)?);
+        }
+        KeyCode::Char('y')
+            if state
+                .roblox_batch_review
+                .as_ref()
+                .is_some_and(|review| review.upload_passes > 0) =>
+        {
+            let review = state
+                .roblox_batch_review
+                .as_ref()
+                .ok_or_else(|| Error::InvalidContent("Review the selected batch first.".into()))?;
+            let livery_ids = state
+                .roblox_liveries
+                .iter()
+                .filter(|livery| state.selected_roblox_liveries.contains(&livery.id))
+                .map(|livery| livery.id.clone())
+                .collect::<Vec<_>>();
+            let request_id = format!(
+                "tui-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|duration| duration.as_nanos())
+                    .unwrap_or_default()
+            );
+            app.create_roblox_batch(
+                &request_id,
+                &review.account_id,
+                &livery_ids,
+                review.reupload,
+            )?;
+            state.screen = Screen::RobloxQueue;
+            state.search.clear();
+            state.selected = 0;
+            refresh_upload_queue(state, app)?;
+        }
+        _ => {}
+    }
     Ok(())
 }
 
@@ -2920,6 +3147,10 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Posts => draw_posts(frame, state, regions[1], accent, muted),
         Screen::PostDetail => draw_post_detail(frame, state, regions[1], accent, muted),
         Screen::RobloxQueue => draw_roblox_queue(frame, state, regions[1], accent, muted),
+        Screen::RobloxLiveries => draw_roblox_liveries(frame, state, regions[1], accent, muted),
+        Screen::RobloxBatchReview => {
+            draw_roblox_batch_review(frame, state, regions[1], accent, muted)
+        }
     }
     let footer = match state.screen {
         Screen::Home => " ↑/↓ Select   Enter Open   q Quit ",
@@ -2941,7 +3172,14 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Posts => " ↑/↓ Select   Enter Open   / Search   r Refresh   Esc Back ",
         Screen::PostDetail => " Esc Back   q Home ",
         Screen::RobloxQueue if state.searching => " Type to filter   Enter/Esc Finish search ",
-        Screen::RobloxQueue => " ↑/↓ Select   / Search   r Refresh   Esc Back ",
+        Screen::RobloxQueue => {
+            " u Upload liveries   ↑/↓ Select jobs   / Search   r Refresh   Esc Back "
+        }
+        Screen::RobloxLiveries if state.searching => " Type to filter   Enter/Esc Finish search ",
+        Screen::RobloxLiveries => {
+            " ↑/↓ Select   Space Toggle   a Select filtered   c Clear   r Re-upload   Enter Review "
+        }
+        Screen::RobloxBatchReview => " y Start confirmed batch   r Toggle re-upload   Esc Back ",
     };
     frame.render_widget(
         Paragraph::new(footer)
@@ -3762,6 +4000,176 @@ fn draw_roblox_queue(
     }
 }
 
+fn draw_roblox_liveries(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    if state.roblox_account_id.is_none() {
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::styled(
+                    "Roblox credentials are not configured.",
+                    Style::default().fg(accent).add_modifier(Modifier::BOLD),
+                ),
+                Line::raw(""),
+                Line::raw("Set and validate them with: apex-studio-cli roblox credentials set --account-id <ID>"),
+                Line::raw("Then reopen Roblox uploads."),
+            ])
+            .block(Block::default().title("Upload liveries").borders(Borders::ALL))
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+            area,
+        );
+        return;
+    }
+    let (list_area, detail_area) = if area.width < 88 {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(66), Constraint::Percentage(34)])
+            .split(area);
+        (split[0], split[1])
+    } else {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(62), Constraint::Percentage(38)])
+            .split(area);
+        (split[0], split[1])
+    };
+    let visible = state.visible_roblox_liveries();
+    let items = visible
+        .iter()
+        .map(|livery| {
+            let marker = if state.selected_roblox_liveries.contains(&livery.id) {
+                "[x]"
+            } else {
+                "[ ]"
+            };
+            ListItem::new(format!(
+                "{marker} {} · {} · {} of {} uploaded",
+                livery.project_name, livery.name, livery.uploaded, livery.textures
+            ))
+        })
+        .collect::<Vec<_>>();
+    let mut list_state = ListState::default()
+        .with_selected((!visible.is_empty()).then(|| state.selected.min(visible.len() - 1)));
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(
+                Block::default()
+                    .title(format!(
+                        "Liveries for account {} · {} selected",
+                        state.roblox_account_id.as_deref().unwrap_or("—"),
+                        state.selected_roblox_liveries.len()
+                    ))
+                    .borders(Borders::ALL),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        list_area,
+        &mut list_state,
+    );
+    let details =
+        if let Some(livery) = visible.get(state.selected.min(visible.len().saturating_sub(1))) {
+            vec![
+                Line::styled(
+                    livery.name.as_str(),
+                    Style::default().fg(accent).add_modifier(Modifier::BOLD),
+                ),
+                Line::raw(&livery.project_name),
+                Line::raw(format!(
+                    "{} of {} textures already uploaded",
+                    livery.uploaded, livery.textures
+                )),
+                Line::raw(format!("Folder ID: {}", livery.id)),
+                Line::raw(""),
+                Line::raw(if state.roblox_reupload {
+                    "Mode: re-upload selected textures"
+                } else {
+                    "Mode: upload missing or changed textures"
+                }),
+                Line::raw(""),
+                Line::raw("Select several liveries, then press Enter to review."),
+            ]
+        } else if state.roblox_liveries.is_empty() {
+            vec![Line::raw(
+                "No livery folders are available for this account.",
+            )]
+        } else {
+            vec![Line::raw("No liveries match this search.")]
+        };
+    frame.render_widget(
+        Paragraph::new(details)
+            .block(
+                Block::default()
+                    .title("Selection details")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        detail_area,
+    );
+}
+
+fn draw_roblox_batch_review(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let Some(review) = &state.roblox_batch_review else {
+        frame.render_widget(
+            Paragraph::new("Select liveries before reviewing a batch.")
+                .block(Block::default().borders(Borders::ALL)),
+            area,
+        );
+        return;
+    };
+    let mut lines = vec![
+        Line::styled(
+            "Review Roblox upload batch",
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ),
+        Line::raw(format!("Account: {}", review.account_id)),
+        Line::raw(format!("Liveries: {}", review.livery_count)),
+        Line::raw(format!("Textures: {}", review.texture_count)),
+        Line::raw(format!("Reusable existing IDs: {}", review.reusable_ids)),
+        Line::raw(format!("Required upload passes: {}", review.upload_passes)),
+        Line::raw(format!(
+            "Mode: {}",
+            if review.reupload {
+                "re-upload selected textures"
+            } else {
+                "upload missing or changed textures"
+            }
+        )),
+        Line::raw(""),
+    ];
+    if review.upload_passes == 0 {
+        lines.push(Line::raw(
+            "Every selected texture already has a reusable ID. Nothing will be queued.",
+        ));
+        lines.push(Line::raw(
+            "Press Esc to return and choose Re-upload if you intend to upload them again.",
+        ));
+    } else {
+        lines.push(Line::raw("Press Y to create this durable batch. Uploads start when the desktop worker processes it."));
+        lines.push(Line::raw(
+            "The Roblox worker requires the desktop app to be running.",
+        ));
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().title("Final review").borders(Borders::ALL))
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
@@ -3878,6 +4286,87 @@ mod tests {
     }
 
     #[test]
+    fn roblox_livery_picker_filters_project_name_livery_name_and_id() {
+        let mut state = TuiState::new(Vec::new());
+        state.roblox_liveries = vec![
+            RobloxLiverySummary {
+                id: "livery-1".into(),
+                project_id: "project-1".into(),
+                project_name: "EMS Fleet".into(),
+                name: "Highway Patrol".into(),
+                vehicle_id: None,
+                textures: 3,
+                uploaded: 1,
+            },
+            RobloxLiverySummary {
+                id: "livery-2".into(),
+                project_id: "project-2".into(),
+                project_name: "Fire Rescue".into(),
+                name: "Engine Company".into(),
+                vehicle_id: None,
+                textures: 5,
+                uploaded: 0,
+            },
+        ];
+
+        for query in ["ems", "HIGHWAY", "livery-1"] {
+            state.search = query.into();
+            assert_eq!(state.visible_roblox_liveries().len(), 1, "query: {query}");
+            assert_eq!(state.visible_roblox_liveries()[0].id, "livery-1");
+        }
+        state.search = "rescue".into();
+        assert_eq!(state.visible_roblox_liveries().len(), 1);
+        assert_eq!(state.visible_roblox_liveries()[0].id, "livery-2");
+        state.search = "missing".into();
+        assert!(state.visible_roblox_liveries().is_empty());
+    }
+
+    #[test]
+    fn roblox_picker_supports_filtered_multi_selection() {
+        let directory = tempfile::tempdir().expect("temporary workspace directory");
+        let app = ApplicationServices::open(directory.path()).expect("open dummy workspace");
+        let mut state = TuiState::new(Vec::new());
+        state.screen = Screen::RobloxLiveries;
+        state.roblox_liveries = vec![
+            RobloxLiverySummary {
+                id: "livery-1".into(),
+                project_id: "project-1".into(),
+                project_name: "EMS Fleet".into(),
+                name: "Highway Patrol".into(),
+                vehicle_id: None,
+                textures: 3,
+                uploaded: 1,
+            },
+            RobloxLiverySummary {
+                id: "livery-2".into(),
+                project_id: "project-2".into(),
+                project_name: "Fire Rescue".into(),
+                name: "Engine Company".into(),
+                vehicle_id: None,
+                textures: 5,
+                uploaded: 0,
+            },
+        ];
+
+        handle_roblox_liveries_key(&mut state, KeyCode::Char(' '), &app)
+            .expect("select first livery");
+        handle_roblox_liveries_key(&mut state, KeyCode::Char('/'), &app)
+            .expect("start livery search");
+        for value in "rescue".chars() {
+            handle_roblox_liveries_key(&mut state, KeyCode::Char(value), &app)
+                .expect("type search");
+        }
+        handle_roblox_liveries_key(&mut state, KeyCode::Enter, &app).expect("finish livery search");
+        handle_roblox_liveries_key(&mut state, KeyCode::Char('a'), &app)
+            .expect("select filtered liveries");
+
+        assert_eq!(state.selected_roblox_liveries.len(), 2);
+        assert!(state.selected_roblox_liveries.contains("livery-1"));
+        assert!(state.selected_roblox_liveries.contains("livery-2"));
+        assert_eq!(state.search, "rescue");
+    }
+
+    #[test]
     fn roblox_api_key_is_not_an_accepted_command_line_argument() {
         let error = Args::try_parse_from([
             "apex-studio-cli",
@@ -3929,6 +4418,8 @@ mod tests {
                 Screen::Posts,
                 Screen::PostDetail,
                 Screen::RobloxQueue,
+                Screen::RobloxLiveries,
+                Screen::RobloxBatchReview,
             ] {
                 let backend = TestBackend::new(width, height);
                 let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
@@ -3965,6 +4456,24 @@ mod tests {
                     revision: 1,
                 });
                 state.upload_queue = Some(QueueSnapshot::default());
+                state.roblox_account_id = Some("123456789".into());
+                state.roblox_liveries = vec![RobloxLiverySummary {
+                    id: "livery-1".into(),
+                    project_id: project.id.clone(),
+                    project_name: project.fields.name.clone(),
+                    name: "Dummy livery".into(),
+                    vehicle_id: None,
+                    textures: 12,
+                    uploaded: 4,
+                }];
+                state.roblox_batch_review = Some(RobloxBatchReviewState {
+                    livery_count: 1,
+                    texture_count: 12,
+                    reusable_ids: 4,
+                    upload_passes: 16,
+                    account_id: "123456789".into(),
+                    reupload: false,
+                });
                 state.asset_board = Some(AssetBoard {
                     assets: Vec::new(),
                     folders: Vec::new(),

@@ -11,13 +11,13 @@ Status: In progress.
 - `roblox batch start` creates an explicitly confirmed durable batch; pause/resume/cancel/retry controls operate on the shared queue. The existing desktop worker handles network requests while the desktop app is running, using credentials configured in Settings.
 - `roblox double-upload --enable|--disable` changes the persisted preference used by future batches.
 - `roblox credentials status|set|clear` uses the same Windows Credential Manager entry as the desktop app. `set` reads the API key in a hidden terminal prompt, validates account ownership, expiration and asset scopes, and stores only after successful validation; queued batches are paused before replacing or clearing credentials.
-- The TUI includes searchable ERLCX draft and Roblox queue views, with post snapshot details, batch status, texture pass state, and both decal IDs.
-- Disposable integration coverage checks multi-post Markdown output, escaping, no-overwrite, livery listing, queue creation/pause, and the double-upload preference without any live Roblox requests. Local HTTP mocks exercise Roblox credential introspection, and a Clap test ensures API keys are rejected as command-line arguments; no real credentials are read by tests. TUI rendering coverage includes the new screens at compact and standard widths.
+- The TUI includes searchable ERLCX draft and Roblox queue views, with post snapshot details, batch status, texture pass state, and both decal IDs. From the queue, `u` opens a cross-project livery picker with search, Space selection, select-all-filtered, clear, and re-upload mode. Enter shows texture/reusable-ID/pass counts; `y` creates the durable batch only after review. The desktop app must be running to process that batch.
+- Disposable integration coverage checks multi-post Markdown output, escaping, no-overwrite, livery listing, queue creation/pause, and the double-upload preference without any live Roblox requests. Local HTTP mocks exercise Roblox credential introspection, and a Clap test ensures API keys are rejected as command-line arguments; no real credentials are read by tests. TUI rendering coverage includes the picker and review at 40, 80, and 120 columns; dummy-workspace tests cover filtered multi-selection.
 
 ## Current limitations
 
 - An upload worker that can run without the desktop app has not been implemented in the CLI yet. A CLI-created batch is durable, but it waits for the existing desktop worker.
-- Drafts can be edited through typed JSON files; the new TUI draft and queue views are currently read-only.
+- Drafts can be edited through typed JSON files; ERLCX draft views and queue-control actions in the TUI remain read-only. Batch creation is available through the livery picker and command line.
 - `.apexpublish` export is available; a CLI importer and direct Chrome bridge handoff are not yet available.
 - The planned Chrome path is confirmed: request a handoff through the running desktop bridge; retain `.apexpublish` as the manual fallback.
 
@@ -62,7 +62,7 @@ apex-studio-cli codes export .\livery-codes.md --post <POST_ID> --post <POST_ID>
 3. ~~Add hidden credential configuration and double-upload preference commands.~~ Add security tests that prove no secret appears in stdout/stderr or process arguments and failed validation leaves previous credentials intact.
 4. Add batch preview/confirm/start and queue controls with offline mock transport tests, including retries, throttling, interrupted operations, account changes, and pass-one/pass-two behavior.
 5. Add ERLCX draft commands, PNG media import, source-staleness review, `.apexpublish` import/export and the supported Chrome bridge request.
-6. ~~Add searchable TUI views and selection workflows for Roblox and ERLCX.~~ Read-only searchable draft/queue views are implemented; TUI selection workflows and confirmation actions remain for future iteration.
+6. ~~Add searchable TUI views and selection workflows for Roblox and ERLCX.~~ Searchable draft/queue views and a reviewed multi-livery Roblox batch-selection flow are implemented; editable ERLCX draft screens and interactive queue controls remain.
 7. Run debug/release checks, application and desktop adapter checks, and all mock/disposable workspace tests. Do not perform a live Roblox upload or ERLCX submission as part of routine verification.
 
 ## Exit gate
