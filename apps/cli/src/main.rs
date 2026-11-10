@@ -25,6 +25,8 @@ use std::{
     process::ExitCode,
 };
 
+mod revenue_csv;
+
 const APP_IDENTIFIER: &str = "studio.apexdesigns.apexstudio";
 
 #[cfg(windows)]
@@ -365,6 +367,19 @@ enum RevenueCommand {
         group_id: String,
         #[arg(long)]
         yes: bool,
+    },
+    /// Preview or import one or more Creator Hub sales CSV files.
+    ImportCsv {
+        #[arg(long)]
+        group_id: String,
+        /// Keep the preview and do not write any rows.
+        #[arg(long, conflicts_with = "yes")]
+        preview_only: bool,
+        /// Confirm the import without an interactive prompt.
+        #[arg(long)]
+        yes: bool,
+        #[arg(required = true, num_args = 1..)]
+        files: Vec<PathBuf>,
     },
 }
 
@@ -1702,6 +1717,68 @@ fn run_revenue_command(
                 println!("Removed group {group_id} and its stored sales.");
             }
         }
+        RevenueCommand::ImportCsv {
+            group_id,
+            preview_only,
+            yes,
+            files,
+        } => {
+            let group = data
+                .groups
+                .iter()
+                .find(|group| group.group_id == group_id)
+                .ok_or_else(|| CliError {
+                    code: "revenue_group_not_found".into(),
+                    message: format!("No Group Revenue data exists for group {group_id}."),
+                })?;
+            let preview =
+                revenue_csv::read_csv_files(&files, group, &data.sales).map_err(|message| {
+                    CliError {
+                        code: "revenue_csv_invalid".into(),
+                        message,
+                    }
+                })?;
+            let preview_data = serde_json::json!({
+                "groupId": group_id,
+                "files": preview.files,
+                "rows": preview.sales.len(),
+                "skippedRows": preview.skipped,
+                "potentialDuplicates": preview.duplicates,
+                "fromUtc": preview.from,
+                "toUtc": preview.to,
+                "warnings": preview.warnings,
+            });
+            if preview_only {
+                if json {
+                    print_json(&preview_data)?;
+                } else {
+                    print_revenue_csv_preview(&preview_data);
+                }
+                return Ok(());
+            }
+            if !json {
+                print_revenue_csv_preview(&preview_data);
+            }
+            confirm_action(
+                &format!(
+                    "import {} CSV sale rows for group {group_id}",
+                    preview.sales.len()
+                ),
+                yes,
+                json,
+            )?;
+            let result = app
+                .import_roblox_group_sales(group, &preview.batch_id, &preview.sales)
+                .map_err(CliError::from)?;
+            if json {
+                print_json(&serde_json::json!({"preview": preview_data, "import": result}))?;
+            } else {
+                println!(
+                    "Imported {} new rows · {} duplicates skipped.",
+                    result.inserted, result.duplicates
+                );
+            }
+        }
         RevenueCommand::Show { group_id } => {
             let group = data
                 .groups
@@ -1826,6 +1903,33 @@ fn update_revenue_pass(
         );
     }
     Ok(())
+}
+
+fn print_revenue_csv_preview(preview: &serde_json::Value) {
+    println!("Group Revenue CSV preview");
+    println!("Files: {}", preview["files"].as_array().map_or(0, Vec::len));
+    if let Some(files) = preview["files"].as_array() {
+        for file in files.iter().filter_map(serde_json::Value::as_str) {
+            println!("  {file}");
+        }
+    }
+    println!(
+        "Rows: {} · skipped: {} · possible duplicates: {}",
+        preview["rows"].as_u64().unwrap_or(0),
+        preview["skippedRows"].as_u64().unwrap_or(0),
+        preview["potentialDuplicates"].as_u64().unwrap_or(0)
+    );
+    println!(
+        "UTC range: {} to {}",
+        preview["fromUtc"].as_str().unwrap_or("unknown"),
+        preview["toUtc"].as_str().unwrap_or("unknown")
+    );
+    if let Some(warnings) = preview["warnings"].as_array() {
+        for warning in warnings.iter().filter_map(serde_json::Value::as_str) {
+            println!("Warning: {warning}");
+        }
+    }
+    println!("Buyer user IDs and original CSV rows are discarded.");
 }
 
 fn run_roblox_worker(app: &ApplicationServices, json: bool, yes: bool) -> Result<(), CliError> {

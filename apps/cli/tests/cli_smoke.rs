@@ -307,6 +307,98 @@ fn revenue_cli_configures_groups_selects_passes_and_confirms_removal() {
 }
 
 #[test]
+fn revenue_csv_preview_import_and_reimport_are_safe_in_a_dummy_workspace() {
+    let temp = tempdir().expect("temporary directory");
+    let root = temp.path().join("workspace");
+    let configured = cli_json(
+        &root,
+        &[
+            "revenue",
+            "configure",
+            "--group-id",
+            "16538500",
+            "--name",
+            "APX Dummy",
+            "--experience-id",
+            "84560840200510",
+        ],
+    );
+    assert!(configured.status.success());
+    let csv_path = temp.path().join("creator-sales.csv");
+    let csv = "Id,Sale Date and Time,Sale Location,Universe Id,Asset Id,Asset Type,Hold Status,Revenue,Price,Buyer User ID\r\ntransaction-1,2026-11-07T22:31:20Z,\"Website, Premium\",84560840200510,2053361604,Game Pass,Released,700,1000,private-buyer\r\ntransaction-2,2026-11-08T12:00:00Z,Website,84560840200510,100,Clothing,Released,10,15,another-buyer\r\n";
+    fs::write(&csv_path, csv).expect("write dummy Roblox export");
+    let path = csv_path.to_str().expect("CSV path is UTF-8");
+
+    let preview = cli_json(
+        &root,
+        &[
+            "revenue",
+            "import-csv",
+            "--group-id",
+            "16538500",
+            "--preview-only",
+            path,
+        ],
+    );
+    assert!(preview.status.success());
+    let preview: serde_json::Value = serde_json::from_slice(&preview.stdout).expect("preview JSON");
+    assert_eq!(preview["rows"], 1);
+    assert_eq!(preview["skippedRows"], 1);
+    assert!(!preview.to_string().contains("private-buyer"));
+    assert_eq!(
+        fs::read_to_string(&csv_path).expect("CSV remains original"),
+        csv
+    );
+
+    let unconfirmed = cli_json(
+        &root,
+        &["revenue", "import-csv", "--group-id", "16538500", path],
+    );
+    assert!(!unconfirmed.status.success());
+    let error: serde_json::Value = serde_json::from_slice(&unconfirmed.stderr).expect("error JSON");
+    assert_eq!(error["error"]["code"], "confirmation_required");
+
+    let imported = cli_json(
+        &root,
+        &[
+            "revenue",
+            "import-csv",
+            "--group-id",
+            "16538500",
+            "--yes",
+            path,
+        ],
+    );
+    assert!(
+        imported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&imported.stderr)
+    );
+    let imported: serde_json::Value =
+        serde_json::from_slice(&imported.stdout).expect("import JSON");
+    assert_eq!(imported["import"]["inserted"], 1);
+    assert_eq!(imported["import"]["duplicates"], 0);
+    assert!(!imported.to_string().contains("private-buyer"));
+
+    let repeated = cli_json(
+        &root,
+        &[
+            "revenue",
+            "import-csv",
+            "--group-id",
+            "16538500",
+            "--yes",
+            path,
+        ],
+    );
+    assert!(repeated.status.success());
+    let repeated: serde_json::Value =
+        serde_json::from_slice(&repeated.stdout).expect("repeat import JSON");
+    assert_eq!(repeated["import"]["inserted"], 0);
+    assert_eq!(repeated["import"]["duplicates"], 1);
+}
+
+#[test]
 fn code_export_combines_selected_saved_posts_as_markdown_without_overwriting() {
     let temp = tempdir().expect("temporary directory");
     let root = temp.path().join("workspace");
