@@ -4194,6 +4194,8 @@ struct TuiState {
     team_sync_report: Option<apex_application::team_sync::project::SyncReport>,
     team_sync_view_report: bool,
     team_sync_report_selected: usize,
+    team_sync_pending_resolution: Option<(String, bool)>,
+    team_sync_confirm_resolution: bool,
     team_sync_worker_active: bool,
     team_sync_status_message: Option<(String, bool)>,
     group_revenue: Option<RobloxGroupRevenueData>,
@@ -4278,6 +4280,8 @@ impl TuiState {
             team_sync_report: None,
             team_sync_view_report: false,
             team_sync_report_selected: 0,
+            team_sync_pending_resolution: None,
+            team_sync_confirm_resolution: false,
             team_sync_worker_active: false,
             team_sync_status_message: None,
             group_revenue: None,
@@ -4487,6 +4491,7 @@ enum TuiWorkerEvent {
     TeamSyncRefreshed(Result<TeamSyncDashboardData, String>),
     TeamSyncFinished(Result<apex_application::team_sync::project::SyncReport, String>),
     TeamSyncBindingFinished(Result<(String, bool), String>),
+    TeamSyncResolved(Result<(String, bool), String>),
 }
 
 struct TeamSyncDashboardData {
@@ -4611,6 +4616,33 @@ fn start_tui_team_sync_binding(
             let _ = events.send(TuiWorkerEvent::TeamSyncBindingFinished(result));
         })
         .map_err(|error| Error::Storage(format!("Could not start project binding: {error}")))
+}
+
+fn start_tui_team_sync_resolution(
+    app: ApplicationServices,
+    project_id: String,
+    use_server: bool,
+    events: std::sync::mpsc::Sender<TuiWorkerEvent>,
+) -> Result<std::thread::JoinHandle<()>, Error> {
+    std::thread::Builder::new()
+        .name("apex-team-sync-resolution".into())
+        .spawn(move || {
+            let result = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())
+                .and_then(|runtime| {
+                    runtime
+                        .block_on(apex_application::team_sync::project::resolve_project_sync(
+                            &project_id,
+                            use_server,
+                            app.workspace(),
+                        ))
+                        .map(|()| (project_id, use_server))
+                });
+            let _ = events.send(TuiWorkerEvent::TeamSyncResolved(result));
+        })
+        .map_err(|error| Error::Storage(format!("Could not start conflict resolution: {error}")))
 }
 
 fn start_tui_statistics_refresh(
@@ -4982,6 +5014,41 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                             state.team_sync_status_message = Some((error, false));
                         }
                     }
+                }
+                TuiWorkerEvent::TeamSyncResolved(result) => {
+                    state.team_sync_worker_active = false;
+                    state.team_sync_confirm_resolution = false;
+                    if let Some(handle) = team_sync_thread.take() {
+                        let _ = handle.join();
+                    }
+                    match result {
+                        Ok((project_id, use_server)) => {
+                            let name = state
+                                .projects
+                                .iter()
+                                .find(|project| project.id == project_id)
+                                .map(|project| project.fields.name.as_str())
+                                .unwrap_or("Project");
+                            state.team_sync_status_message = Some((
+                                format!(
+                                    "Conflict resolved for {name} using the {} version",
+                                    if use_server { "server" } else { "local" }
+                                ),
+                                true,
+                            ));
+                            state.team_sync_report = None;
+                            team_sync_refresh(
+                                &mut state,
+                                &app,
+                                &worker_events_tx,
+                                &mut team_sync_thread,
+                            );
+                        }
+                        Err(error) => {
+                            state.team_sync_status_message = Some((error, false));
+                        }
+                    }
+                    state.team_sync_pending_resolution = None;
                 }
             }
         }
@@ -7590,8 +7657,9 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::TeamSync if state.team_sync_searching => " Type to filter   Enter/Esc Finish search ",
         Screen::TeamSync if state.team_sync_selecting_local => " ↑/↓ Select local project   / Search   Enter Continue   Esc Cancel ",
         Screen::TeamSync if state.team_sync_confirm_binding => " y Confirm project change   n/Esc Cancel ",
+        Screen::TeamSync if state.team_sync_confirm_resolution => " y Apply selected conflict resolution   n/Esc Cancel ",
         Screen::TeamSync if state.team_sync_confirm_sync => " y Synchronize reviewed team   n/Esc Cancel ",
-        Screen::TeamSync if state.team_sync_view_report => " ↑/↓ Review sync results   Esc Close ",
+        Screen::TeamSync if state.team_sync_view_report => " ↑/↓ Review   r Server copy   l Local copy   Esc Close ",
         Screen::TeamSync if state.team_sync_worker_active => " Working…   Esc Back to menu ",
         Screen::TeamSync if state.team_sync_panel == TeamSyncPanel::Members => " Tab Projects   ↑/↓ Members   / Search   r Refresh   Esc Back ",
         Screen::TeamSync => " Tab Members   [ / ] Team   / Search   l Link   u Unlink   r Refresh   s Sync   Esc Back ",
@@ -7878,6 +7946,43 @@ fn handle_team_sync_key(
         }
         return;
     }
+    if state.team_sync_confirm_resolution {
+        match key {
+            KeyCode::Char('y') | KeyCode::Char('Y') if !state.team_sync_worker_active => {
+                if let Some((project_id, use_server)) = state.team_sync_pending_resolution.clone() {
+                    match start_tui_team_sync_resolution(
+                        app.clone(),
+                        project_id,
+                        use_server,
+                        events.clone(),
+                    ) {
+                        Ok(handle) => {
+                            *worker = Some(handle);
+                            state.team_sync_worker_active = true;
+                            state.team_sync_status_message = Some((
+                                if use_server {
+                                    "Applying the server snapshot; a workspace backup will be made first…".into()
+                                } else {
+                                    "Uploading the local snapshot to resolve the conflict…".into()
+                                },
+                                true,
+                            ));
+                        }
+                        Err(error) => {
+                            state.team_sync_confirm_resolution = false;
+                            state.team_sync_status_message = Some((error.to_string(), false));
+                        }
+                    }
+                }
+            }
+            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                state.team_sync_confirm_resolution = false;
+                state.team_sync_pending_resolution = None;
+            }
+            _ => {}
+        }
+        return;
+    }
     if state.team_sync_view_report {
         let length = state
             .team_sync_report
@@ -7893,6 +7998,27 @@ fn handle_team_sync_key(
                     .team_sync_report_selected
                     .saturating_add(1)
                     .min(length.saturating_sub(1));
+            }
+            KeyCode::Char('r') | KeyCode::Char('l') => {
+                if let Some(entry) = state
+                    .team_sync_report
+                    .as_ref()
+                    .and_then(|report| report.entries.get(state.team_sync_report_selected))
+                    .filter(|entry| {
+                        entry.status == "error" && entry.message.to_lowercase().contains("conflict")
+                    })
+                {
+                    state.team_sync_pending_resolution =
+                        Some((entry.project_id.clone(), key == KeyCode::Char('r')));
+                    state.team_sync_confirm_resolution = true;
+                    state.team_sync_view_report = false;
+                } else {
+                    state.team_sync_status_message = Some((
+                        "Select a sync conflict to resolve; other errors need separate attention"
+                            .into(),
+                        false,
+                    ));
+                }
             }
             _ => {}
         }
@@ -8477,7 +8603,7 @@ fn draw_team_sync(
             lines.push(Line::from(single_line(&entry.message)));
             if entry.message.to_lowercase().contains("conflict") {
                 lines.push(Line::styled(
-                    "Resolve with `apex-studio-cli sync resolve --project <ID> --use-server` or `--use-local`.",
+                    "r Use server copy   l Keep local copy",
                     Style::default().fg(muted),
                 ));
             }
@@ -8494,6 +8620,67 @@ fn draw_team_sync(
                 .block(
                     Block::default()
                         .title("Last sync report")
+                        .borders(Borders::ALL),
+                )
+                .wrap(Wrap { trim: true }),
+            overlay,
+        );
+    }
+    if state.team_sync_confirm_resolution {
+        let width = area.width.saturating_sub(8).min(70);
+        let height = 7.min(area.height);
+        let overlay = ratatui::layout::Rect {
+            x: area.x + area.width.saturating_sub(width) / 2,
+            y: area.y + area.height.saturating_sub(height) / 2,
+            width,
+            height,
+        };
+        let (project_name, use_server) = state
+            .team_sync_pending_resolution
+            .as_ref()
+            .map(|(id, use_server)| {
+                (
+                    state
+                        .projects
+                        .iter()
+                        .find(|project| &project.id == id)
+                        .map(|project| single_line(&project.fields.name))
+                        .unwrap_or_else(|| id.clone()),
+                    *use_server,
+                )
+            })
+            .unwrap_or_else(|| ("selected project".into(), false));
+        let body = if use_server {
+            vec![
+                Line::from(format!(
+                    "Replace local data for {project_name} with the server snapshot?"
+                )),
+                Line::from("A workspace backup is created before server data is applied."),
+                Line::from(""),
+                Line::styled(
+                    "y  Use server copy     n / Esc  Cancel",
+                    Style::default().fg(accent),
+                ),
+            ]
+        } else {
+            vec![
+                Line::from(format!(
+                    "Upload the local snapshot for {project_name} over the server copy?"
+                )),
+                Line::from("This replaces the server snapshot for the selected team."),
+                Line::from(""),
+                Line::styled(
+                    "y  Keep local copy     n / Esc  Cancel",
+                    Style::default().fg(accent),
+                ),
+            ]
+        };
+        frame.render_widget(Clear, overlay);
+        frame.render_widget(
+            Paragraph::new(body)
+                .block(
+                    Block::default()
+                        .title("Confirm conflict resolution")
                         .borders(Borders::ALL),
                 )
                 .wrap(Wrap { trim: true }),
@@ -11286,6 +11473,12 @@ mod tests {
             terminal
                 .draw(|frame| draw(frame, &state))
                 .expect("render sync report review");
+            state.team_sync_view_report = false;
+            state.team_sync_pending_resolution = Some(("project-1".into(), true));
+            state.team_sync_confirm_resolution = true;
+            terminal
+                .draw(|frame| draw(frame, &state))
+                .expect("render conflict resolution confirmation");
             assert_eq!(terminal.backend().buffer().area.width, width);
             assert_eq!(terminal.backend().buffer().area.height, height);
         }
