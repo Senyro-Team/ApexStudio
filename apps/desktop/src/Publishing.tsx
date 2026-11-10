@@ -2,7 +2,7 @@ import PostLiveryPicker from "./PostLiveryPicker";
 import AppSelect from "./AppSelect";
 import OverlayStudio from "./OverlayStudio";
 import { readyForPublishing, publishingLivery } from "./RobloxUpload";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, BookmarkPlus, Copy, Plus, Trash2 } from "lucide-react";
 import SlotEditor from "./SlotEditor";
 import {
@@ -52,6 +52,80 @@ import {
   type MarkdownPreset,
 } from "./bridge";
 const steps = ["Liveries", "Details", "Previews", "Markdown", "Review"] as const;
+
+function safeHttpsUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.toString() : null;
+  } catch { return null; }
+}
+
+function renderInlineMarkdown(value: string): ReactNode[] {
+  const parts = value.split(/(\[[^\]]+\]\([^)]+\)|\*\*.+?\*\*|\*.+?\*|`[^`]+`)/g);
+  return parts.map((part, index) => {
+    const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (link) {
+      const href = safeHttpsUrl(link[2]);
+      return href ? <a key={index} href={href} target="_blank" rel="noopener noreferrer">{link[1]}</a> : <span key={index}>{part}</span>;
+    }
+    if (part.startsWith("**") && part.endsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith("*") && part.endsWith("*")) return <em key={index}>{part.slice(1, -1)}</em>;
+    if (part.startsWith("`") && part.endsWith("`")) return <code key={index}>{part.slice(1, -1)}</code>;
+    return <span key={index}>{part}</span>;
+  });
+}
+
+function renderTextMarkdown(value: string): ReactNode[] {
+  const result: ReactNode[] = [];
+  let paragraph: string[] = [];
+  let list: string[] = [];
+  let orderedList: string[] = [];
+  let code: string[] | null = null;
+  const flushParagraph = () => {
+    if (paragraph.length) result.push(<p key={`p-${result.length}`}>{paragraph.map(renderInlineMarkdown).map((line, index) => <span key={index}>{index > 0 && <br />}{line}</span>)}</p>);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (list.length) result.push(<ul key={`ul-${result.length}`}>{list.map((line, index) => <li key={index}>{renderInlineMarkdown(line)}</li>)}</ul>);
+    list = [];
+  };
+  const flushOrderedList = () => {
+    if (orderedList.length) result.push(<ol key={`ol-${result.length}`}>{orderedList.map((line, index) => <li key={index}>{renderInlineMarkdown(line)}</li>)}</ol>);
+    orderedList = [];
+  };
+  for (const line of value.split(/\r?\n/)) {
+    if (line.trim().startsWith("```")) {
+      flushParagraph(); flushList(); flushOrderedList();
+      if (code) { result.push(<pre key={`code-${result.length}`}><code>{code.join("\n")}</code></pre>); code = null; }
+      else code = [];
+      continue;
+    }
+    if (code) { code.push(line); continue; }
+    if (!line.trim()) { flushParagraph(); flushList(); flushOrderedList(); continue; }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph(); flushList(); flushOrderedList();
+      const content = renderInlineMarkdown(heading[2]);
+      const key = `h-${result.length}`;
+      if (heading[1].length === 1) result.push(<h1 key={key}>{content}</h1>);
+      else if (heading[1].length === 2) result.push(<h2 key={key}>{content}</h2>);
+      else result.push(<h3 key={key}>{content}</h3>);
+      continue;
+    }
+    const item = line.match(/^\s*[-*+]\s+(.+)$/);
+    if (item) { flushParagraph(); flushOrderedList(); list.push(item[1]); continue; }
+    const numberedItem = line.match(/^\s*\d+\.\s+(.+)$/);
+    if (numberedItem) { flushParagraph(); flushList(); orderedList.push(numberedItem[1]); continue; }
+    flushList(); flushOrderedList();
+    const quote = line.match(/^\s*&gt;\s*(.*)$/) ?? line.match(/^\s*>\s*(.*)$/);
+    if (quote) { flushParagraph(); result.push(<blockquote key={`q-${result.length}`}>{renderInlineMarkdown(quote[1])}</blockquote>); continue; }
+    paragraph.push(line);
+  }
+  if (code) result.push(<pre key={`code-${result.length}`}><code>{code.join("\n")}</code></pre>);
+  flushParagraph(); flushList(); flushOrderedList();
+  return result;
+}
+
 export default function Publishing({
   project,
   draftId,
@@ -1126,7 +1200,22 @@ export default function Publishing({
             </article>;
           })}
           {!markdownBlocks.length && <div className="empty-state"><h3>No Markdown blocks yet</h3><p>Add text, image or invite blocks, then arrange them into a post footer or announcement.</p></div>}
-          {markdownBlocks.length > 0 && <section className="publishing-markdown-preview"><h3>Combined Markdown</h3><pre>{markdownText() || "Add public URLs to make this Markdown copyable."}</pre></section>}
+          <section className="publishing-markdown-preview">
+            <h3>Post preview</h3>
+            {markdownBlocks.length > 0 ? <div className="publishing-markdown-rendered">{markdownBlocks.map((block) => {
+              if (block.kind === "text") return <article className="markdown-preview-text" key={block.id}>{renderTextMarkdown(block.text)}</article>;
+              if (block.kind === "invite") {
+                const href = safeHttpsUrl(block.inviteUrl);
+                return <p className="markdown-preview-invite" key={block.id}>{href ? <a href={href} target="_blank" rel="noopener noreferrer">{block.text || "Discord invite"}</a> : <span>{block.text || "Discord invite URL required"}</span>}</p>;
+              }
+              const src = safeHttpsUrl(block.imageUrl);
+              const href = safeHttpsUrl(block.linkUrl);
+              if (!src) return <p className="field-hint" key={block.id}>Public HTTPS image URL required for this preview.</p>;
+              const image = <img src={src} alt={block.altText} loading="lazy" />;
+              return <figure className="markdown-preview-image" key={block.id}>{href ? <a href={href} target="_blank" rel="noopener noreferrer">{image}</a> : image}</figure>;
+            })}</div> : <p className="field-hint">Add Markdown blocks to preview the post.</p>}
+            {markdownBlocks.length > 0 && <details className="publishing-markdown-source"><summary>Markdown source</summary><pre>{markdownText() || "Add public URLs to make this Markdown copyable."}</pre></details>}
+          </section>
         </section>
       )}
       {step === "Review" && (
