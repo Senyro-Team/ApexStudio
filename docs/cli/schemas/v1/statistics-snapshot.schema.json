@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/statistics-snapshot.schema.json",
+  "title": "Apex Studio ERLCX statistics snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["collectedAt", "posts"],
+  "properties": {
+    "collectedAt": { "type": "string" },
+    "posts": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["bundleId", "title", "views", "likes", "copies", "favourites", "ratingCount", "ratingAverage"],
+        "properties": {
+          "bundleId": { "type": "integer", "minimum": 0 },
+          "title": { "type": "string" },
+          "views": { "type": ["integer", "null"], "minimum": 0 },
+          "likes": { "type": ["integer", "null"], "minimum": 0 },
+          "copies": { "type": ["integer", "null"], "minimum": 0 },
+          "favourites": { "type": ["integer", "null"], "minimum": 0 },
+          "ratingCount": { "type": ["integer", "null"], "minimum": 0 },
+          "ratingAverage": { "type": ["number", "null"], "minimum": 0 }
+        }
+      }
+    }
+  }
+}

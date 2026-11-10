@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/asset-board.schema.json",
+  "title": "Apex Studio asset board v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["assets", "folders", "placements"],
+  "properties": {
+    "assets": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
+    "folders": { "type": "array", "items": { "$ref": "#/$defs/folder" } },
+    "placements": { "type": "array", "items": { "$ref": "#/$defs/placement" } }
+  },
+  "$defs": {
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "projectId", "name", "hash", "size", "importedAt", "preview"],
+      "properties": {
+        "id": { "type": "string" }, "projectId": { "type": "string" },
+        "name": { "type": "string" }, "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "size": { "type": "integer", "minimum": 0 }, "importedAt": { "type": "string" },
+        "preview": { "type": ["string", "null"] }
+      }
+    },
+    "folder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "projectId", "parentId", "name", "kind", "vehicleId", "coverHash", "preview"],
+      "properties": {
+        "id": { "type": "string" }, "projectId": { "type": "string" },
+        "parentId": { "type": ["string", "null"] }, "name": { "type": "string" },
+        "kind": { "type": "string" }, "vehicleId": { "type": ["string", "null"] },
+        "coverHash": { "type": ["string", "null"] }, "preview": { "type": ["string", "null"] }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assetId", "folderId", "slot"],
+      "properties": {
+        "assetId": { "type": "string" }, "folderId": { "type": ["string", "null"] },
+        "slot": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
