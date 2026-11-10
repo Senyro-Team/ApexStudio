@@ -1264,6 +1264,8 @@ mod tests {
         revision: i64,
         events: Vec<Value>,
         blobs: HashMap<String, Vec<u8>>,
+        shared_code_requests: usize,
+        shared_code_failures: usize,
         reject_write: bool,
         upload_hash: String,
         chunks: std::collections::BTreeMap<u32, Vec<u8>>,
@@ -1314,9 +1316,14 @@ mod tests {
                         continue;
                     };
                     let head = String::from_utf8(bytes[..split].to_vec()).unwrap();
-                    assert!(head
-                        .to_lowercase()
-                        .contains("authorization: bearer fixture-session"));
+                    let mut request = head.lines().next().unwrap().split_whitespace();
+                    let method = request.next().unwrap();
+                    let path = request.next().unwrap();
+                    if path != "/api/v1/server-info" {
+                        assert!(head
+                            .to_lowercase()
+                            .contains("authorization: bearer fixture-session"));
+                    }
                     let length = head
                         .lines()
                         .find_map(|l| {
@@ -1330,13 +1337,49 @@ mod tests {
                         assert!(n > 0);
                         bytes.extend_from_slice(&buffer[..n]);
                     }
-                    let mut request = head.lines().next().unwrap().split_whitespace();
-                    let method = request.next().unwrap();
-                    let path = request.next().unwrap();
                     let body = &bytes[split..split + length];
                     let mut r = state.lock().unwrap();
                     let mut status = 200;
-                    let response = if path.contains("/changes?") {
+                    let response = if path == "/api/v1/server-info" {
+                        serde_json::to_vec(&json!({
+                            "product":"Apex Sync Server",
+                            "apiVersion":"v1",
+                            "serverVersion":"fixture",
+                            "serverInstanceId":"fixture"
+                        }))
+                        .unwrap()
+                    } else if path == "/api/v1/session" {
+                        serde_json::to_vec(&json!({
+                            "id":"fixture-user",
+                            "email":"designer@example.test",
+                            "displayName":"Designer",
+                            "teams":[{"id":"00000000-0000-0000-0000-000000000001","name":"Test team","role":"designer"}]
+                        }))
+                        .unwrap()
+                    } else if method == "GET" && path.ends_with("/projects") {
+                        serde_json::to_vec(&json!([{"id":id,"name":"Shared design"}])).unwrap()
+                    } else if path.ends_with("/decal-codes/batch") {
+                        r.shared_code_requests += 1;
+                        if r.shared_code_failures > 0 {
+                            r.shared_code_failures -= 1;
+                            status = 503;
+                            serde_json::to_vec(&json!({"error":"temporarily_unavailable"})).unwrap()
+                        } else {
+                            let value: Value = serde_json::from_slice(body).unwrap();
+                            let codes = value["codes"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .map(|code| {
+                                    json!({
+                                        "contentHash": code["contentHash"],
+                                        "decalAssetId": code["decalAssetId"].as_str().unwrap_or("12345")
+                                    })
+                                })
+                                .collect::<Vec<_>>();
+                            serde_json::to_vec(&json!({"codes":codes})).unwrap()
+                        }
+                    } else if path.contains("/changes?") {
                         let cursor = path
                             .split("cursor=")
                             .nth(1)
@@ -1489,6 +1532,105 @@ mod tests {
                 assert_eq!(
                     remote.blobs[&snapshot.blobs[0].hash].len(),
                     65 * 1024 * 1024
+                );
+            });
+    }
+
+    #[test]
+    fn preview_reports_remote_projects_and_links_for_the_selected_team() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let temp = tempfile::tempdir().unwrap();
+                let ws = Workspace::open(temp.path().join("ws")).unwrap();
+                let project = ws
+                    .save_project(
+                        None,
+                        apex_core::ProjectInput {
+                            name: "Shared design".into(),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                let server = Server::new(&project.id);
+                let team_id = "00000000-0000-0000-0000-000000000001";
+                save_session(SavedSession {
+                    server_origin: server.base.clone(),
+                    server_instance_id: "fixture".into(),
+                    access_token: "fixture-session".into(),
+                })
+                .unwrap();
+                ws.configure_project_sync(&project.id, Some((&server.base, "fixture", team_id)))
+                    .unwrap();
+
+                let preview = preview_sync(&server.base, team_id, &ws).await.unwrap();
+                assert_eq!(preview.team.name, "Test team");
+                assert_eq!(preview.remote_projects.len(), 1);
+                assert_eq!(preview.remote_projects[0].id, project.id);
+                assert_eq!(preview.linked_projects.len(), 1);
+                assert_eq!(preview.linked_projects[0].project_id, project.id);
+                clear_session().unwrap();
+            });
+    }
+
+    #[test]
+    fn shared_decal_codes_are_transferred_as_one_batch_and_saved_locally() {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let temp = tempfile::tempdir().unwrap();
+                let ws = Workspace::open(temp.path().join("ws")).unwrap();
+                let project = ws
+                    .save_project(
+                        None,
+                        apex_core::ProjectInput {
+                            name: "Code sharing".into(),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                let source = temp.path().join("Left1.png");
+                image::RgbImage::from_pixel(2, 2, image::Rgb([2, 4, 6]))
+                    .save(&source)
+                    .unwrap();
+                let vehicle = apex_core::vehicle_catalogue().unwrap().vehicles.remove(0);
+                let folder = ws
+                    .import_livery(
+                        &project.id,
+                        None,
+                        None,
+                        "Code sharing test",
+                        &vehicle.id,
+                        &[(source, "Left1.png".into(), Some("Left 1".into()))],
+                        Some(0),
+                    )
+                    .unwrap();
+                let server = Server::new(&project.id);
+                server.remote.lock().unwrap().shared_code_failures = 1;
+                let mut context = server.context();
+                context.team.role = "read_only".into();
+                ws.configure_project_sync(&project.id, Some((&server.base, "fixture", "team")))
+                    .unwrap();
+                let codes = sync_shared_decal_codes(&context, &ws, &project.id)
+                    .await
+                    .unwrap();
+                assert_eq!(codes.len(), 1);
+                assert_eq!(codes[0].decal_asset_id.as_deref(), Some("12345"));
+                let reused = sync_shared_decal_codes(&context, &ws, &project.id)
+                    .await
+                    .unwrap();
+                assert_eq!(reused[0].decal_asset_id.as_deref(), Some("12345"));
+                assert_eq!(server.remote.lock().unwrap().shared_code_requests, 3);
+                assert_eq!(
+                    ws.livery_uploads(&folder, "").unwrap().textures[0]
+                        .upload
+                        .as_ref()
+                        .and_then(|upload| upload.asset_id.as_deref()),
+                    Some("12345")
                 );
             });
     }

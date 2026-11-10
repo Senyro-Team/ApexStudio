@@ -14,7 +14,7 @@ Status: In progress.
 
 ## Verification to date
 
-- `cargo test -p apex-application -p apex-cli`: passed with dummy workspaces; includes application tests for two-device sync, conflict preservation, large-file chunk transfer, API identity validation against a loopback mock, and CLI command/password-argument parsing.
+- `cargo test -p apex-application -p apex-cli`: passed with dummy workspaces; application mocks cover server identity, sign-in/session status, Owner setup, invitation acceptance/create/expiry, member listing/removal and permission denial, project previews, two-device conflict preservation, large-file chunk transfer, shared-code batch retry and reuse, and offline behavior. Test sessions use an isolated thread-local fixture and never touch the OS credential vault.
 - `cargo check -p apex-cli -p apex-desktop`: passed after the shared-service adapter change.
 
 ## Remaining before Phase 6 acceptance

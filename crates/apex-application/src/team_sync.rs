@@ -13,7 +13,9 @@ use zeroize::{Zeroize, Zeroizing};
 
 pub mod project;
 
+#[cfg(all(windows, not(test)))]
 const CREDENTIAL_SERVICE: &str = "studio.apexdesigns.apexstudio";
+#[cfg(all(windows, not(test)))]
 const CREDENTIAL_ACCOUNT: &str = "team-sync-session";
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
 
@@ -72,6 +74,7 @@ pub struct Invitation {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SessionResponse {
     access_token: String,
 }
@@ -82,7 +85,7 @@ impl Drop for SessionResponse {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct SavedSession {
     server_origin: String,
@@ -210,20 +213,30 @@ async fn server_info(base: &Url) -> Result<ServerInfo, Error> {
     Ok(info)
 }
 
-#[cfg(windows)]
+#[cfg(test)]
+thread_local! {
+    static TEST_SESSION: std::cell::RefCell<Option<SavedSession>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn load_session() -> Result<Option<SavedSession>, Error> {
+    Ok(TEST_SESSION.with(|session| session.borrow().clone()))
+}
+
+#[cfg(all(windows, not(test)))]
 fn vault() -> Result<keyring::Entry, Error> {
     keyring::Entry::new(CREDENTIAL_SERVICE, CREDENTIAL_ACCOUNT)
         .map_err(|_| Error::Storage("Windows Credential Manager is unavailable.".into()))
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(test)))]
 fn vault() -> Result<(), Error> {
     Err(invalid(
         "Secure team-server sessions are currently available on Windows.",
     ))
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, not(test)))]
 fn load_session() -> Result<Option<SavedSession>, Error> {
     match vault()?.get_secret() {
         Ok(bytes) => {
@@ -239,13 +252,19 @@ fn load_session() -> Result<Option<SavedSession>, Error> {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(test)))]
 fn load_session() -> Result<Option<SavedSession>, Error> {
     vault()?;
     Ok(None)
 }
 
-#[cfg(windows)]
+#[cfg(test)]
+fn save_session(session: SavedSession) -> Result<(), Error> {
+    TEST_SESSION.with(|saved| *saved.borrow_mut() = Some(session));
+    Ok(())
+}
+
+#[cfg(all(windows, not(test)))]
 fn save_session(session: SavedSession) -> Result<(), Error> {
     let bytes = Zeroizing::new(serde_json::to_vec(&session).map_err(|_| {
         Error::Storage("The team-server session could not be encoded securely.".into())
@@ -255,13 +274,19 @@ fn save_session(session: SavedSession) -> Result<(), Error> {
     })
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(test)))]
 fn save_session(_session: SavedSession) -> Result<(), Error> {
     vault()?;
     Ok(())
 }
 
-#[cfg(windows)]
+#[cfg(test)]
+fn clear_session() -> Result<(), Error> {
+    TEST_SESSION.with(|saved| *saved.borrow_mut() = None);
+    Ok(())
+}
+
+#[cfg(all(windows, not(test)))]
 fn clear_session() -> Result<(), Error> {
     match vault()?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
@@ -271,7 +296,7 @@ fn clear_session() -> Result<(), Error> {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(test)))]
 fn clear_session() -> Result<(), Error> {
     vault()?;
     Ok(())
@@ -560,6 +585,106 @@ pub async fn disconnect() -> Result<(), Error> {
 mod tests {
     use super::*;
 
+    struct MockResponse {
+        method: &'static str,
+        path: String,
+        status: u16,
+        body: String,
+        authenticated: bool,
+        expected_json: Option<serde_json::Value>,
+    }
+
+    fn server_info_response() -> MockResponse {
+        MockResponse {
+            method: "GET",
+            path: "/api/v1/server-info".into(),
+            status: 200,
+            body: r#"{"product":"Apex Sync Server","apiVersion":"v1","serverVersion":"test","serverInstanceId":"mock-instance"}"#.into(),
+            authenticated: false,
+            expected_json: None,
+        }
+    }
+
+    fn current_user_response() -> MockResponse {
+        MockResponse {
+            method: "GET",
+            path: "/api/v1/session".into(),
+            status: 200,
+            body: r#"{"id":"user-1","email":"designer@example.test","displayName":"Designer","teams":[{"id":"00000000-0000-0000-0000-000000000001","name":"Apex","role":"owner"}]}"#.into(),
+            authenticated: true,
+            expected_json: None,
+        }
+    }
+
+    async fn mock_server(responses: Vec<MockResponse>) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("mock server should bind");
+        let address = listener.local_addr().expect("mock address should exist");
+        let server = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            for expected in responses {
+                let (mut stream, _) = listener.accept().await.expect("request should connect");
+                let mut request = Vec::new();
+                let mut byte = [0u8; 1];
+                while !request.ends_with(b"\r\n\r\n") {
+                    stream
+                        .read_exact(&mut byte)
+                        .await
+                        .expect("request headers should be readable");
+                    request.push(byte[0]);
+                }
+                let request_text = String::from_utf8_lossy(&request);
+                let request_line = request_text.lines().next().unwrap_or_default();
+                let headers = request_text.to_lowercase();
+                assert!(
+                    request_line.starts_with(&format!("{} {} ", expected.method, expected.path))
+                );
+                assert_eq!(
+                    headers.contains("authorization: bearer mock-session"),
+                    expected.authenticated,
+                    "unexpected authorization header for {request_line}"
+                );
+                let length = headers
+                    .lines()
+                    .find_map(|line| {
+                        line.strip_prefix("content-length:")
+                            .and_then(|value| value.trim().parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                let mut body = vec![0; length];
+                if length > 0 {
+                    stream
+                        .read_exact(&mut body)
+                        .await
+                        .expect("request body should be readable");
+                }
+                if let Some(expected_json) = expected.expected_json {
+                    let actual: serde_json::Value =
+                        serde_json::from_slice(&body).expect("request body should be JSON");
+                    assert_eq!(actual, expected_json);
+                }
+                let reason = if expected.status == 204 {
+                    "No Content"
+                } else {
+                    "OK"
+                };
+                let response = format!(
+                    "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    expected.status,
+                    reason,
+                    expected.body.len(),
+                    expected.body
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("mock response should be written");
+            }
+        });
+        (format!("http://{address}"), server)
+    }
+
     #[test]
     fn permits_https_and_loopback_http_only() {
         assert!(parse_origin("https://sync.example.test").is_ok());
@@ -576,6 +701,286 @@ mod tests {
             assert!(matches!(role, "admin" | "designer" | "read_only"));
         }
         assert!(!matches!("owner", "admin" | "designer" | "read_only"));
+    }
+
+    #[test]
+    fn sign_in_saves_a_server_scoped_session_and_status_reads_the_account() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should initialize");
+        runtime.block_on(async {
+            let (origin, server) = mock_server(vec![
+                server_info_response(),
+                MockResponse {
+                    method: "POST",
+                    path: "/api/v1/sessions".into(),
+                    status: 200,
+                    body: r#"{"accessToken":"mock-session","tokenType":"Bearer","expiresInSeconds":3600,"userId":"00000000-0000-0000-0000-000000000003"}"#.into(),
+                    authenticated: false,
+                    expected_json: Some(json!({"email":"designer@example.test","password":"correct horse"})),
+                },
+                MockResponse {
+                    method: "GET",
+                    path: "/api/v1/session".into(),
+                    status: 200,
+                    body: r#"{"id":"user-1","email":"designer@example.test","displayName":"Designer","teams":[{"id":"00000000-0000-0000-0000-000000000001","name":"Apex","role":"owner"}]}"#.into(),
+                    authenticated: true,
+                    expected_json: None,
+                },
+                server_info_response(),
+                MockResponse {
+                    method: "GET",
+                    path: "/api/v1/session".into(),
+                    status: 200,
+                    body: r#"{"id":"user-1","email":"designer@example.test","displayName":"Designer","teams":[{"id":"00000000-0000-0000-0000-000000000001","name":"Apex","role":"owner"}]}"#.into(),
+                    authenticated: true,
+                    expected_json: None,
+                },
+            ])
+            .await;
+            let signed_in = sign_in(&origin, " designer@example.test ", "correct horse")
+                .await
+                .expect("sign in should succeed");
+            assert_eq!(signed_in.user.as_ref().unwrap().display_name, "Designer");
+            let status = connection_status(&origin)
+                .await
+                .expect("session status should succeed");
+            assert_eq!(status.user.as_ref().unwrap().teams[0].role, "owner");
+            server.await.expect("mock server should finish");
+            clear_session().expect("test session should clear");
+        });
+    }
+
+    #[test]
+    fn owner_setup_and_invitation_acceptance_use_the_expected_api_payloads() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should initialize");
+        runtime.block_on(async {
+            let (origin, server) = mock_server(vec![
+                server_info_response(),
+                MockResponse {
+                    method: "POST",
+                    path: "/api/v1/setup".into(),
+                    status: 200,
+                    body: r#"{"accessToken":"mock-session","tokenType":"Bearer","expiresInSeconds":3600,"userId":"00000000-0000-0000-0000-000000000003"}"#.into(),
+                    authenticated: false,
+                    expected_json: Some(json!({
+                        "bootstrapToken":"bootstrap-once",
+                        "teamName":"Apex Designs",
+                        "email":"owner@example.test",
+                        "displayName":"Owner",
+                        "password":"correct horse"
+                    })),
+                },
+                current_user_response(),
+                server_info_response(),
+                MockResponse {
+                    method: "POST",
+                    path: "/api/v1/invitations/accept".into(),
+                    status: 200,
+                    body: r#"{"accessToken":"mock-session","tokenType":"Bearer","expiresInSeconds":3600,"userId":"00000000-0000-0000-0000-000000000003"}"#.into(),
+                    authenticated: false,
+                    expected_json: Some(json!({
+                        "invitationToken":"invite-once",
+                        "email":"designer@example.test",
+                        "displayName":"Designer",
+                        "password":"correct horse"
+                    })),
+                },
+                current_user_response(),
+            ])
+            .await;
+            initial_setup(
+                &origin,
+                " bootstrap-once ",
+                " Apex Designs ",
+                " owner@example.test ",
+                " Owner ",
+                "correct horse",
+            )
+            .await
+            .expect("owner setup should succeed");
+            accept_invitation(
+                &origin,
+                " invite-once ",
+                " designer@example.test ",
+                " Designer ",
+                "correct horse",
+            )
+            .await
+            .expect("invitation acceptance should succeed");
+            server.await.expect("mock server should finish");
+            clear_session().expect("test session should clear");
+        });
+    }
+
+    #[test]
+    fn expired_invitation_is_reported_without_creating_a_session() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should initialize");
+        runtime.block_on(async {
+            let (origin, server) = mock_server(vec![
+                server_info_response(),
+                MockResponse {
+                    method: "POST",
+                    path: "/api/v1/invitations/accept".into(),
+                    status: 410,
+                    body: r#"{"error":"invitation_unavailable"}"#.into(),
+                    authenticated: false,
+                    expected_json: None,
+                },
+            ])
+            .await;
+            let error = accept_invitation(
+                &origin,
+                "expired-code",
+                "designer@example.test",
+                "Designer",
+                "correct horse",
+            )
+            .await
+            .expect_err("expired invitation should be rejected");
+            assert!(error
+                .to_string()
+                .contains("expired or has already been used"));
+            server.await.expect("mock server should finish");
+            assert!(load_session().unwrap().is_none());
+        });
+    }
+
+    #[test]
+    fn member_permission_failure_is_reported_without_removing_anyone() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should initialize");
+        runtime.block_on(async {
+            let team = "00000000-0000-0000-0000-000000000001";
+            let member = "00000000-0000-0000-0000-000000000002";
+            let (origin, server) = mock_server(vec![
+                server_info_response(),
+                MockResponse {
+                    method: "DELETE",
+                    path: format!("/api/v1/teams/{team}/members/{member}"),
+                    status: 403,
+                    body: r#"{"error":"insufficient_team_role"}"#.into(),
+                    authenticated: true,
+                    expected_json: None,
+                },
+            ])
+            .await;
+            save_session(SavedSession {
+                server_origin: origin.clone(),
+                server_instance_id: "mock-instance".into(),
+                access_token: "mock-session".into(),
+            })
+            .expect("test session should be set");
+            let error = remove_member(&origin, team, member)
+                .await
+                .expect_err("server should reject a lower-rank removal");
+            assert!(error.to_string().contains("does not have permission"));
+            server.await.expect("mock server should finish");
+            clear_session().expect("test session should clear");
+        });
+    }
+
+    #[test]
+    fn invitations_members_and_removal_use_authenticated_team_routes() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should initialize");
+        runtime.block_on(async {
+            let team = "00000000-0000-0000-0000-000000000001";
+            let member = "00000000-0000-0000-0000-000000000002";
+            let (origin, server) = mock_server(vec![
+                server_info_response(),
+                MockResponse {
+                    method: "POST",
+                    path: format!("/api/v1/teams/{team}/invitations"),
+                    status: 200,
+                    body: r#"{"invitationToken":"single-use-code","role":"designer","expiresInSeconds":3600}"#.into(),
+                    authenticated: true,
+                    expected_json: Some(json!({"role":"designer"})),
+                },
+                server_info_response(),
+                MockResponse {
+                    method: "GET",
+                    path: format!("/api/v1/teams/{team}/members"),
+                    status: 200,
+                    body: format!(r#"[{{"id":"{member}","email":"member@example.test","displayName":"Member","role":"designer"}}]"#),
+                    authenticated: true,
+                    expected_json: None,
+                },
+                server_info_response(),
+                MockResponse {
+                    method: "DELETE",
+                    path: format!("/api/v1/teams/{team}/members/{member}"),
+                    status: 204,
+                    body: String::new(),
+                    authenticated: true,
+                    expected_json: None,
+                },
+            ])
+            .await;
+            save_session(SavedSession {
+                server_origin: origin.clone(),
+                server_instance_id: "mock-instance".into(),
+                access_token: "mock-session".into(),
+            })
+            .expect("test session should be set");
+            let invite = create_invitation(&origin, team, "designer")
+                .await
+                .expect("invitation should be created");
+            assert_eq!(invite.invitation_token, "single-use-code");
+            let members = list_members(&origin, team)
+                .await
+                .expect("member list should load");
+            assert_eq!(members.len(), 1);
+            assert_eq!(members[0].id, member);
+            remove_member(&origin, team, member)
+                .await
+                .expect("member should be removed");
+            server.await.expect("mock server should finish");
+            clear_session().expect("test session should clear");
+        });
+    }
+
+    #[test]
+    fn invitation_rejects_owner_role_before_contacting_server() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should initialize");
+        let result = runtime.block_on(create_invitation(
+            "http://127.0.0.1:1",
+            "00000000-0000-0000-0000-000000000001",
+            "owner",
+        ));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn unreachable_team_server_returns_a_connection_error() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .expect("offline test port should be allocated");
+        let address = listener
+            .local_addr()
+            .expect("offline test port should exist");
+        drop(listener);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime should initialize");
+        let error = runtime
+            .block_on(check_server(&format!("http://{address}")))
+            .expect_err("closed local port should be unavailable");
+        assert!(error.to_string().contains("Could not reach"));
     }
 
     #[test]
