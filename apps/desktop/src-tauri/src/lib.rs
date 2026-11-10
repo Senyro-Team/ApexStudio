@@ -7,6 +7,7 @@ mod browser_bridge;
 mod chrome_protocol;
 mod group_revenue;
 mod installer_resources;
+mod media_library;
 mod notes;
 mod posts;
 mod projects;
@@ -388,6 +389,12 @@ pub fn run() {
             projects::list_assets,
             projects::import_assets,
             projects::save_asset_copy,
+            media_library::media_library,
+            media_library::pick_media_library_image,
+            media_library::add_media_library_asset,
+            media_library::add_media_library_url,
+            media_library::update_media_library_item,
+            media_library::delete_media_library_item,
             projects::vehicle_catalogue,
             notes::list_notes,
             notes::create_note,

@@ -1,5 +1,6 @@
 import AssetPreview from "./AssetPreview";
 import Trash from "./Trash";
+import MediaLibrary from "./MediaLibrary";
 import AssetBrowser from "./AssetBrowser";
 import { lazy, Suspense } from "react";
 const Notes = lazy(() => import("./Notes"));
@@ -354,6 +355,7 @@ export default function Projects({
   onEditingChange: (editing: boolean) => void;
 }) {
   const [showTrash, setShowTrash] = useState(false);
+  const [showMediaLibrary, setShowMediaLibrary] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [syncBindings, setSyncBindings] = useState<Record<string, ProjectSyncSettings>>({});
   const [projectView, setProjectView] = useState<"own" | "shared">("own");
@@ -424,6 +426,7 @@ export default function Projects({
       setConfirmDelete(false);
     }
     setShowTrash(false);
+    setShowMediaLibrary(false);
     setQuery("");
     setInspector(null);
   }, [section]);
@@ -942,14 +945,21 @@ export default function Projects({
         <>
           <header className="page-heading">
             <h1>Assets</h1>
-            <button
-              className="secondary"
-              onClick={() => setShowTrash((v) => !v)}
-            >
-              {showTrash ? "All assets" : "Trash"}
-            </button>
+            <div className="button-row">
+              <button className={showMediaLibrary ? "secondary" : "primary"} onClick={() => { setShowMediaLibrary(false); setShowTrash(false); }}>
+                Project assets
+              </button>
+              <button className={showMediaLibrary ? "primary" : "secondary"} onClick={() => { setShowMediaLibrary(true); setShowTrash(false); }}>
+                Image Library
+              </button>
+              <button className={showTrash ? "primary" : "secondary"} onClick={() => { setShowTrash((v) => !v); setShowMediaLibrary(false); }}>
+                {showTrash ? "Close trash" : "Trash"}
+              </button>
+            </div>
           </header>
-          {showTrash ? (
+          {showMediaLibrary ? (
+            <MediaLibrary onBusy={setNoteDirty} />
+          ) : showTrash ? (
             <Trash
               onBusy={setNoteDirty}
               onChange={() => {

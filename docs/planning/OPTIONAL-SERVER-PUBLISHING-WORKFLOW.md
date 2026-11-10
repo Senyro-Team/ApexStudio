@@ -51,6 +51,12 @@ The supplied overlay-builder HTML is a behavior and format reference only. Build
 5. **Invite tracking integration:** add scoped campaign create/list/status operations and post metadata. Show aggregate attribution limits and make ambiguous creates recoverable rather than retrying blindly.
 6. **Team library sharing and release review:** add explicit personal/team visibility, permission checks, backup/restore, offline and unavailable-service behavior, then add ExecLab target support.
 
+## Implementation checkpoints
+
+- The Server navigation entry now contains the existing Team Sync surface. Image Hosting and Invite Tracking are documented as future optional capabilities and are not presented as working integrations.
+- The local Image Library stores personal records in the workspace and can reference a managed PNG, an existing project PNG, or a manually entered HTTPS URL. Adding an image does not upload it. Explicit team sharing, folders/tags, remote provider mappings, and backup packaging still need implementation.
+- ERLCX drafts now support ordered text, image, and invite Markdown blocks. The draft snapshot retains references to local library image blobs, and the composer can copy the assembled Markdown. Local-only images remain non-copyable until given a public URL. Server upload automation and the reusable overlay editor remain outstanding.
+
 ## Acceptance criteria
 
 - A clean install with no server URL, account, or service secrets can manage projects and assets, create/edit drafts and overlay previews, paste manual URLs, save, and copy Markdown.

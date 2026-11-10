@@ -269,6 +269,7 @@ impl Workspace {
                         .collect(),
                 })
                 .collect(),
+            markdown_blocks: Vec::new(),
         };
         data.validate(true)?;
 
@@ -375,6 +376,20 @@ impl Workspace {
             tx.execute(
                 "INSERT INTO post_media VALUES(?1,?2,?3,?4)",
                 params![id, m.hash, m.name, i as i64],
+            )
+            .map_err(storage)?;
+        }
+        tx.execute("DELETE FROM post_markdown_media WHERE post_id=?1", [id])
+            .map_err(storage)?;
+        let markdown_hashes: std::collections::HashSet<&str> = data
+            .markdown_blocks
+            .iter()
+            .filter_map(|block| block.media_hash.as_deref())
+            .collect();
+        for hash in markdown_hashes {
+            tx.execute(
+                "INSERT INTO post_markdown_media(post_id,hash) VALUES(?1,?2)",
+                params![id, hash],
             )
             .map_err(storage)?;
         }

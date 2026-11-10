@@ -9,6 +9,33 @@ pub struct PublishingInput {
     pub youtube_url: Option<String>,
     pub media: Vec<PublishingImage>,
     pub liveries: Vec<PublishingLivery>,
+    #[serde(default)]
+    pub markdown_blocks: Vec<MarkdownBlock>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MarkdownBlock {
+    pub id: String,
+    pub kind: MarkdownBlockKind,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub image_url: String,
+    #[serde(default)]
+    pub alt_text: String,
+    #[serde(default)]
+    pub link_url: String,
+    #[serde(default)]
+    pub invite_url: String,
+    #[serde(default)]
+    pub media_hash: Option<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MarkdownBlockKind {
+    Text,
+    Image,
+    Invite,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -90,6 +117,57 @@ impl PublishingInput {
         }
         if self.media.len() > 10 || self.liveries.len() > 20 {
             return Err(invalid("Use up to ten preview images and twenty liveries."));
+        }
+        if self.markdown_blocks.len() > 100 {
+            return Err(invalid("Use up to 100 Markdown blocks."));
+        }
+        let mut block_ids = std::collections::HashSet::new();
+        for block in &self.markdown_blocks {
+            if block.id.is_empty() || block.id.len() > 80 || !block_ids.insert(&block.id) {
+                return Err(invalid("Markdown blocks need distinct valid IDs."));
+            }
+            let valid_https = |value: &str| {
+                if value.is_empty() {
+                    return true;
+                }
+                url::Url::parse(value).is_ok_and(|url| {
+                    url.scheme() == "https"
+                        && url.host_str().is_some()
+                        && url.username().is_empty()
+                        && url.password().is_none()
+                })
+            };
+            if block.text.len() > 20_000
+                || block.alt_text.chars().count() > 500
+                || block.image_url.len() > 2048
+                || block.link_url.len() > 2048
+                || block.invite_url.len() > 2048
+                || !valid_https(&block.image_url)
+                || !valid_https(&block.link_url)
+                || !valid_https(&block.invite_url)
+                || block
+                    .media_hash
+                    .as_deref()
+                    .is_some_and(|hash| !crate::valid_hash(hash))
+            {
+                return Err(invalid("Check Markdown text, image and link URLs."));
+            }
+            match block.kind {
+                MarkdownBlockKind::Text if block.text.trim().is_empty() => {
+                    return Err(invalid("Text blocks cannot be empty."))
+                }
+                MarkdownBlockKind::Image
+                    if block.image_url.is_empty() && block.media_hash.is_none() =>
+                {
+                    return Err(invalid(
+                        "Image blocks need a public image URL or a saved library image.",
+                    ))
+                }
+                MarkdownBlockKind::Invite if block.invite_url.is_empty() => {
+                    return Err(invalid("Invite blocks need an HTTPS invite URL."))
+                }
+                _ => {}
+            }
         }
         let mut images = std::collections::HashSet::new();
         for image in &self.media {

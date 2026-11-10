@@ -2,6 +2,7 @@ import PostLiveryPicker from "./PostLiveryPicker";
 import AppSelect from "./AppSelect";
 import { readyForPublishing, publishingLivery } from "./RobloxUpload";
 import { useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
 import SlotEditor from "./SlotEditor";
 import {
   browserStatus,
@@ -23,6 +24,7 @@ import {
   pickPublishingImages,
   exportPublishing,
   assetBoard,
+  mediaLibrary,
   errorMessage,
   type PublishingData,
   type PublishingDraft,
@@ -31,8 +33,10 @@ import {
   type AssetBoard,
   type Catalogue,
   type Project,
+  type MarkdownBlock,
+  type MediaLibraryItem,
 } from "./bridge";
-const steps = ["Liveries", "Details", "Previews", "Review"] as const;
+const steps = ["Liveries", "Details", "Previews", "Markdown", "Review"] as const;
 export default function Publishing({
   project,
   draftId,
@@ -89,6 +93,9 @@ export default function Publishing({
     [showAssets, setShowAssets] = useState(false),
     [vehicleOpen, setVehicleOpen] = useState(false),
     [vehicleIndex, setVehicleIndex] = useState(0);
+  const [libraryItems, setLibraryItems] = useState<MediaLibraryItem[]>([]);
+  const [libraryChoice, setLibraryChoice] = useState("");
+  useEffect(() => { void mediaLibrary().then(setLibraryItems).catch(() => {}); }, []);
   useEffect(() => {
     let active = true;
     setError("");
@@ -176,6 +183,40 @@ export default function Publishing({
     setData(next);
     setDirty(JSON.stringify(next) !== JSON.stringify(saved?.data));
     setNotice("");
+  }
+  const markdownBlocks = data?.markdownBlocks ?? [];
+  function updateMarkdown(blocks: MarkdownBlock[]) { edit({ markdownBlocks: blocks }); }
+  function addMarkdown(kind: MarkdownBlock["kind"]) {
+    const block: MarkdownBlock = { id: crypto.randomUUID(), kind, text: kind === "invite" ? "Join our Discord" : "", imageUrl: "", altText: "", linkUrl: "", inviteUrl: "", mediaHash: null };
+    updateMarkdown([...markdownBlocks, block]);
+  }
+  function moveMarkdown(index: number, delta: number) {
+    const target = index + delta;
+    if (target < 0 || target >= markdownBlocks.length) return;
+    const next = [...markdownBlocks];
+    [next[index], next[target]] = [next[target], next[index]];
+    updateMarkdown(next);
+  }
+  function markdownText() {
+    return markdownBlocks.map((block) => {
+      if (block.kind === "text") return block.text;
+      if (block.kind === "invite") return `[${block.text || "Discord invite"}](${block.inviteUrl})`;
+      if (!block.imageUrl) return "";
+      const image = `![${block.altText}](${block.imageUrl})`;
+      return block.linkUrl ? `[${image}](${block.linkUrl})` : image;
+    }).filter(Boolean).join("\n\n");
+  }
+  async function copyMarkdown() {
+    const value = markdownText();
+    if (!value) { setError("Add a public image URL or an invite link before copying."); return; }
+    try { await navigator.clipboard.writeText(value); setNotice("Markdown copied."); }
+    catch (e) { setError(errorMessage(e)); }
+  }
+  function addLibraryImage() {
+    const item = libraryItems.find((candidate) => candidate.id === libraryChoice);
+    if (!item) return;
+    updateMarkdown([...markdownBlocks, { id: crypto.randomUUID(), kind: "image", text: "", imageUrl: item.imageUrl, altText: item.altText || item.name, linkUrl: item.defaultLinkUrl ?? "", inviteUrl: "", mediaHash: item.hash }]);
+    setLibraryChoice("");
   }
   function changeLivery(patch: Partial<PublishingLivery>) {
     if (!data) return;
@@ -866,6 +907,30 @@ export default function Publishing({
               )}
             </div>
           )}
+        </section>
+      )}
+      {step === "Markdown" && (
+        <section className="publishing-markdown">
+          <div className="publishing-markdown-heading">
+            <div><h2>Post Markdown</h2><p className="field-hint">Build reusable text, linked images and invite links. Local images need a public URL before they can be copied.</p></div>
+            <button className="primary" type="button" disabled={locked} onClick={() => void copyMarkdown()}><Copy size={16} /> Copy Markdown</button>
+          </div>
+          <div className="publishing-markdown-toolbar">
+            <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => addMarkdown("text")}>Add text</button>
+            <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => addMarkdown("image")}>Add image URL</button>
+            <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => addMarkdown("invite")}>Add invite link</button>
+            {libraryItems.length > 0 && <><select aria-label="Choose an image from Image Library" value={libraryChoice} disabled={locked} onChange={(event) => setLibraryChoice(event.target.value)}><option value="">Choose library image</option>{libraryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !libraryChoice || markdownBlocks.length >= 100} onClick={addLibraryImage}>Add selected</button></>}
+          </div>
+          {markdownBlocks.map((block, index) => {
+            const patchBlock = (patch: Partial<MarkdownBlock>) => updateMarkdown(markdownBlocks.map((current, i) => i === index ? { ...current, ...patch } : current));
+            return <article className="publishing-markdown-block" key={block.id}>
+              <header><strong>{block.kind === "text" ? "Text" : block.kind === "image" ? "Image" : "Invite link"}</strong><div className="button-row"><button className="icon-button" aria-label="Move block up" disabled={locked || index === 0} onClick={() => moveMarkdown(index, -1)}><ArrowUp size={16} /></button><button className="icon-button" aria-label="Move block down" disabled={locked || index === markdownBlocks.length - 1} onClick={() => moveMarkdown(index, 1)}><ArrowDown size={16} /></button><button className="icon-button" aria-label="Remove block" disabled={locked} onClick={() => updateMarkdown(markdownBlocks.filter((_, i) => i !== index))}><Trash2 size={16} /></button></div></header>
+              {block.kind === "text" ? <label>Markdown text<textarea rows={5} maxLength={20000} value={block.text} disabled={locked} onChange={(event) => patchBlock({ text: event.target.value })} placeholder="Write Markdown text…" /></label> : block.kind === "invite" ? <><label>Link label<input maxLength={300} value={block.text} disabled={locked} onChange={(event) => patchBlock({ text: event.target.value })} /></label><label>Invite URL<input type="url" value={block.inviteUrl} disabled={locked} onChange={(event) => patchBlock({ inviteUrl: event.target.value })} placeholder="https://discord.gg/…" /></label></> : <><label>Alt text<input maxLength={500} value={block.altText} disabled={locked} onChange={(event) => patchBlock({ altText: event.target.value })} /></label><label>Public image URL<input type="url" value={block.imageUrl} disabled={locked} onChange={(event) => patchBlock({ imageUrl: event.target.value })} placeholder="https://…" /></label><label>Click-through URL <span className="optional">(optional)</span><input type="url" value={block.linkUrl} disabled={locked} onChange={(event) => patchBlock({ linkUrl: event.target.value })} placeholder="https://…" /></label>{block.mediaHash && <small>Saved image bytes are retained with this post snapshot.</small>}</>}
+              <pre>{block.kind === "text" ? block.text : block.kind === "invite" ? `[${block.text || "Discord invite"}](${block.inviteUrl || "invite-url"})` : block.imageUrl ? `${block.linkUrl ? "[" : ""}![${block.altText}](${block.imageUrl})${block.linkUrl ? `](${block.linkUrl})` : ""}` : "Public image URL required before Markdown can be copied"}</pre>
+            </article>;
+          })}
+          {!markdownBlocks.length && <div className="empty-state"><h3>No Markdown blocks yet</h3><p>Add text, image or invite blocks, then arrange them into a post footer or announcement.</p></div>}
+          {markdownBlocks.length > 0 && <section className="publishing-markdown-preview"><h3>Combined Markdown</h3><pre>{markdownText() || "Add public URLs to make this Markdown copyable."}</pre></section>}
         </section>
       )}
       {step === "Review" && (

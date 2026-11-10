@@ -11,7 +11,9 @@ use std::{
 };
 
 mod assets;
+mod media_library;
 pub use assets::validate_png as validate_texture;
+pub use media_library::MediaLibraryItem;
 mod notes;
 mod packages;
 mod projects;
@@ -33,7 +35,7 @@ pub use posts::*;
 pub use statistics::*;
 pub use team_sync::*;
 pub use trash::*;
-const SCHEMA_VERSION: u32 = 18;
+const SCHEMA_VERSION: u32 = 20;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
@@ -285,6 +287,25 @@ impl Workspace {
                 .pragma_update(None, "user_version", SCHEMA_VERSION)
                 .map_err(storage)?;
             transaction.commit().map_err(storage)?;
+        }
+        if version < 19 {
+            progress("Updating workspace schema…");
+            let transaction = connection.transaction().map_err(storage)?;
+            transaction
+                .execute_batch(include_str!("schema19.sql"))
+                .map_err(storage)?;
+            transaction
+                .pragma_update(None, "user_version", SCHEMA_VERSION)
+                .map_err(storage)?;
+            transaction.commit().map_err(storage)?;
+        }
+        if version < 20 {
+            connection
+                .execute_batch(include_str!("schema20.sql"))
+                .map_err(storage)?;
+            connection
+                .pragma_update(None, "user_version", 20)
+                .map_err(storage)?;
         }
         *workspace
             .anchor

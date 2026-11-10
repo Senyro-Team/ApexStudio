@@ -233,6 +233,41 @@ export const deleteArchivedProject = (id: string) =>
   invoke<void>("delete_archived_project", { id });
 export const listAssets = (projectId: string | null) =>
   invoke<Asset[]>("list_assets", { projectId });
+export interface MediaLibraryItem {
+  id: string;
+  hash: string | null;
+  name: string;
+  altText: string;
+  imageUrl: string;
+  defaultLinkUrl: string | null;
+  ownerScope: "personal" | "team";
+  createdAt: string;
+  updatedAt: string;
+  preview: string | null;
+}
+export const mediaLibrary = () => invoke<MediaLibraryItem[]>("media_library");
+export const pickMediaLibraryImage = () =>
+  invoke<MediaLibraryItem | null>("pick_media_library_image");
+export const addMediaLibraryAsset = (projectId: string, assetId: string) =>
+  invoke<MediaLibraryItem>("add_media_library_asset", { projectId, assetId });
+export const addMediaLibraryUrl = (
+  name: string,
+  altText: string,
+  imageUrl: string,
+  defaultLinkUrl: string,
+) => invoke<MediaLibraryItem>("add_media_library_url", {
+  name, altText, imageUrl, defaultLinkUrl: defaultLinkUrl || null,
+});
+export const updateMediaLibraryItem = (item: MediaLibraryItem) =>
+  invoke<MediaLibraryItem>("update_media_library_item", {
+    id: item.id,
+    name: item.name,
+    altText: item.altText,
+    imageUrl: item.imageUrl,
+    defaultLinkUrl: item.defaultLinkUrl,
+  });
+export const deleteMediaLibraryItem = (id: string) =>
+  invoke<void>("delete_media_library_item", { id });
 export const importAssets = (
   projectId: string,
   folderId: string | null = null,
@@ -429,6 +464,17 @@ export interface PublishingData {
   youtubeUrl: string | null;
   media: PublishingImage[];
   liveries: PublishingLivery[];
+  markdownBlocks?: MarkdownBlock[];
+}
+export interface MarkdownBlock {
+  id: string;
+  kind: "text" | "image" | "invite";
+  text: string;
+  imageUrl: string;
+  altText: string;
+  linkUrl: string;
+  inviteUrl: string;
+  mediaHash: string | null;
 }
 export interface PublishingDraft {
   data: PublishingData;
