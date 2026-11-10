@@ -136,6 +136,21 @@ impl ApplicationServices {
         self.workspace.control_upload_batch(batch_id, action)
     }
 
+    /// Process running Roblox upload batches through the shared application
+    /// worker. The adapter supplies cancellation and progress presentation.
+    pub async fn run_roblox_upload_queue<F>(
+        &self,
+        stopping: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        on_update: F,
+    ) -> Result<QueueSnapshot, Error>
+    where
+        F: Fn(&QueueSnapshot, usize) + Send + Sync + 'static,
+    {
+        std::sync::Arc::new(roblox_upload::RobloxUploadService::new()?)
+            .run_until_idle(self.workspace.clone(), stopping, on_update)
+            .await
+    }
+
     pub fn rename_workspace(&self, name: &str) -> Result<WorkspaceInfo, Error> {
         apex_core::rename_workspace(&self.workspace, name)
     }

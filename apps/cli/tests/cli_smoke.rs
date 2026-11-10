@@ -306,6 +306,26 @@ fn roblox_commands_show_liveries_and_queue_without_starting_network_uploads() {
     assert_eq!(queue["batches"].as_array().expect("batch list").len(), 0);
     assert_eq!(queue["jobs"].as_array().expect("job list").len(), 0);
 
+    let empty_run = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args([
+            "--workspace",
+            root.to_str().expect("workspace path is UTF-8"),
+            "--json",
+            "roblox",
+            "run",
+            "--yes",
+        ])
+        .output()
+        .expect("run the empty Roblox queue");
+    assert!(empty_run.status.success());
+    assert!(empty_run.stderr.is_empty());
+    let empty_run: serde_json::Value =
+        serde_json::from_slice(&empty_run.stdout).expect("empty-run JSON");
+    assert_eq!(
+        empty_run["batches"].as_array().expect("batch list").len(),
+        0
+    );
+
     let batch = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
         .args([
             "--workspace",

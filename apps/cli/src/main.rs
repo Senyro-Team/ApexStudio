@@ -276,7 +276,13 @@ enum RobloxCommand {
     },
     /// Show durable batches, upload jobs, and livery assignments.
     Queue,
-    /// Create a reviewed batch; the desktop upload worker can process it while Apex Studio is running.
+    /// Run confirmed, already-created batches without requiring Apex Studio to stay open.
+    Run {
+        /// Confirm network uploads in non-interactive use.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Create a reviewed durable batch for the CLI or desktop upload worker.
     Batch {
         #[command(subcommand)]
         action: UploadBatchCommand,
@@ -1165,6 +1171,9 @@ fn run_roblox_command(
                 }
             }
         }
+        RobloxCommand::Run { yes } => {
+            run_roblox_worker(app, json, yes)?;
+        }
         RobloxCommand::DoubleUpload { enable, disable } => {
             if enable || disable {
                 app.set_roblox_double_upload(enable)
@@ -1338,7 +1347,7 @@ fn run_roblox_command(
                         "doubleUpload": double_upload
                     }))?;
                 } else {
-                    println!("Created batch {id}. Configure Roblox credentials in Apex Studio Settings and keep the desktop app running to process it.");
+                    println!("Created batch {id}. Run `apex-studio-cli roblox run` to process it here, or keep Apex Studio open.");
                 }
             }
             UploadBatchCommand::Pause { id } => {
@@ -1363,6 +1372,140 @@ fn run_roblox_command(
                 print_action("Queued failed Roblox passes for retry.", json);
             }
         },
+    }
+    Ok(())
+}
+
+fn run_roblox_worker(app: &ApplicationServices, json: bool, yes: bool) -> Result<(), CliError> {
+    let before = app.upload_queue().map_err(CliError::from)?;
+    if !before.batches.iter().any(|batch| batch.state == "running") {
+        if json {
+            print_json(&before)?;
+        } else {
+            println!("No active Roblox upload batches.");
+        }
+        return Ok(());
+    }
+    confirm_action(
+        "run the active Roblox upload queue (network uploads will begin)",
+        yes,
+        json,
+    )?;
+
+    let credentials = apex_application::load_roblox_credentials()
+        .map_err(CliError::from)?
+        .ok_or_else(|| CliError {
+            code: "roblox_credentials_missing".into(),
+            message: "Configure and validate Roblox credentials before running uploads.".into(),
+        })?;
+    let account_id = credentials.account_id.clone();
+    drop(credentials);
+
+    let mismatched = before
+        .batches
+        .iter()
+        .filter(|batch| batch.state == "running" && batch.account_id != account_id)
+        .map(|batch| batch.id.as_str())
+        .collect::<Vec<_>>();
+    if !mismatched.is_empty() {
+        return Err(CliError {
+            code: "roblox_queue_account_mismatch".into(),
+            message: format!(
+                "Running batches are pinned to another Roblox account ({}). Change the account or pause those batches before running this queue.",
+                mismatched.join(", ")
+            ),
+        });
+    }
+
+    let stopping = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let signal_stop = stopping.clone();
+    let last_progress =
+        std::sync::Arc::new(std::sync::Mutex::new(None::<(usize, usize, usize, usize)>));
+    let progress_state = last_progress.clone();
+    let runner = app.run_roblox_upload_queue(stopping.clone(), move |snapshot, active| {
+        let running = snapshot
+            .batches
+            .iter()
+            .filter(|batch| batch.state == "running")
+            .count();
+        let complete = snapshot
+            .jobs
+            .iter()
+            .filter(|job| job.state == "complete")
+            .count();
+        let attention = snapshot
+            .jobs
+            .iter()
+            .filter(|job| matches!(job.state.as_str(), "failed" | "needs_review"))
+            .count();
+        let progress = (running, active, complete, attention);
+        let changed = progress_state
+            .lock()
+            .map(|mut previous| {
+                if *previous == Some(progress) {
+                    false
+                } else {
+                    *previous = Some(progress);
+                    true
+                }
+            })
+            .unwrap_or(true);
+        if changed {
+            eprintln!(
+                "Roblox queue: {running} active batch(es), {active} request(s), {complete} completed job(s), {attention} needing attention."
+            );
+        }
+    });
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| CliError {
+            code: "runtime_unavailable".into(),
+            message: error.to_string(),
+        })?;
+    let result = runtime
+        .block_on(async move {
+            let mut runner = Box::pin(runner);
+            tokio::select! {
+                result = &mut runner => result.map_err(CliError::from),
+                signal = tokio::signal::ctrl_c() => {
+                    signal_stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                    if signal.is_ok() {
+                        eprintln!("Stopping after active requests finish; pausing pending batches...");
+                    } else {
+                        eprintln!("Ctrl+C handling is unavailable; stopping safely and pausing pending batches...");
+                    }
+                    runner.await.map_err(CliError::from)
+                }
+            }
+        })
+        ?;
+
+    if json {
+        print_json(&result)?;
+    } else {
+        let complete = result
+            .jobs
+            .iter()
+            .filter(|job| job.state == "complete")
+            .count();
+        let attention = result
+            .jobs
+            .iter()
+            .filter(|job| matches!(job.state.as_str(), "failed" | "needs_review"))
+            .count();
+        let running = result
+            .batches
+            .iter()
+            .filter(|batch| batch.state == "running")
+            .count();
+        if complete == 0 && running == 0 && attention == 0 {
+            println!("No active Roblox upload batches.");
+        } else {
+            println!(
+                "Queue run finished: {complete} completed job(s), {attention} needing attention, {running} active batch(es)."
+            );
+        }
     }
     Ok(())
 }

@@ -1,15 +1,8 @@
 use super::{projects::work, CommandError};
 use apex_core::Error;
 use apex_storage::{LiveryUploads, Workspace};
-use reqwest::{header::HeaderMap, Client};
 use serde::Serialize;
-#[cfg(test)]
-use serde_json::Value;
 use tauri_plugin_dialog::DialogExt;
-
-pub(super) use apex_application::roblox_upload::{
-    apply_operation, body, create_decal, operation_path,
-};
 
 #[tauri::command]
 pub async fn save_livery_codes_markdown(
@@ -59,12 +52,6 @@ pub(super) fn load() -> Result<Option<Credentials>, Error> {
 }
 pub(super) fn required() -> Result<Credentials, Error> {
     load()?.ok_or_else(|| bad("Configure Roblox in Settings before uploading."))
-}
-pub(super) fn client() -> Result<Client, Error> {
-    apex_application::roblox_upload::client()
-}
-pub(super) fn headers(c: &Credentials) -> Result<HeaderMap, Error> {
-    apex_application::roblox_upload::headers(c)
 }
 #[tauri::command]
 pub async fn roblox_settings(
@@ -146,8 +133,10 @@ pub async fn roblox_livery(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use apex_application::roblox_upload::{apply_operation, body, create_decal, operation_path};
     use apex_storage::DecalUpload;
-    use serde_json::json;
+    use reqwest::Client;
+    use serde_json::{json, Value};
     use std::time::Duration;
     #[test]
     fn multipart_upload_sends_decal_type_and_owner_then_reads_operation() {
