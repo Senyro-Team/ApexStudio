@@ -1,6 +1,6 @@
 use apex_application::{
     ApplicationServices, PostSummary, QueueSnapshot, RobloxGroupRevenueData, RobloxLiverySummary,
-    StatisticsPost, StatisticsSnapshot, TrashItem, UploadJob,
+    RobloxRevenueGroup, StatisticsPost, StatisticsSnapshot, TrashItem, UploadJob,
 };
 use apex_core::{
     AssetBoard, Error, Note, Project, ProjectInput, PublishingDraft, PublishingImage,
@@ -18,7 +18,7 @@ use ratatui::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     fmt, fs,
     io::{self, IsTerminal, Read, Write},
     path::PathBuf,
@@ -335,6 +335,37 @@ enum RevenueCommand {
     Groups,
     /// Show one group's settings, imported sales and discovered passes.
     Show { group_id: String },
+    /// Add or update a group and its experience IDs.
+    Configure {
+        #[arg(long)]
+        group_id: String,
+        #[arg(long)]
+        name: String,
+        /// Repeat this option for each experience ID belonging to the group.
+        #[arg(long = "experience-id", required = true)]
+        experience_ids: Vec<String>,
+    },
+    /// Include a discovered Game Pass in group revenue totals.
+    SelectPass {
+        #[arg(long)]
+        group_id: String,
+        #[arg(long)]
+        asset_id: String,
+    },
+    /// Exclude a Game Pass from group revenue totals.
+    DeselectPass {
+        #[arg(long)]
+        group_id: String,
+        #[arg(long)]
+        asset_id: String,
+    },
+    /// Remove a group's stored settings and sales.
+    Remove {
+        #[arg(long)]
+        group_id: String,
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -1591,6 +1622,86 @@ fn run_revenue_command(
                 }
             }
         }
+        RevenueCommand::Configure {
+            group_id,
+            name,
+            experience_ids,
+        } => {
+            let existing = data.groups.iter().find(|group| group.group_id == group_id);
+            let group = RobloxRevenueGroup {
+                group_id,
+                name,
+                experience_ids: experience_ids
+                    .into_iter()
+                    .flat_map(|value| {
+                        value
+                            .split(',')
+                            .map(str::trim)
+                            .map(str::to_owned)
+                            .collect::<Vec<_>>()
+                    })
+                    .filter(|value| !value.is_empty())
+                    .collect(),
+                pass_mappings: existing
+                    .map_or_else(BTreeMap::new, |group| group.pass_mappings.clone()),
+                selected_pass_ids: existing
+                    .map_or_else(Vec::new, |group| group.selected_pass_ids.clone()),
+                api_updated_at: existing.and_then(|group| group.api_updated_at.clone()),
+                api_coverage_from: existing.and_then(|group| group.api_coverage_from.clone()),
+                api_coverage_to: existing.and_then(|group| group.api_coverage_to.clone()),
+                api_summary: existing.and_then(|group| group.api_summary.clone()),
+                api_status: existing.and_then(|group| group.api_status.clone()),
+                updated_at: existing.and_then(|group| group.updated_at.clone()),
+                last_import_at: existing.and_then(|group| group.last_import_at.clone()),
+            };
+            let updated = app
+                .save_roblox_revenue_group(&group)
+                .map_err(CliError::from)?;
+            let saved = updated
+                .groups
+                .iter()
+                .find(|entry| entry.group_id == group.group_id)
+                .ok_or_else(|| CliError {
+                    code: "revenue_group_save_failed".into(),
+                    message: "The group was saved but could not be read back.".into(),
+                })?;
+            if json {
+                print_json(saved)?;
+            } else {
+                println!(
+                    "Saved {} · group {} · {} experience(s)",
+                    saved.name,
+                    saved.group_id,
+                    saved.experience_ids.len()
+                );
+            }
+        }
+        RevenueCommand::SelectPass { group_id, asset_id } => {
+            update_revenue_pass(&data, app, &group_id, &asset_id, true, json)?;
+        }
+        RevenueCommand::DeselectPass { group_id, asset_id } => {
+            update_revenue_pass(&data, app, &group_id, &asset_id, false, json)?;
+        }
+        RevenueCommand::Remove { group_id, yes } => {
+            if !data.groups.iter().any(|group| group.group_id == group_id) {
+                return Err(CliError {
+                    code: "revenue_group_not_found".into(),
+                    message: format!("No Group Revenue data exists for group {group_id}."),
+                });
+            }
+            confirm_action(
+                &format!("remove group {group_id} and its stored sales"),
+                yes,
+                json,
+            )?;
+            app.remove_roblox_group_revenue(&group_id)
+                .map_err(CliError::from)?;
+            if json {
+                print_json(&serde_json::json!({"removedGroupId": group_id}))?;
+            } else {
+                println!("Removed group {group_id} and its stored sales.");
+            }
+        }
         RevenueCommand::Show { group_id } => {
             let group = data
                 .groups
@@ -1647,6 +1758,72 @@ fn run_revenue_command(
                 }
             }
         }
+    }
+    Ok(())
+}
+
+fn update_revenue_pass(
+    data: &RobloxGroupRevenueData,
+    app: &ApplicationServices,
+    group_id: &str,
+    asset_id: &str,
+    selecting: bool,
+    json: bool,
+) -> Result<(), CliError> {
+    let mut group = data
+        .groups
+        .iter()
+        .find(|group| group.group_id == group_id)
+        .cloned()
+        .ok_or_else(|| CliError {
+            code: "revenue_group_not_found".into(),
+            message: format!("No Group Revenue data exists for group {group_id}."),
+        })?;
+    if selecting {
+        let exists = data
+            .passes
+            .iter()
+            .any(|pass| pass.group_id == group_id && pass.asset_id == asset_id)
+            || data
+                .sales
+                .iter()
+                .any(|sale| sale.group_id == group_id && sale.asset_id == asset_id)
+            || group.pass_mappings.contains_key(asset_id);
+        if !exists {
+            return Err(CliError {
+                code: "revenue_pass_not_found".into(),
+                message: format!(
+                    "Game Pass {asset_id} has not been discovered or imported for group {group_id}."
+                ),
+            });
+        }
+        if !group.selected_pass_ids.iter().any(|id| id == asset_id) {
+            group.selected_pass_ids.push(asset_id.into());
+            group.selected_pass_ids.sort();
+        }
+    } else {
+        group.selected_pass_ids.retain(|id| id != asset_id);
+    }
+    let updated = app
+        .save_roblox_revenue_group(&group)
+        .map_err(CliError::from)?;
+    let saved = updated
+        .groups
+        .iter()
+        .find(|entry| entry.group_id == group_id)
+        .ok_or_else(|| CliError {
+            code: "revenue_group_save_failed".into(),
+            message: "The group was saved but could not be read back.".into(),
+        })?;
+    if json {
+        print_json(saved)?;
+    } else {
+        println!(
+            "{} Game Pass {} for {}",
+            if selecting { "Selected" } else { "Deselected" },
+            asset_id,
+            saved.name
+        );
     }
     Ok(())
 }

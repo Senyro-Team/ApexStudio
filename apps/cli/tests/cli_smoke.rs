@@ -202,6 +202,111 @@ fn statistics_and_group_revenue_read_saved_snapshots_from_a_dummy_workspace() {
 }
 
 #[test]
+fn revenue_cli_configures_groups_selects_passes_and_confirms_removal() {
+    let temp = tempdir().expect("temporary directory");
+    let root = temp.path().join("workspace");
+    let configured = cli_json(
+        &root,
+        &[
+            "revenue",
+            "configure",
+            "--group-id",
+            "16538500",
+            "--name",
+            "APX Dummy",
+            "--experience-id",
+            "84560840200510",
+        ],
+    );
+    assert!(
+        configured.status.success(),
+        "{}",
+        String::from_utf8_lossy(&configured.stderr)
+    );
+    let config: serde_json::Value =
+        serde_json::from_slice(&configured.stdout).expect("configured group JSON");
+    assert_eq!(config["name"], "APX Dummy");
+    assert_eq!(config["experienceIds"][0], "84560840200510");
+
+    let workspace = Workspace::open(&root).expect("dummy workspace");
+    let group = workspace
+        .roblox_group_revenue()
+        .expect("configured revenue state")
+        .groups
+        .remove(0);
+    workspace
+        .import_roblox_group_sales(
+            &group,
+            "fixture-batch",
+            &[apex_storage::RobloxGroupSale {
+                group_id: group.group_id.clone(),
+                sale_fingerprint: "b".repeat(64),
+                universe_id: "84560840200510".into(),
+                asset_id: "2053361604".into(),
+                sale_at: "2026-11-10T12:00:00Z".into(),
+                sale_location: "Website".into(),
+                hold_status: "Released".into(),
+                price: 1000,
+                revenue: 700,
+                import_batch_id: "fixture-batch".into(),
+                external_transaction_id: None,
+                source: "csv".into(),
+                dedupe_confidence: "exact_fields".into(),
+                imported_at: None,
+            }],
+        )
+        .expect("seed a dummy sale row");
+    drop(workspace);
+
+    let selected = cli_json(
+        &root,
+        &[
+            "revenue",
+            "select-pass",
+            "--group-id",
+            "16538500",
+            "--asset-id",
+            "2053361604",
+        ],
+    );
+    assert!(selected.status.success());
+    let selected: serde_json::Value =
+        serde_json::from_slice(&selected.stdout).expect("selected group JSON");
+    assert_eq!(selected["selectedPassIds"][0], "2053361604");
+
+    let deselected = cli_json(
+        &root,
+        &[
+            "revenue",
+            "deselect-pass",
+            "--group-id",
+            "16538500",
+            "--asset-id",
+            "2053361604",
+        ],
+    );
+    assert!(deselected.status.success());
+    let deselected: serde_json::Value =
+        serde_json::from_slice(&deselected.stdout).expect("deselected group JSON");
+    assert_eq!(deselected["selectedPassIds"], serde_json::json!([]));
+
+    let blocked_remove = cli_json(&root, &["revenue", "remove", "--group-id", "16538500"]);
+    assert!(!blocked_remove.status.success());
+    let error: serde_json::Value =
+        serde_json::from_slice(&blocked_remove.stderr).expect("confirmation error JSON");
+    assert_eq!(error["error"]["code"], "confirmation_required");
+
+    let removed = cli_json(
+        &root,
+        &["revenue", "remove", "--group-id", "16538500", "--yes"],
+    );
+    assert!(removed.status.success());
+    let removed: serde_json::Value =
+        serde_json::from_slice(&removed.stdout).expect("remove result JSON");
+    assert_eq!(removed["removedGroupId"], "16538500");
+}
+
+#[test]
 fn code_export_combines_selected_saved_posts_as_markdown_without_overwriting() {
     let temp = tempdir().expect("temporary directory");
     let root = temp.path().join("workspace");
