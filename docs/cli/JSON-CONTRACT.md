@@ -17,6 +17,7 @@ When `--json` is set, errors use this stable envelope:
 `error.code` is the machine-readable field. `error.message` is display text and may change. Consumers should branch on the code, not message wording. Codes are lowercase `snake_case`. Core codes are defined by `apex_core::Error::code`; command-specific codes are defined at the point where the CLI validates inputs and integrations. New codes may be added without changing the envelope.
 
 The envelope schema is in [`schemas/v1/error-envelope.schema.json`](schemas/v1/error-envelope.schema.json).
+`cargo test -p apex-cli --test json_contract` validates every schema against its declared JSON Schema meta-schema, compiles it, and validates representative serialized service/CLI types. The default CI `cargo test --locked` includes this test.
 
 ## Command output conventions
 
