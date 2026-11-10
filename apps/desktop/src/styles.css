@@ -5365,7 +5365,7 @@ select {
 .overlay-layer-properties input[type="range"] { accent-color: var(--accent-strong); }
 .overlay-layer-properties small { color: var(--muted); }
 .overlay-layer-empty { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-@media (max-width: 900px) { .overlay-studio-layout { grid-template-columns: 1fr; } }
+@media (max-width: 1200px) { .overlay-studio-layout { grid-template-columns: 1fr; } }
 @media (max-width: 720px) {
   .media-library-heading, .publishing-markdown-heading { align-items: flex-start; flex-direction: column; }
   .publishing-invite-form { grid-template-columns: 1fr; }
