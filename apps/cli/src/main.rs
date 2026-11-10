@@ -26,6 +26,118 @@ use std::{
 
 const APP_IDENTIFIER: &str = "studio.apexdesigns.apexstudio";
 
+#[cfg(windows)]
+fn chrome_pipe_name() -> Result<String, Error> {
+    let local_app_data = std::env::var_os("LOCALAPPDATA")
+        .ok_or_else(|| Error::InvalidContent("Windows local app data is unavailable.".into()))?;
+    let config_path = PathBuf::from(local_app_data)
+        .join("ApexStudio")
+        .join("chrome")
+        .join("settings.json");
+    let bytes = fs::read(&config_path).map_err(|_| {
+        Error::InvalidContent(
+            "Open Apex Studio and configure the Chrome connection in Settings first.".into(),
+        )
+    })?;
+    let config: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|_| Error::InvalidContent("Chrome bridge settings are invalid.".into()))?;
+    let prefix = r"\\.\pipe\ApexStudio-";
+    let pipe = config["pipe"]
+        .as_str()
+        .filter(|pipe| {
+            pipe.starts_with(prefix)
+                && pipe.len() <= 160
+                && pipe[prefix.len()..]
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        })
+        .ok_or_else(|| {
+            Error::InvalidContent(
+                "The desktop Chrome bridge is not running. Open Apex Studio and try again.".into(),
+            )
+        })?;
+    Ok(pipe.to_owned())
+}
+
+#[cfg(windows)]
+fn request_chrome_handoff(id: &str, revision: u64, reviewed: bool) -> Result<(), Error> {
+    let pipe_name = chrome_pipe_name()?;
+    request_chrome_handoff_on_pipe(&pipe_name, id, revision, reviewed)
+}
+
+#[cfg(windows)]
+fn request_chrome_handoff_on_pipe(
+    pipe_name: &str,
+    id: &str,
+    revision: u64,
+    reviewed: bool,
+) -> Result<(), Error> {
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::windows::named_pipe::ClientOptions,
+    };
+
+    let request = serde_json::json!({
+        "origin": "apex-cli",
+        "kind": "prepare_post",
+        "id": id,
+        "revision": revision,
+        "reviewed": reviewed,
+    });
+    let payload =
+        serde_json::to_vec(&request).map_err(|error| Error::Storage(error.to_string()))?;
+    if payload.is_empty() || payload.len() > 16 * 1024 {
+        return Err(Error::InvalidContent(
+            "Chrome handoff request is too large.".into(),
+        ));
+    }
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| Error::Storage(error.to_string()))?;
+    let response = runtime.block_on(async {
+        let mut pipe = ClientOptions::new().open(pipe_name).map_err(|error| {
+            Error::Storage(format!(
+                "Cannot reach the Apex Studio browser bridge: {error}"
+            ))
+        })?;
+        tokio::time::timeout(std::time::Duration::from_secs(60), async {
+            pipe.write_u32_le(payload.len() as u32).await?;
+            pipe.write_all(&payload).await?;
+            pipe.flush().await?;
+            let length = pipe.read_u32_le().await? as usize;
+            if length == 0 || length > 16 * 1024 {
+                return Err(std::io::Error::other("Invalid browser bridge response."));
+            }
+            let mut bytes = vec![0; length];
+            pipe.read_exact(&mut bytes).await?;
+            Ok::<_, std::io::Error>(bytes)
+        })
+        .await
+        .map_err(|_| Error::InvalidContent("The Apex Studio browser bridge timed out.".into()))?
+        .map_err(|error| Error::Storage(error.to_string()))
+    })?;
+    let response: serde_json::Value =
+        serde_json::from_slice(&response).map_err(|error| Error::Storage(error.to_string()))?;
+    if let Some(message) = response["error"].as_str() {
+        return Err(Error::InvalidContent(message.to_owned()));
+    }
+    if response["ok"] != true || response["postId"].as_str() != Some(id) {
+        return Err(Error::InvalidContent(
+            "The desktop rejected the ERLCX handoff.".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn request_chrome_handoff(_id: &str, _revision: u64, _reviewed: bool) -> Result<(), Error> {
+    Err(Error::InvalidContent(
+        "Direct Chrome handoff is currently supported on Windows only.".into(),
+    ))
+}
+
 #[derive(Debug, Parser)]
 #[command(
     name = "apex-studio-cli",
@@ -112,6 +224,13 @@ enum PostCommand {
     Create,
     /// Import a validated .apexpublish bundle as a new global draft.
     Import { source: PathBuf },
+    /// Open a saved draft in the configured Chrome ERLCX assistant.
+    Handoff {
+        id: String,
+        /// Confirm use of saved codes when linked livery sources changed or are unavailable.
+        #[arg(long)]
+        reviewed: bool,
+    },
     /// Show a post draft and its saved revision.
     Show { id: String },
     /// Save a full post JSON snapshot (the format returned by `posts show`).
@@ -784,6 +903,18 @@ fn run_post_command(
                     "Imported .apexpublish bundle as ERLCX draft {id} ({} liveries, {} previews).",
                     draft.data.liveries.len(),
                     draft.data.media.len()
+                );
+            }
+        }
+        PostCommand::Handoff { id, reviewed } => {
+            let draft = app.post(&id).map_err(CliError::from)?;
+            request_chrome_handoff(&id, draft.revision, reviewed).map_err(CliError::from)?;
+            if json {
+                print_json(&serde_json::json!({"ok":true,"postId":id}))?;
+            } else {
+                println!(
+                    "Opened the ERLCX assistant in Chrome for draft {}. Review the final page yourself; Apex Studio will not submit or publish it.",
+                    draft.data.title
                 );
             }
         }
@@ -2406,6 +2537,7 @@ struct TuiState {
     post_import_error: Option<String>,
     selected_post: Option<String>,
     post_detail: Option<PublishingDraft>,
+    post_handoff_message: Option<(String, bool)>,
     post_editor: Option<PostEditorState>,
     post_media: Option<PostMediaState>,
     post_livery_editor: Option<PostLiveryEditorState>,
@@ -2450,6 +2582,7 @@ impl TuiState {
             post_import_error: None,
             selected_post: None,
             post_detail: None,
+            post_handoff_message: None,
             post_editor: None,
             post_media: None,
             post_livery_editor: None,
@@ -2685,6 +2818,21 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         KeyCode::Char('l') => {
                             open_roblox_livery_selection(&mut state, &app, true)
                                 .map_err(io::Error::other)?;
+                        }
+                        KeyCode::Char('h') | KeyCode::Char('H') => {
+                            let reviewed = key.code == KeyCode::Char('H');
+                            if let (Some(id), Some(draft)) =
+                                (state.selected_post.clone(), state.post_detail.as_ref())
+                            {
+                                state.post_handoff_message = Some(match request_chrome_handoff(
+                                    &id,
+                                    draft.revision,
+                                    reviewed,
+                                ) {
+                                    Ok(()) => ("Opened the ERLCX assistant in Chrome. Review the final page yourself; nothing will be submitted automatically.".into(), true),
+                                    Err(error) => (error.to_string(), false),
+                                });
+                            }
                         }
                         KeyCode::Char('e') => {
                             if let Some(draft) = state.post_detail.clone() {
@@ -4493,7 +4641,7 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
             "Type/paste .apexpublish path   Enter Import   Esc Cancel"
         }
         Screen::Posts => " ↑/↓ Select   Enter Open   n New draft   i Import bundle   / Search   r Refresh   Esc Back ",
-        Screen::PostDetail => " e Metadata   m Images   v Liveries/codes   l Add project livery   Esc Back ",
+        Screen::PostDetail => " e Metadata   m Images   v Liveries/codes   l Add project livery   h Prepare   H Review saved codes & prepare   Esc Back ",
         Screen::PostEditor => " Tab Next field   ←/→ Edit   Enter Next/new line   Ctrl+S Save   Esc Discard ",
         Screen::PostMedia if state.post_media.as_ref().is_some_and(|media| media.path_input.is_some()) => {
             "Type/paste path   Enter Import PNG   Esc Cancel path"
@@ -5269,6 +5417,19 @@ fn draw_post_detail(
                 }
             )));
         }
+    }
+    if let Some((message, succeeded)) = &state.post_handoff_message {
+        lines.push(Line::raw(""));
+        lines.push(Line::styled(
+            message,
+            Style::default().fg(if state.no_color {
+                Color::Reset
+            } else if *succeeded {
+                accent
+            } else {
+                Color::Red
+            }),
+        ));
     }
     frame.render_widget(
         Paragraph::new(lines)
@@ -7063,6 +7224,93 @@ mod tests {
         ])
         .expect_err("credential command must reject key arguments");
         assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+    }
+
+    #[test]
+    fn posts_handoff_command_accepts_explicit_stale_snapshot_review() {
+        let args = Args::try_parse_from([
+            "apex-studio-cli",
+            "posts",
+            "handoff",
+            "draft-123",
+            "--reviewed",
+        ])
+        .expect("parse ERLCX handoff command");
+        assert!(matches!(
+            args.command,
+            Some(Command::Posts {
+                action: PostCommand::Handoff {
+                    id,
+                    reviewed: true
+                }
+            }) if id == "draft-123"
+        ));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn chrome_handoff_client_uses_the_native_pipe_frame_protocol() {
+        use tokio::{
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::windows::named_pipe::ServerOptions,
+        };
+
+        let pipe_name = format!(
+            r"\\.\pipe\ApexStudio-cli-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
+        );
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(0);
+        let server_name = pipe_name.clone();
+        let server_thread = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("create test pipe runtime");
+            runtime.block_on(async move {
+                let mut server = ServerOptions::new()
+                    .first_pipe_instance(true)
+                    .reject_remote_clients(true)
+                    .create(&server_name)
+                    .expect("create test named pipe");
+                ready_tx.send(()).expect("signal pipe readiness");
+                server.connect().await.expect("accept CLI request");
+                let size = server.read_u32_le().await.expect("read request length") as usize;
+                let mut payload = vec![0; size];
+                server
+                    .read_exact(&mut payload)
+                    .await
+                    .expect("read request payload");
+                let request: serde_json::Value =
+                    serde_json::from_slice(&payload).expect("decode request");
+                assert_eq!(request["origin"], "apex-cli");
+                assert_eq!(request["kind"], "prepare_post");
+                assert_eq!(request["id"], "draft-123");
+                assert_eq!(request["revision"], 7);
+                assert_eq!(request["reviewed"], true);
+                let response = serde_json::to_vec(&serde_json::json!({
+                    "ok": true,
+                    "postId": "draft-123"
+                }))
+                .expect("encode response");
+                server
+                    .write_u32_le(response.len() as u32)
+                    .await
+                    .expect("write response length");
+                server
+                    .write_all(&response)
+                    .await
+                    .expect("write response payload");
+                server.flush().await.expect("flush response");
+            });
+        });
+        ready_rx.recv().expect("test pipe available");
+        request_chrome_handoff_on_pipe(&pipe_name, "draft-123", 7, true)
+            .expect("complete framed bridge request");
+        server_thread.join().expect("join test pipe server");
     }
 
     #[test]

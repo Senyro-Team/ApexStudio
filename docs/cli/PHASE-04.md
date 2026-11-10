@@ -5,7 +5,7 @@ Status: In progress.
 ## Implemented so far
 
 - Shared application wrappers expose global ERLCX post drafts, source status, preview PNG import, `.apexpublish` export, Roblox livery summaries, and durable queue snapshots.
-- `posts list|create|show|save|sources|add-images|export` provides JSON-editable global draft workflows. Saving uses the draft revision for conflict detection; adding media imports and pins PNGs through the storage service.
+- `posts list|create|show|save|sources|add-images|import|export|handoff` provides JSON-editable global draft workflows. Saving uses the draft revision for conflict detection; adding media imports and pins PNGs through the storage service.
 - `posts import <PATH>` validates and imports a public version-1 `.apexpublish` ZIP into a new global post draft. It checks the manifest schema, archive layout and size, PNG limits, file hashes, and normal publishing validation; source-project IDs and other private data are not part of the bundle.
 - `codes export <PATH> --post <ID>...` combines up to 50 saved post snapshots into one escaped Markdown file, requires `--reviewed` for stale/missing source liveries, and refuses to overwrite files.
 - `roblox liveries --account-id <ID>` and `roblox queue` expose read-only account-specific livery coverage and persisted queue state. These commands do not start network transfers or perform startup recovery.
@@ -19,8 +19,9 @@ Status: In progress.
 
 - An upload worker that can run without the desktop app has not been implemented in the CLI yet. A CLI-created batch is durable, but it waits for the existing desktop worker.
 - TUI editing covers post metadata, source-linked and manual livery creation, livery properties/codes, and preview-image import/order/removal. Manual livery drafts can be saved before codes are ready and completed from the side-code editor; Roblox batch creation and controls are available in the TUI queue.
-- `.apexpublish` import/export are available through typed commands; direct Chrome bridge handoff is not yet available from the CLI.
-- The planned Chrome path is confirmed: request a handoff through the running desktop bridge; retain `.apexpublish` as the manual fallback.
+- `.apexpublish` import/export and a Windows direct Chrome handoff request are available through typed commands. The handoff requires the running desktop app and a recently verified extension connection.
+- The TUI draft detail uses `h` for a standard handoff and uppercase `H` when the user explicitly approves saved decal-code snapshots for changed or unavailable source liveries. The CLI equivalent is `posts handoff <ID> [--reviewed]`; `.apexpublish` remains the manual fallback.
+- The Windows named-pipe client is covered by a disposable local protocol test. A live handoff still needs a run with the updated desktop app and the configured Chrome extension.
 
 ## User workflows
 
@@ -34,6 +35,7 @@ apex-studio-cli roblox batch start --account-id 123456789 --livery <FOLDER_ID> -
 apex-studio-cli roblox queue --json
 apex-studio-cli posts list
 apex-studio-cli posts import .\post.apexpublish
+apex-studio-cli posts handoff <POST_ID>
 apex-studio-cli codes export .\livery-codes.md --post <POST_ID> --post <POST_ID>
 ```
 
@@ -45,7 +47,7 @@ apex-studio-cli codes export .\livery-codes.md --post <POST_ID> --post <POST_ID>
 - Configure the Roblox account ID and API key using a hidden interactive prompt. Validate the key's owner, expiry, and asset read/write scopes before replacing Credential Manager contents. Do not accept API keys as command-line arguments or include them in JSON or logs.
 - Preview and create multi-livery upload batches, review existing/reused codes and double-upload pass count, then deliberately confirm before network activity. Show persisted queue status and support pause, resume, cancel pending, retry failed, and needs-review inspection.
 - Create/list/show/edit global ERLCX post drafts through typed JSON input; add preview PNGs from explicit paths; inspect stale livery sources; export `.apexpublish` without overwrite. Do not publish or submit automatically.
-- Use the existing Chrome assistant for browser preparation when the desktop bridge is available; keep `.apexpublish` export as a manual fallback.
+- Use the existing Chrome assistant for browser preparation through the running desktop bridge; keep `.apexpublish` export/import as a manual fallback. The assistant does not submit or publish the final post.
 
 ## Architecture and safety
 
@@ -63,7 +65,7 @@ apex-studio-cli codes export .\livery-codes.md --post <POST_ID> --post <POST_ID>
 2. ~~Extract credential validation/access from Tauri-only code into a shared service.~~ Credential validation and vault access now live in the shared application crate; upload-worker extraction and CLI execution remain.
 3. ~~Add hidden credential configuration and double-upload preference commands.~~ Add security tests that prove no secret appears in stdout/stderr or process arguments and failed validation leaves previous credentials intact.
 4. Add batch preview/confirm/start and queue controls with offline mock transport tests, including retries, throttling, interrupted operations, account changes, and pass-one/pass-two behavior.
-5. Add ERLCX draft commands, PNG media import, source-staleness review, `.apexpublish` import/export and the supported Chrome bridge request.
+5. ~~Add ERLCX draft commands, PNG media import, source-staleness review, `.apexpublish` import/export and the supported Chrome bridge request.~~ Typed and TUI draft flows, bundle round-trips, explicit stale-snapshot review, and the Windows request to the active desktop bridge are implemented; a live Chrome handoff remains an external verification step.
 6. ~~Add searchable TUI views and selection workflows for Roblox and ERLCX.~~ Searchable draft/queue views, ERLCX metadata/media/livery/code editing, source-linked livery selection, reviewed multi-livery batch creation, and selected-batch pause/resume/retry/cancel controls are implemented.
 7. Run debug/release checks, application and desktop adapter checks, and all mock/disposable workspace tests. Do not perform a live Roblox upload or ERLCX submission as part of routine verification.
 

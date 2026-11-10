@@ -133,12 +133,19 @@ impl BrowserBridge {
     }
     fn process(&self, r: Value) -> Result<Value, Error> {
         let mut s = self.lock()?;
+        let kind = r["kind"].as_str().unwrap_or("");
+        if r["origin"].as_str() == Some("apex-cli") {
+            drop(s);
+            if kind != "prepare_post" {
+                return Err(invalid("The CLI may only request an ERLCX post handoff."));
+            }
+            return self.prepare_cli_post(&r);
+        }
         if r["origin"].as_str()
             != Some(format!("chrome-extension://{}/", s.config.extension_id).as_str())
         {
             return Err(invalid("Unapproved extension."));
         }
-        let kind = r["kind"].as_str().unwrap_or("");
         if kind == "check" {
             let Some((token, deadline)) = s.check.take() else {
                 if s.status.state == "checking" {
@@ -381,6 +388,110 @@ impl BrowserBridge {
             _ => Err(invalid("Unsupported bridge request.")),
         }
     }
+
+    fn prepare_cli_post(&self, request: &Value) -> Result<Value, Error> {
+        let id = request["id"]
+            .as_str()
+            .filter(|id| !id.is_empty() && id.len() <= 100)
+            .ok_or_else(|| invalid("Invalid ERLCX draft ID."))?;
+        let revision = request["revision"]
+            .as_u64()
+            .ok_or_else(|| invalid("Invalid ERLCX draft revision."))?;
+        let reviewed = request["reviewed"]
+            .as_bool()
+            .ok_or_else(|| invalid("Source review status is required."))?;
+        let token = secret();
+        let (workspace, config) = {
+            let mut state = self.lock()?;
+            if !state
+                .checked
+                .is_some_and(|checked| checked.elapsed() < Duration::from_secs(300))
+            {
+                return Err(invalid("Verify the Chrome connection in Settings first."));
+            }
+            if state.statistics.as_ref().is_some_and(|transfer| {
+                transfer.state == "running" && Instant::now() < transfer.expires
+            }) || state.pending.is_some()
+                || state.group_revenue.as_ref().is_some_and(|transfer| {
+                    transfer.state == "running" && Instant::now() < transfer.expires
+                })
+                || state
+                    .transfer
+                    .as_ref()
+                    .is_some_and(|transfer| Instant::now() < transfer.expires)
+            {
+                return Err(invalid("Another Chrome operation is already active."));
+            }
+            let workspace = state
+                .workspace
+                .clone()
+                .ok_or_else(|| invalid("Workspace unavailable."))?;
+            state.pending = Some(token.clone());
+            (workspace, state.config.clone())
+        };
+
+        let prepared = (|| {
+            let temp = tempfile::tempdir().map_err(|error| Error::Storage(error.to_string()))?;
+            let bundle_path = temp.path().join("post.apexpublish");
+            workspace.export_post(id, revision, reviewed, &bundle_path)?;
+            let bundle = tempfile::NamedTempFile::new()
+                .map_err(|error| Error::Storage(error.to_string()))?;
+            std::fs::copy(&bundle_path, bundle.path())
+                .map_err(|error| Error::Storage(error.to_string()))?;
+            let size = usize::try_from(
+                bundle
+                    .as_file()
+                    .metadata()
+                    .map_err(|error| Error::Storage(error.to_string()))?
+                    .len(),
+            )
+            .map_err(|error| Error::Storage(error.to_string()))?;
+            Ok::<_, Error>((bundle, size))
+        })();
+
+        let mut state = self.lock()?;
+        if state.pending.as_deref() != Some(token.as_str()) {
+            return Err(invalid("Workspace changed. Start a new browser handoff."));
+        }
+        state.pending = None;
+        let (bundle, size) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                state.status.state = "failed".into();
+                state.status.step = "Bundle preparation".into();
+                state.status.message = error.to_string();
+                return Err(error);
+            }
+        };
+        state.transfer = Some(Transfer {
+            token: token.clone(),
+            session: None,
+            expires: Instant::now() + Duration::from_secs(120),
+            bundle,
+            offset: 0,
+            size,
+            post_id: id.to_owned(),
+            command: "run".into(),
+        });
+        state.status = BrowserStatus {
+            connected: true,
+            state: "running".into(),
+            step: String::new(),
+            message: "Opening Chrome…".into(),
+            post_id: Some(id.to_owned()),
+        };
+        drop(state);
+
+        if let Err(error) = launch(&config, &format!("token={token}")) {
+            if let Ok(mut state) = self.lock() {
+                state.transfer = None;
+                state.status.state = "failed".into();
+                state.status.message = format!("Could not open the configured browser: {error}");
+            }
+            return Err(error);
+        }
+        Ok(json!({"ok":true,"postId":id}))
+    }
 }
 #[cfg(windows)]
 fn initial_pipe(name: &str) -> Result<tokio::net::windows::named_pipe::NamedPipeServer, Error> {
@@ -428,7 +539,7 @@ pub fn setup(app: &tauri::AppHandle, workspace: Workspace) -> Result<(), Error> 
                 .ok();
             let bridge = bridge.clone();
             tauri::async_runtime::spawn(async move {
-                let _ = tokio::time::timeout(Duration::from_secs(10), async move {
+                let _ = tokio::time::timeout(Duration::from_secs(60), async move {
                     let length = pipe.read_u32_le().await? as usize;
                     if length == 0 || length > 16 * 1024 {
                         return Err(std::io::Error::other("Invalid request size."));
@@ -981,6 +1092,27 @@ mod tests {
         r["token"] = "approved".into();
         assert!(b.process(r).is_err());
         assert_eq!(b.snapshot().unwrap().state, "expired");
+    }
+    #[test]
+    fn cli_bridge_origin_can_only_request_a_checked_post_handoff() {
+        let b = BrowserBridge::default();
+        let forbidden = json!({"origin":"apex-cli","kind":"claim"});
+        assert!(b.process(forbidden).is_err());
+
+        let prepare = json!({
+            "origin":"apex-cli",
+            "kind":"prepare_post",
+            "id":"draft-1",
+            "revision":1,
+            "reviewed":false
+        });
+        assert!(b.process(prepare.clone()).is_err());
+        {
+            let mut state = b.lock().unwrap();
+            state.checked = Some(Instant::now());
+        }
+        assert!(b.process(prepare).is_err());
+        assert!(b.lock().unwrap().pending.is_none());
     }
     #[test]
     fn check_is_bound_to_an_expiring_challenge() {
