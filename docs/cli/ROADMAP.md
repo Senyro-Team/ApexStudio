@@ -1,6 +1,6 @@
 # Apex Studio CLI Roadmap
 
-Status: Phases 1–3 are complete; Phase 4 implementation is in progress.
+Status: Phases 1–4 are complete; Phase 5 implementation is in progress.
 
 ## Product shape
 
