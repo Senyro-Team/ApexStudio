@@ -86,6 +86,8 @@ pub struct ServiceAvailability {
 pub struct HostedImage {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub client_id: Option<String>,
     pub image_url: String,
     pub hash: String,
     pub alt_text: String,
@@ -102,6 +104,12 @@ pub struct HostedImages {
     pub images: Vec<HostedImage>,
     #[serde(default)]
     pub errors: Vec<serde_json::Value>,
+}
+
+pub struct HostedImageUpload {
+    pub client_id: String,
+    pub name: String,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -540,28 +548,42 @@ pub async fn upload_hosted_images(
     server_url: &str,
     team_id: &str,
     scope: &str,
-    images: Vec<(String, Vec<u8>)>,
+    images: Vec<HostedImageUpload>,
 ) -> Result<HostedImages, Error> {
     if !["personal", "team"].contains(&scope) || images.is_empty() || images.len() > 10 {
         return Err(invalid(
             "Choose a personal or team scope and up to ten images.",
         ));
     }
+    let total_bytes = images.iter().fold(0usize, |total, image| {
+        total.saturating_add(image.bytes.len())
+    });
+    if total_bytes > 48 * 1024 * 1024 {
+        return Err(invalid(
+            "An image upload batch must stay under 48 MB total. Remove some images and retry.",
+        ));
+    }
     let (client, url, session) =
         team_service_endpoint(server_url, team_id, "image-library").await?;
     let mut form = reqwest::multipart::Form::new();
-    for (name, bytes) in images {
-        if bytes.is_empty() || bytes.len() > 40 * 1024 * 1024 {
+    for image in images {
+        if image.client_id.is_empty()
+            || image.client_id.len() > 128
+            || image.bytes.is_empty()
+            || image.bytes.len() > 40 * 1024 * 1024
+        {
             return Err(invalid(
-                "Each hosted image must be between 1 byte and 40 MB.",
+                "Each hosted image must have a valid local reference and be between 1 byte and 40 MB.",
             ));
         }
-        let safe_name = name
+        form = form.text("clientId", image.client_id);
+        let safe_name = image
+            .name
             .chars()
             .filter(|c| !c.is_control() && *c != '/' && *c != '\\')
             .take(200)
             .collect::<String>();
-        let part = reqwest::multipart::Part::bytes(bytes)
+        let part = reqwest::multipart::Part::bytes(image.bytes)
             .file_name(if safe_name.is_empty() {
                 "image.png".to_owned()
             } else {

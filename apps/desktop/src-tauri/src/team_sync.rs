@@ -65,54 +65,96 @@ pub async fn sync_create_invite_campaign(
 }
 
 #[tauri::command]
-pub async fn sync_upload_library_image(
+pub async fn sync_upload_library_images(
     server_url: String,
     team_id: String,
-    item_id: String,
+    item_ids: Vec<String>,
     scope: String,
     state: State<'_, TeamSyncState>,
     workspace: State<'_, apex_storage::Workspace>,
-) -> Result<apex_storage::MediaLibraryItem, String> {
+) -> Result<SyncHostedImages, String> {
+    if item_ids.is_empty() || item_ids.len() > 10 || !["personal", "team"].contains(&scope.as_str())
+    {
+        return Err("Choose up to ten images and a valid upload scope.".into());
+    }
     let _guard = state.0.lock().await;
     let ws = workspace.inner().clone();
-    let read_id = item_id.clone();
-    let (name, bytes) = super::projects::work(move || ws.media_library_upload_bytes(&read_id))
-        .await
-        .map_err(|error| error.message)?;
+    let local_images = super::projects::work(move || {
+        item_ids
+            .iter()
+            .map(|id| {
+                let item = ws.media_library_item_by_id(id)?;
+                let (name, bytes) = ws.media_library_upload_bytes(id)?;
+                Ok((id.clone(), name, bytes, item.hash))
+            })
+            .collect::<Result<Vec<_>, apex_core::Error>>()
+    })
+    .await
+    .map_err(|error| error.message)?;
     let uploaded = apex_application::team_sync::upload_hosted_images(
         &server_url,
         &team_id,
         &scope,
-        vec![(name, bytes)],
+        local_images
+            .iter()
+            .map(
+                |(id, name, bytes, _)| apex_application::team_sync::HostedImageUpload {
+                    client_id: id.clone(),
+                    name: name.clone(),
+                    bytes: bytes.clone(),
+                },
+            )
+            .collect(),
     )
     .await
     .map_err(|error| error.to_string())?;
-    let image = uploaded.images.first().ok_or_else(|| {
-        uploaded
-            .errors
-            .first()
-            .and_then(|value| value.get("error"))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("The image provider did not return an image.")
-            .to_owned()
-    })?;
+
     let ws = workspace.inner().clone();
-    let image_id = item_id;
-    let provider_id = image.id.clone();
-    let image_url = image.image_url.clone();
-    let owner_scope = image.owner_scope.clone();
-    let team = (owner_scope == "team").then_some(team_id);
+    let uploaded_images = uploaded.images.clone();
+    let local_hashes = local_images
+        .into_iter()
+        .map(|(id, name, _, hash)| (id, name, hash))
+        .collect::<Vec<_>>();
+    let selected_team_id = team_id.clone();
     super::projects::work(move || {
-        ws.set_media_library_remote(
-            &image_id,
-            &provider_id,
-            &image_url,
-            &owner_scope,
-            team.as_deref(),
-        )
+        for image in uploaded_images {
+            let correlated = image
+                .client_id
+                .as_deref()
+                .filter(|client_id| local_hashes.iter().any(|(id, _, _)| id == client_id));
+            for (id, name, hash) in &local_hashes {
+                let matches = correlated.map_or_else(
+                    || {
+                        (hash.as_deref() == Some(image.hash.as_str()) || name == &image.name)
+                            && local_hashes
+                                .iter()
+                                .filter(|(_, candidate_name, candidate_hash)| {
+                                    candidate_name == name
+                                        || candidate_hash.as_deref() == Some(image.hash.as_str())
+                                })
+                                .count()
+                                == 1
+                    },
+                    |client_id| id == client_id,
+                );
+                if !matches {
+                    continue;
+                }
+                let team = (image.owner_scope == "team").then_some(selected_team_id.as_str());
+                ws.set_media_library_remote(
+                    id,
+                    &image.id,
+                    &image.image_url,
+                    &image.owner_scope,
+                    team,
+                )?;
+            }
+        }
+        Ok(())
     })
     .await
-    .map_err(|error| error.message)
+    .map_err(|error| error.message)?;
+    Ok(uploaded)
 }
 
 #[tauri::command]

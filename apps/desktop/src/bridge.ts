@@ -117,6 +117,7 @@ export interface SyncServiceAvailability {
 export interface HostedImage {
   id: string;
   name: string;
+  clientId?: string | null;
   imageUrl: string;
   hash: string;
   altText: string;
@@ -127,7 +128,7 @@ export interface HostedImage {
 }
 export interface HostedImages {
   images: HostedImage[];
-  errors: unknown[];
+  errors: Array<{ clientId?: string | null; name?: string; error?: string }>;
 }
 export interface InviteCampaign {
   id: string;
@@ -165,8 +166,8 @@ export const syncListInviteCampaigns = (serverUrl: string, teamId: string) =>
 export const syncCreateInviteCampaign = (
   serverUrl: string, teamId: string, requestId: string, input: InviteCampaignInput,
 ) => invoke<InviteCampaign>("sync_create_invite_campaign", { serverUrl, teamId, requestId, input });
-export const syncUploadLibraryImage = (serverUrl: string, teamId: string, itemId: string, scope: "personal" | "team") =>
-  invoke<MediaLibraryItem>("sync_upload_library_image", { serverUrl, teamId, itemId, scope });
+export const syncUploadLibraryImages = (serverUrl: string, teamId: string, itemIds: string[], scope: "personal" | "team") =>
+  invoke<HostedImages>("sync_upload_library_images", { serverUrl, teamId, itemIds, scope });
 export const syncSetLibraryImageScope = (serverUrl: string, teamId: string, itemId: string, scope: "personal" | "team") =>
   invoke<MediaLibraryItem>("sync_set_library_image_scope", { serverUrl, teamId, itemId, scope });
 export const syncSignIn = (serverUrl: string, email: string, password: string) =>

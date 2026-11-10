@@ -10,7 +10,7 @@ import {
   pickMediaLibraryImage,
   updateMediaLibraryItem,
   syncImageLibrary,
-  syncUploadLibraryImage,
+  syncUploadLibraryImages,
   syncSetLibraryImageScope,
   type Asset,
   type MediaLibraryItem,
@@ -41,6 +41,7 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
   const [serverUrl, setServerUrl] = useState("");
   const [teamId, setTeamId] = useState("");
   const [uploadScope, setUploadScope] = useState<"personal" | "team">("personal");
+  const [selectedForUpload, setSelectedForUpload] = useState<string[]>([]);
 
   async function refresh() {
     const savedUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
@@ -62,6 +63,8 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
       }
     }
     setItems(combined);
+    const availableIds = new Set(combined.filter((item) => item.hash && !item.providerImageId && !item.isRemote).map((item) => item.id));
+    setSelectedForUpload((current) => current.filter((id) => availableIds.has(id)));
     setAssets(projectAssets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
   }
   useEffect(() => {
@@ -114,20 +117,33 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
     }
   }
 
-  async function uploadItem(item: MediaLibraryItem, scope = uploadScope) {
+  async function uploadSelected() {
     if (!serverUrl || !teamId) { setError("Connect to a team server and select a team before using Image Hosting."); return; }
-    if (!item.hash || item.isRemote) return;
-    const scopeText = scope === "team" ? "share this image with the selected team" : "upload this image as a public personal image";
-    if (!window.confirm(`This sends the image to your configured Image Provider. Its URL will be public. Continue and ${scopeText}?`)) return;
+    const selected = items.filter((item) => selectedForUpload.includes(item.id) && item.hash && !item.providerImageId && !item.isRemote).slice(0, 10);
+    if (!selected.length) return;
+    const scopeText = uploadScope === "team" ? "upload these images as public images shared with the selected team" : "upload these images as public images owned by your account";
+    if (!window.confirm(`This sends ${selected.length} image${selected.length === 1 ? "" : "s"} to your configured Image Provider. Their URLs will be public. Continue and ${scopeText}?`)) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      await syncUploadLibraryImage(serverUrl, teamId, item.id, scope);
+      const result = await syncUploadLibraryImages(serverUrl, teamId, selected.map((item) => item.id), uploadScope);
       await refresh();
-      setNotice("Image uploaded. Its public URL is ready to reuse.");
+      const successfulIds = new Set(result.images.map((image) => image.clientId).filter((id): id is string => Boolean(id)));
+      const retryIds = selected.filter((item) => !successfulIds.has(item.id)).map((item) => item.id);
+      setSelectedForUpload(retryIds);
+      const reused = result.images.filter((image) => image.reused).length;
+      const failed = result.errors.length;
+      setNotice(`${result.images.length} image${result.images.length === 1 ? "" : "s"} available by public URL${reused ? ` · ${reused} reused` : ""}${failed ? ` · ${failed} failed` : ""}.`);
+      if (failed) setError(result.errors.map((entry) => `${entry.name || "Image"}: ${entry.error || "Upload failed"}`).join("\n"));
     } catch (reason) { setError(errorMessage(reason)); }
     finally { setBusy(false); }
+  }
+
+  function toggleUploadSelection(itemId: string) {
+    setSelectedForUpload((current) => current.includes(itemId)
+      ? current.filter((id) => id !== itemId)
+      : current.length >= 10 ? current : [...current, itemId]);
   }
 
   async function changeSharing(item: MediaLibraryItem) {
@@ -190,6 +206,12 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
       </header>
       <p className="field-hint">Adding an image here does not upload it to a server. Add the public URL manually after uploading it wherever you choose.</p>
       {serverUrl && teamId && <div className="media-library-project-add"><label htmlFor="image-upload-scope">For uploads</label><select id="image-upload-scope" value={uploadScope} disabled={busy} onChange={(event) => setUploadScope(event.target.value as "personal" | "team")}><option value="personal">Personal</option><option value="team">Selected team</option></select><span className="field-hint">Uploads are public and require confirmation each time.</span></div>}
+      {serverUrl && teamId && <div className="media-library-batch-toolbar">
+        <span>{selectedForUpload.length} of 10 selected</span>
+        <button className="text-button" type="button" disabled={busy || !filtered.some((item) => item.hash && !item.providerImageId && !item.isRemote)} onClick={() => setSelectedForUpload(filtered.filter((item) => item.hash && !item.providerImageId && !item.isRemote).slice(0, 10).map((item) => item.id))}>Select first 10 available</button>
+        <button className="text-button" type="button" disabled={busy || !selectedForUpload.length} onClick={() => setSelectedForUpload([])}>Clear selection</button>
+        <button className="primary" type="button" disabled={busy || !selectedForUpload.length} onClick={() => void uploadSelected()}><Upload size={15} /> {busy ? "Uploading…" : `Upload ${selectedForUpload.length || "selected"}`}</button>
+      </div>}
       {error && <p role="alert" className="error">{error}</p>}
       {notice && <p role="status" className="field-hint">{notice}</p>}
       {assets.length > 0 && (
@@ -233,6 +255,7 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
         <div className="media-library-grid">
           {filtered.map((item) => (
             <article className="media-library-card" key={item.id}>
+              {serverUrl && teamId && item.hash && !item.providerImageId && !item.isRemote && <label className="media-library-select"><input type="checkbox" checked={selectedForUpload.includes(item.id)} disabled={busy || (!selectedForUpload.includes(item.id) && selectedForUpload.length >= 10)} onChange={() => toggleUploadSelection(item.id)} /><span>Select for upload</span></label>}
               <div className="media-library-preview">
                 {item.preview ? <img src={item.preview} alt="" /> : item.imageUrl ? <img src={item.imageUrl} alt="" /> : <FileImage size={30} aria-hidden="true" />}
               </div>
@@ -243,7 +266,7 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
                 {item.overlayVersion !== null && item.overlayVersion !== undefined && <small>Overlay v{item.overlayVersion} · {item.overlayTarget === "erlcx" ? "ERLCX 16:9" : "ExecLab 16:10"}</small>}
                 {item.imageUrl ? <a href={item.imageUrl} target="_blank" rel="noreferrer"><Link2 size={14} aria-hidden="true" /> Open image <ExternalLink size={13} aria-hidden="true" /></a> : <small>Local only · public URL not set</small>}
                 <div className="media-library-card-actions">
-                  {item.hash && !item.providerImageId && <button className="text-button" type="button" disabled={busy} onClick={() => void uploadItem(item)}><Upload size={15} aria-hidden="true" /> Upload public</button>}
+                  {item.hash && !item.providerImageId && <small>Select this image above to include it in a batch upload.</small>}
                   {item.providerImageId && !item.isRemote && <button className="text-button" type="button" disabled={busy} onClick={() => void changeSharing(item)}>{item.ownerScope === "team" ? "Make personal" : "Share with team"}</button>}
                   <button className="text-button" type="button" disabled={busy || item.isRemote} onClick={() => { setEditing(item.id); setForm({ name: item.name, altText: item.altText, imageUrl: item.imageUrl, defaultLinkUrl: item.defaultLinkUrl ?? "", folder: item.folder, tags: item.tags.join(", ") }); }}><PencilLine size={15} aria-hidden="true" /> Edit</button>
                   <button className="text-button" type="button" onClick={() => {
