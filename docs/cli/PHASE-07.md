@@ -23,4 +23,4 @@ Status: Complete on `codex/apex-cli-phase-1`.
 
 ## Separate workspace note
 
-The strict workspace Clippy command currently reports `unnecessary_sort_by` and test `unwrap_used` warnings in Group Revenue commit `be0ec2a`. Those files were left untouched because the Group Revenue work is outside this CLI phase. The CLI-specific Clippy check passes with the known workspace/TUI lints explicitly allowed. GitHub's latest successful Foundation run predates `be0ec2a`; the signed updater run and uploaded v0.1.1 assets were verified separately.
+Group Revenue's strict `apex-storage` Clippy check now passes: the experience IDs use the direct stable sort, and fallible test setup/operations return errors instead of unwrapping. A full-workspace strict Clippy run then reaches separate warnings in `apps/cli/src/main.rs`; those are outside this Group Revenue fix. GitHub's latest successful Foundation run predates commit `be0ec2a`; the signed updater run and uploaded v0.1.1 assets were verified separately.

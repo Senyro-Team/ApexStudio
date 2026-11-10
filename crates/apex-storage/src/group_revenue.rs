@@ -373,7 +373,7 @@ impl Workspace {
                 group.experience_ids.push(pass.universe_id.clone());
             }
         }
-        group.experience_ids.sort_by(|left, right| left.cmp(right));
+        group.experience_ids.sort();
         for sale in sales {
             validate_sale(sale, &group)?;
         }
@@ -477,6 +477,8 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
     fn group() -> RobloxRevenueGroup {
         RobloxRevenueGroup {
             group_id: "16538500".into(),
@@ -514,15 +516,13 @@ mod tests {
     }
 
     #[test]
-    fn selected_passes_and_api_refresh_are_saved_and_cross_source_ids_deduplicate() {
-        let dir = tempfile::tempdir().unwrap();
-        let workspace = Workspace::open(dir.path()).unwrap();
+    fn selected_passes_and_api_refresh_are_saved_and_cross_source_ids_deduplicate() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let workspace = Workspace::open(dir.path())?;
         let group = group();
-        workspace.save_roblox_revenue_group(&group).unwrap();
+        workspace.save_roblox_revenue_group(&group)?;
         let csv_sale = sale("csv", "transaction-1", &"a".repeat(64));
-        workspace
-            .import_roblox_group_sales(&group, "csv-batch", &[csv_sale])
-            .unwrap();
+        workspace.import_roblox_group_sales(&group, "csv-batch", &[csv_sale])?;
         let pass = RobloxRevenuePass {
             group_id: group.group_id.clone(),
             asset_id: "2053361604".into(),
@@ -531,31 +531,31 @@ mod tests {
             source: "catalog".into(),
         };
         let api_sale = sale("api", "transaction-1", &"b".repeat(64));
-        let result = workspace
-            .apply_roblox_group_api_refresh(
-                &group.group_id,
-                &[pass],
-                &[api_sale],
-                Some("2026-11-07"),
-                Some("2026-11-07"),
-                Some(&serde_json::json!({"returnedTransactions":1})),
-            )
-            .unwrap();
+        let result = workspace.apply_roblox_group_api_refresh(
+            &group.group_id,
+            &[pass],
+            &[api_sale],
+            Some("2026-11-07"),
+            Some("2026-11-07"),
+            Some(&serde_json::json!({"returnedTransactions":1})),
+        )?;
         assert_eq!(result.inserted, 0);
         assert_eq!(result.duplicates, 1);
-        let data = workspace.roblox_group_revenue().unwrap();
+        let data = workspace.roblox_group_revenue()?;
         assert_eq!(data.sales.len(), 1);
         assert_eq!(data.groups[0].selected_pass_ids, vec!["2053361604"]);
         assert_eq!(data.groups[0].api_status.as_deref(), Some("success"));
         assert_eq!(data.passes.len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn invalid_api_refresh_does_not_replace_the_last_successful_catalog_or_coverage() {
-        let dir = tempfile::tempdir().unwrap();
-        let workspace = Workspace::open(dir.path()).unwrap();
+    fn invalid_api_refresh_does_not_replace_the_last_successful_catalog_or_coverage() -> TestResult
+    {
+        let dir = tempfile::tempdir()?;
+        let workspace = Workspace::open(dir.path())?;
         let group = group();
-        workspace.save_roblox_revenue_group(&group).unwrap();
+        workspace.save_roblox_revenue_group(&group)?;
         let good = RobloxRevenuePass {
             group_id: group.group_id.clone(),
             asset_id: "2053361604".into(),
@@ -563,16 +563,14 @@ mod tests {
             name: "EMS Fleet Pack".into(),
             source: "catalog".into(),
         };
-        workspace
-            .apply_roblox_group_api_refresh(
-                &group.group_id,
-                &[good],
-                &[],
-                Some("2026-11-01"),
-                Some("2026-11-07"),
-                None,
-            )
-            .unwrap();
+        workspace.apply_roblox_group_api_refresh(
+            &group.group_id,
+            &[good],
+            &[],
+            Some("2026-11-01"),
+            Some("2026-11-07"),
+            None,
+        )?;
         let bad = RobloxRevenuePass {
             asset_id: "not-an-id".into(),
             ..RobloxRevenuePass {
@@ -586,48 +584,46 @@ mod tests {
         assert!(workspace
             .apply_roblox_group_api_refresh(&group.group_id, &[bad], &[], None, None, None)
             .is_err());
-        let data = workspace.roblox_group_revenue().unwrap();
+        let data = workspace.roblox_group_revenue()?;
         assert_eq!(data.passes[0].name, "EMS Fleet Pack");
         assert_eq!(
             data.groups[0].api_coverage_from.as_deref(),
             Some("2026-11-01")
         );
+        Ok(())
     }
 
     #[test]
-    fn field_only_overlap_is_multiset_matched_and_extra_identical_rows_are_flagged() {
-        let dir = tempfile::tempdir().unwrap();
-        let workspace = Workspace::open(dir.path()).unwrap();
+    fn field_only_overlap_is_multiset_matched_and_extra_identical_rows_are_flagged() -> TestResult {
+        let dir = tempfile::tempdir()?;
+        let workspace = Workspace::open(dir.path())?;
         let group = group();
-        workspace.save_roblox_revenue_group(&group).unwrap();
+        workspace.save_roblox_revenue_group(&group)?;
         let mut csv_sale = sale("csv", "unused", &"a".repeat(64));
         csv_sale.external_transaction_id = None;
         csv_sale.dedupe_confidence = "exact_fields".into();
-        workspace
-            .import_roblox_group_sales(&group, "csv-batch", &[csv_sale.clone()])
-            .unwrap();
+        workspace.import_roblox_group_sales(&group, "csv-batch", &[csv_sale.clone()])?;
         let mut api_sale = sale("api", "unused", &"b".repeat(64));
         api_sale.external_transaction_id = None;
         api_sale.dedupe_confidence = "exact_fields".into();
         let mut second_api_sale = api_sale.clone();
         second_api_sale.sale_fingerprint = "c".repeat(64);
-        let result = workspace
-            .apply_roblox_group_api_refresh(
-                &group.group_id,
-                &[],
-                &[api_sale, second_api_sale],
-                None,
-                None,
-                None,
-            )
-            .unwrap();
+        let result = workspace.apply_roblox_group_api_refresh(
+            &group.group_id,
+            &[],
+            &[api_sale, second_api_sale],
+            None,
+            None,
+            None,
+        )?;
         assert_eq!(result.duplicates, 1);
         assert_eq!(result.inserted, 1);
-        let data = workspace.roblox_group_revenue().unwrap();
+        let data = workspace.roblox_group_revenue()?;
         assert_eq!(data.sales.len(), 2);
         assert!(data
             .sales
             .iter()
             .any(|sale| sale.dedupe_confidence == "ambiguous"));
+        Ok(())
     }
 }
