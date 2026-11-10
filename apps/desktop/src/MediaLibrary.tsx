@@ -66,6 +66,7 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
     const availableIds = new Set(combined.filter((item) => item.hash && !item.providerImageId && !item.isRemote).map((item) => item.id));
     setSelectedForUpload((current) => current.filter((id) => availableIds.has(id)));
     setAssets(projectAssets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
+    return combined;
   }
   useEffect(() => {
     let active = true;
@@ -128,13 +129,14 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
     setNotice("");
     try {
       const result = await syncUploadLibraryImages(serverUrl, teamId, selected.map((item) => item.id), uploadScope);
-      await refresh();
-      const successfulIds = new Set(result.images.map((image) => image.clientId).filter((id): id is string => Boolean(id)));
-      const retryIds = selected.filter((item) => !successfulIds.has(item.id)).map((item) => item.id);
+      const refreshed = await refresh();
+      const stillAvailable = new Set(refreshed.filter((item) => item.hash && !item.providerImageId && !item.isRemote).map((item) => item.id));
+      const retryIds = selected.filter((item) => stillAvailable.has(item.id)).map((item) => item.id);
       setSelectedForUpload(retryIds);
       const reused = result.images.filter((image) => image.reused).length;
       const failed = result.errors.length;
-      setNotice(`${result.images.length} image${result.images.length === 1 ? "" : "s"} available by public URL${reused ? ` · ${reused} reused` : ""}${failed ? ` · ${failed} failed` : ""}.`);
+      const unmatched = retryIds.length;
+      setNotice(`${result.images.length} image${result.images.length === 1 ? "" : "s"} available by public URL${reused ? ` · ${reused} reused` : ""}${failed ? ` · ${failed} failed` : ""}${unmatched ? ` · ${unmatched} still need a local URL match` : ""}.`);
       if (failed) setError(result.errors.map((entry) => `${entry.name || "Image"}: ${entry.error || "Upload failed"}`).join("\n"));
     } catch (reason) { setError(errorMessage(reason)); }
     finally { setBusy(false); }
