@@ -1,7 +1,8 @@
 #![allow(clippy::expect_used)]
 
 use apex_core::{
-    ProjectInput, PublishingInput, PublishingLivery, PublishingSide, WorkspaceRepository,
+    ProjectInput, PublishingImage, PublishingInput, PublishingLivery, PublishingSide,
+    WorkspaceRepository,
 };
 use apex_storage::Workspace;
 use std::{
@@ -158,6 +159,83 @@ fn code_export_combines_selected_saved_posts_as_markdown_without_overwriting() {
         .expect("run duplicate export");
     assert!(!duplicate.status.success());
     assert!(String::from_utf8_lossy(&duplicate.stderr).contains("output_exists"));
+}
+
+#[test]
+fn imports_a_public_apexpublish_bundle_as_a_new_draft() {
+    let temp = tempdir().expect("temporary directory");
+    let root = temp.path().join("workspace");
+    let workspace = Workspace::open(&root).expect("dummy workspace");
+    let media_paths = [
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../design/Logo_Main.png"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../design/Banner_Small.png"),
+    ];
+    let media = media_paths
+        .iter()
+        .map(|path| PublishingImage {
+            hash: workspace.import_file(path).expect("import fixture image"),
+            name: path
+                .file_name()
+                .expect("fixture filename")
+                .to_string_lossy()
+                .into_owned(),
+        })
+        .collect();
+    let original = workspace.create_post().expect("create original draft");
+    let draft = workspace.post(&original).expect("read original draft");
+    let saved = workspace
+        .save_post(
+            &original,
+            draft.revision,
+            PublishingInput {
+                title: "Imported bundle test".into(),
+                description: "Disposable CLI integration fixture".into(),
+                media,
+                liveries: vec![PublishingLivery {
+                    source: None,
+                    vehicle: "Falcon Interceptor".into(),
+                    primary_color: "#FFFFFF".into(),
+                    secondary_color: None,
+                    opacity: 100,
+                    sides: vec![PublishingSide {
+                        side: "Left 1".into(),
+                        decal_id: "123456".into(),
+                    }],
+                }],
+                ..Default::default()
+            },
+        )
+        .expect("save original draft");
+    let bundle = temp.path().join("post.apexpublish");
+    workspace
+        .export_post(&original, saved.revision, false, &bundle)
+        .expect("export fixture bundle");
+    drop(workspace);
+
+    let imported = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args([
+            "--workspace",
+            root.to_str().expect("workspace path is UTF-8"),
+            "posts",
+            "import",
+            bundle.to_str().expect("bundle path is UTF-8"),
+            "--json",
+        ])
+        .output()
+        .expect("run bundle import");
+    assert!(
+        imported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&imported.stderr)
+    );
+    let result: serde_json::Value =
+        serde_json::from_slice(&imported.stdout).expect("valid import JSON");
+    let imported_id = result["id"].as_str().expect("imported draft ID");
+    let reopened = Workspace::open(&root).expect("reopen dummy workspace");
+    let imported = reopened.post(imported_id).expect("read imported draft");
+    assert_eq!(imported.data.title, "Imported bundle test");
+    assert_eq!(imported.data.media.len(), 2);
+    assert_eq!(imported.data.liveries[0].sides[0].decal_id, "123456");
 }
 
 #[test]

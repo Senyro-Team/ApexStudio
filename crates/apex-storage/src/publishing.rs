@@ -268,6 +268,13 @@ mod tests {
         assert!(ws.save_publishing(&p.id, 0, d.data).is_err());
         let export = dir.path().join("test.apexpublish");
         ws.export_publishing(&p.id, &export).unwrap();
+        let imported_id = ws.import_post_bundle(&export).unwrap();
+        let imported = ws.post(&imported_id).unwrap();
+        assert_eq!(imported.data.title, "Public title");
+        assert_eq!(imported.data.media.len(), 2);
+        assert_eq!(imported.data.liveries.len(), 1);
+        assert!(imported.data.liveries[0].source.is_none());
+        assert_eq!(imported.data.liveries[0].sides[0].decal_id, "12345");
         let mut zip = zip::ZipArchive::new(fs::File::open(export).unwrap()).unwrap();
         assert_eq!(zip.len(), 3);
         let mut text = String::new();

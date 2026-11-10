@@ -55,6 +55,10 @@ impl ApplicationServices {
         self.workspace.create_post()
     }
 
+    pub fn import_post_bundle(&self, source: &Path) -> Result<String, Error> {
+        self.workspace.import_post_bundle(source)
+    }
+
     pub fn save_post(
         &self,
         id: &str,

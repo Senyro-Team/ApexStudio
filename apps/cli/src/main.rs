@@ -110,6 +110,8 @@ enum PostCommand {
     List,
     /// Create an empty global ERLCX post draft.
     Create,
+    /// Import a validated .apexpublish bundle as a new global draft.
+    Import { source: PathBuf },
     /// Show a post draft and its saved revision.
     Show { id: String },
     /// Save a full post JSON snapshot (the format returned by `posts show`).
@@ -770,6 +772,19 @@ fn run_post_command(
                 print_json(&serde_json::json!({"id":id,"draft":draft}))?;
             } else {
                 println!("Created ERLCX draft {id}");
+            }
+        }
+        PostCommand::Import { source } => {
+            let id = app.import_post_bundle(&source).map_err(CliError::from)?;
+            let draft = app.post(&id).map_err(CliError::from)?;
+            if json {
+                print_json(&serde_json::json!({"id":id,"draft":draft}))?;
+            } else {
+                println!(
+                    "Imported .apexpublish bundle as ERLCX draft {id} ({} liveries, {} previews).",
+                    draft.data.liveries.len(),
+                    draft.data.media.len()
+                );
             }
         }
         PostCommand::Show { id } => {

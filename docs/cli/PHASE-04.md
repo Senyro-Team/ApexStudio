@@ -6,6 +6,7 @@ Status: In progress.
 
 - Shared application wrappers expose global ERLCX post drafts, source status, preview PNG import, `.apexpublish` export, Roblox livery summaries, and durable queue snapshots.
 - `posts list|create|show|save|sources|add-images|export` provides JSON-editable global draft workflows. Saving uses the draft revision for conflict detection; adding media imports and pins PNGs through the storage service.
+- `posts import <PATH>` validates and imports a public version-1 `.apexpublish` ZIP into a new global post draft. It checks the manifest schema, archive layout and size, PNG limits, file hashes, and normal publishing validation; source-project IDs and other private data are not part of the bundle.
 - `codes export <PATH> --post <ID>...` combines up to 50 saved post snapshots into one escaped Markdown file, requires `--reviewed` for stale/missing source liveries, and refuses to overwrite files.
 - `roblox liveries --account-id <ID>` and `roblox queue` expose read-only account-specific livery coverage and persisted queue state. These commands do not start network transfers or perform startup recovery.
 - `roblox batch start` creates an explicitly confirmed durable batch; pause/resume/cancel/retry controls operate on the shared queue. The existing desktop worker handles network requests while the desktop app is running, using credentials configured in Settings.
@@ -18,7 +19,7 @@ Status: In progress.
 
 - An upload worker that can run without the desktop app has not been implemented in the CLI yet. A CLI-created batch is durable, but it waits for the existing desktop worker.
 - TUI editing covers post metadata, source-linked and manual livery creation, livery properties/codes, and preview-image import/order/removal. Manual livery drafts can be saved before codes are ready and completed from the side-code editor; Roblox batch creation and controls are available in the TUI queue.
-- `.apexpublish` export is available; a CLI importer and direct Chrome bridge handoff are not yet available.
+- `.apexpublish` import/export are available through typed commands; direct Chrome bridge handoff is not yet available from the CLI.
 - The planned Chrome path is confirmed: request a handoff through the running desktop bridge; retain `.apexpublish` as the manual fallback.
 
 ## User workflows
@@ -32,6 +33,7 @@ apex-studio-cli roblox liveries --account-id 123456789
 apex-studio-cli roblox batch start --account-id 123456789 --livery <FOLDER_ID> --yes
 apex-studio-cli roblox queue --json
 apex-studio-cli posts list
+apex-studio-cli posts import .\post.apexpublish
 apex-studio-cli codes export .\livery-codes.md --post <POST_ID> --post <POST_ID>
 ```
 
