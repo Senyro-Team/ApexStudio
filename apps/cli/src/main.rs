@@ -2319,6 +2319,7 @@ struct PostMediaState {
 #[derive(Clone, Debug)]
 struct PostLiveryEditorState {
     livery_index: usize,
+    is_new: bool,
     vehicle: String,
     primary_color: String,
     secondary_color: String,
@@ -3532,6 +3533,20 @@ fn handle_post_liveries_key(
             state.selected_post_livery =
                 (state.selected_post_livery + 1).min(count.saturating_sub(1));
         }
+        KeyCode::Char('a') if count < 20 => {
+            state.post_livery_editor = Some(PostLiveryEditorState {
+                livery_index: count,
+                is_new: true,
+                vehicle: String::new(),
+                primary_color: "#FFFFFF".into(),
+                secondary_color: String::new(),
+                opacity: "100".into(),
+                active_field: 0,
+                cursor: 0,
+                error: None,
+            });
+            state.screen = Screen::PostLiveryEditor;
+        }
         KeyCode::Enter | KeyCode::Char('c') if count > 0 => {
             state.post_codes_livery = Some(state.selected_post_livery);
             state.selected_post_code = 0;
@@ -3546,6 +3561,7 @@ fn handle_post_liveries_key(
             {
                 state.post_livery_editor = Some(PostLiveryEditorState {
                     livery_index: state.selected_post_livery,
+                    is_new: false,
                     vehicle: livery.vehicle.clone(),
                     primary_color: livery.primary_color.clone(),
                     secondary_color: livery.secondary_color.clone().unwrap_or_default(),
@@ -3840,20 +3856,39 @@ fn save_post_livery_editor(state: &mut TuiState, app: &ApplicationServices) -> R
         .post_detail
         .clone()
         .ok_or_else(|| Error::InvalidContent("Open an ERLCX draft first.".into()))?;
-    let livery = draft
-        .data
-        .liveries
-        .get_mut(editor.livery_index)
-        .ok_or(Error::NotFound)?;
-    livery.vehicle = editor.vehicle;
-    livery.primary_color = editor.primary_color;
-    livery.secondary_color = (!editor.secondary_color.trim().is_empty())
-        .then(|| editor.secondary_color.trim().to_owned());
-    livery.opacity = editor
+    let opacity = editor
         .opacity
         .parse::<u8>()
         .map_err(|_| Error::InvalidContent("Opacity must be a number from 0 to 100.".into()))?;
+    let secondary_color = (!editor.secondary_color.trim().is_empty())
+        .then(|| editor.secondary_color.trim().to_owned());
+    if editor.is_new {
+        if editor.livery_index != draft.data.liveries.len() || draft.data.liveries.len() >= 20 {
+            return Err(Error::Conflict);
+        }
+        draft.data.liveries.push(PublishingLivery {
+            source: None,
+            vehicle: editor.vehicle,
+            primary_color: editor.primary_color,
+            secondary_color,
+            opacity,
+            sides: Vec::new(),
+        });
+    } else {
+        let livery = draft
+            .data
+            .liveries
+            .get_mut(editor.livery_index)
+            .ok_or(Error::NotFound)?;
+        livery.vehicle = editor.vehicle;
+        livery.primary_color = editor.primary_color;
+        livery.secondary_color = secondary_color;
+        livery.opacity = opacity;
+    }
     save_post_snapshot_data(state, app, draft.data)?;
+    if editor.is_new {
+        state.selected_post_livery = editor.livery_index;
+    }
     state.post_livery_editor = None;
     state.screen = Screen::PostLiveries;
     state.post_livery_error = None;
@@ -4409,10 +4444,10 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
             " ↑/↓ Select   a Import PNG   d Remove (confirm)   [ / ] Reorder   r Refresh   Esc Back "
         }
         Screen::PostLiveries if regions[2].width < 64 => {
-            "↑↓ Select · e Edit · c Codes\n[ ] Reorder · d Remove · Esc Back"
+            "↑↓ Select · a Add · e Edit · c Codes\n[ ] Reorder · d Remove · Esc Back"
         }
         Screen::PostLiveries => {
-            " ↑/↓ Select   e Edit vehicle/colors   c Codes   [ / ] Reorder   d Remove   Esc Back "
+            " ↑/↓ Select   a Add manual livery   e Edit vehicle/colors   c Codes   [ / ] Reorder   d Remove   Esc Back "
         }
         Screen::PostLiveryEditor => {
             " Tab/Enter Next field   ←/→ Edit   Ctrl+S Save   Esc Discard "
@@ -6817,6 +6852,34 @@ mod tests {
             .data
             .liveries
             .is_empty());
+
+        handle_post_liveries_key(&mut state, KeyCode::Char('a'), &app)
+            .expect("open manual livery editor");
+        for character in "Manual vehicle".chars() {
+            handle_post_livery_editor_key(&mut state, KeyCode::Char(character));
+        }
+        save_post_livery_editor(&mut state, &app).expect("save manual livery");
+        let manual = app.post(&post_id).expect("read manual livery");
+        assert_eq!(manual.data.liveries.len(), 1);
+        assert_eq!(manual.data.liveries[0].vehicle, "Manual vehicle");
+        assert!(manual.data.liveries[0].source.is_none());
+        assert!(manual.data.liveries[0].sides.is_empty());
+
+        handle_post_liveries_key(&mut state, KeyCode::Char('c'), &app)
+            .expect("open manual livery codes");
+        handle_post_codes_key(&mut state, KeyCode::Char('a'), &app)
+            .expect("open manual side-code editor");
+        for character in "Left 1".chars() {
+            handle_post_code_editor_key(&mut state, KeyCode::Char(character));
+        }
+        handle_post_code_editor_key(&mut state, KeyCode::Tab);
+        for character in "987654321".chars() {
+            handle_post_code_editor_key(&mut state, KeyCode::Char(character));
+        }
+        save_post_code_editor(&mut state, &app).expect("save manual decal code");
+        let completed = app.post(&post_id).expect("read completed manual livery");
+        assert_eq!(completed.data.liveries[0].sides[0].side, "Left 1");
+        assert_eq!(completed.data.liveries[0].sides[0].decal_id, "987654321");
     }
 
     #[test]
@@ -6929,6 +6992,7 @@ mod tests {
                 state.post_media = Some(PostMediaState::default());
                 state.post_livery_editor = Some(PostLiveryEditorState {
                     livery_index: 0,
+                    is_new: false,
                     vehicle: "Fixture vehicle".into(),
                     primary_color: "#FFFFFF".into(),
                     secondary_color: String::new(),

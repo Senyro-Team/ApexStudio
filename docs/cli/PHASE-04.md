@@ -17,7 +17,7 @@ Status: In progress.
 ## Current limitations
 
 - An upload worker that can run without the desktop app has not been implemented in the CLI yet. A CLI-created batch is durable, but it waits for the existing desktop worker.
-- TUI editing covers post metadata, source-linked livery selection, livery properties/codes, and preview-image import/order/removal. Creating a fully manual livery without a project source remains available through the typed JSON commands rather than these post screens; Roblox batch creation and controls are available in the TUI queue.
+- TUI editing covers post metadata, source-linked and manual livery creation, livery properties/codes, and preview-image import/order/removal. Manual livery drafts can be saved before codes are ready and completed from the side-code editor; Roblox batch creation and controls are available in the TUI queue.
 - `.apexpublish` export is available; a CLI importer and direct Chrome bridge handoff are not yet available.
 - The planned Chrome path is confirmed: request a handoff through the running desktop bridge; retain `.apexpublish` as the manual fallback.
 
