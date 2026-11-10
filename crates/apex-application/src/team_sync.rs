@@ -249,6 +249,21 @@ async fn response_json<T: DeserializeOwned>(response: Response) -> Result<T, Err
                 "Your server session has expired. Sign in again."
             }
             "insufficient_team_role" => "Your account does not have permission for this action.",
+            "invite_request_in_progress" => {
+                "This invite is still being processed. Wait a moment, then refresh the request."
+            }
+            "invite_request_needs_review" => {
+                "Discord may have created this invite, but the tracker could not confirm it. Check the team invite list before creating another invite."
+            }
+            "idempotency_payload_mismatch" => {
+                "This invite request ID was already used with different details. Change the request details and try again."
+            }
+            "invite_request_state_unavailable" => {
+                "The invite tracker could not recover this request. Check the team invite list before retrying."
+            }
+            "discord_rejected_request" => {
+                "Discord rejected the invite request. Check the channel ID and bot permissions."
+            }
             _ => {
                 return Err(invalid(&format!(
                     "The server returned HTTP {}.",
