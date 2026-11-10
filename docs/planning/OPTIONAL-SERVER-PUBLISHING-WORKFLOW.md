@@ -54,10 +54,11 @@ The supplied overlay-builder HTML is a behavior and format reference only. Build
 ## Implementation checkpoints
 
 - The Server navigation entry now contains the existing Team Sync surface. Image Hosting and Invite Tracking are documented as future optional capabilities and are not presented as working integrations.
-- The local Image Library stores personal records in the workspace and can reference a managed PNG, an existing project PNG, or a manually entered HTTPS URL. Adding an image does not upload it. Explicit team sharing, folders/tags, remote provider mappings, and backup packaging still need implementation.
+- The local Image Library stores personal records in the workspace and can reference a managed PNG, an existing project PNG, or a manually entered HTTPS URL. Adding an image does not upload it. Team sharing and provider mappings are supported; library folders/tags remain outstanding. Workspace backups include the SQLite database and managed files.
 - The Sync Server now has a team-authenticated Image Hosting gateway. It checks membership for reads, write-capable roles for uploads/sharing, proxies with a server-held key, and sends the asserted Apex user/team scope to the separately deployed Image Provider. Local library uploads require a separate confirmation, default to Personal, and can be explicitly team-shared. Identical normalized PNG bytes are reused within personal/team scope. The Image Provider owns its own service data and public image blobs.
-- ERLCX drafts now support ordered text, image, and invite Markdown blocks. The draft snapshot retains references to local library image blobs, and the composer can copy the assembled Markdown. Local-only images remain non-copyable until given a public URL. Server upload automation and the reusable overlay editor remain outstanding.
-- Invite Tracking is still manual-link only. Its scoped server gateway and the customizable overlay studio are the next major implementation areas.
+- ERLCX drafts support ordered text, image, and invite Markdown blocks. The draft snapshot retains references to local library image blobs, and the composer can copy the assembled Markdown. Local-only images remain non-copyable until given a public URL.
+- The first local Overlay Studio is integrated into the preview step. It supports saved workspace templates, text/image/shape layers, local and managed project/library source images, 16:9 ERLCX and 16:10 ExecLab canvases, and batched PNG output directly into a draft. Templates and generated images are workspace-local; public uploads still require the Image Library confirmation. Template import/export, canvas drag positioning, and visual QA remain outstanding.
+- Invite Tracking is still manual-link only. Its scoped server gateway and campaign controls remain outstanding.
 
 ## Acceptance criteria
 

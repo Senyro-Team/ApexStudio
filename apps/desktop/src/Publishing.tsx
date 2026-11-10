@@ -1,5 +1,6 @@
 import PostLiveryPicker from "./PostLiveryPicker";
 import AppSelect from "./AppSelect";
+import OverlayStudio from "./OverlayStudio";
 import { readyForPublishing, publishingLivery } from "./RobloxUpload";
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
@@ -23,6 +24,7 @@ import {
   savePublishing,
   pickPublishingImages,
   exportPublishing,
+  importOverlayPreviews,
   assetBoard,
   mediaLibrary,
   syncImageLibrary,
@@ -307,6 +309,22 @@ export default function Publishing({
     } finally {
       setBusy(false);
     }
+  }
+  async function addOverlayPreviews(output: { name: string; dataUrl: string }[]) {
+    if (!data) return;
+    const selected = await importOverlayPreviews(
+      draftId ?? null,
+      project?.id ?? null,
+      output,
+    );
+    const merged = [...data.media];
+    for (const image of selected) {
+      if (!merged.some((item) => item.hash === image.hash)) {
+        if (merged.length >= 10) throw new Error("This post already has ten preview images.");
+        merged.push({ hash: image.hash, name: image.name });
+      }
+    }
+    edit({ media: merged });
   }
   async function save() {
     if (!saved || !data) return;
@@ -644,6 +662,18 @@ export default function Publishing({
               </li>
             ))}
           </ol>
+          <details className="publishing-overlay-details">
+            <summary>Create overlay previews</summary>
+            <OverlayStudio
+              postId={draftId}
+              projectId={draftId ? undefined : project?.id}
+              currentCount={data.media.length}
+              disabled={locked}
+              projectImages={projectImages}
+              libraryItems={libraryItems}
+              onExported={addOverlayPreviews}
+            />
+          </details>
         </section>
       )}
       {step === "Liveries" && (

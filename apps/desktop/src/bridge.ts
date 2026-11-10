@@ -711,6 +711,38 @@ export const releasePostImages = (id: string) =>
   invoke<void>("release_post_images", { id });
 export const exportPost = (id: string, revision: number, reviewed: boolean) =>
   invoke<boolean>("export_post", { id, revision, reviewed });
+export interface OverlayTemplate {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  layersJson: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface OverlayPreviewOutput { name: string; dataUrl: string }
+export const listOverlayTemplates = () =>
+  invoke<OverlayTemplate[]>("list_overlay_templates");
+export const overlayImageData = (hash: string, width: number, height: number) =>
+  invoke<string>("overlay_image_data", { hash, width, height });
+export const saveOverlayTemplate = (template: {
+  id?: string;
+  name: string;
+  width: number;
+  height: number;
+  layersJson: string;
+}) => invoke<OverlayTemplate>("save_overlay_template", template);
+export const deleteOverlayTemplate = (id: string) =>
+  invoke<void>("delete_overlay_template", { id });
+export const importOverlayPreviews = (
+  postId: string | null,
+  projectId: string | null,
+  images: OverlayPreviewOutput[],
+) => invoke<PublishingPreview[]>("import_overlay_previews", {
+  postId,
+  projectId,
+  images,
+});
 export interface ChromeConfig {
   chromePath: string;
   userDataDir: string;

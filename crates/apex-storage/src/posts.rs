@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
     fs,
-    io::Read,
+    io::{Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -467,6 +467,64 @@ impl Workspace {
                     .ok_or(Error::NotFound)?
                     .to_string_lossy()
                     .into_owned(),
+            });
+        }
+        self.publishing_previews(&images)
+    }
+
+    pub fn add_generated_previews(
+        &self,
+        owner: Option<&str>,
+        generated: &[(String, Vec<u8>)],
+    ) -> Result<Vec<PublishingPreview>, Error> {
+        let gate = self.content_gate();
+        let _guard = gate.lock();
+        if generated.is_empty() || generated.len() > 10 {
+            return Err(Error::InvalidContent(
+                "Export between one and ten overlay previews at a time.".into(),
+            ));
+        }
+        let mut images = Vec::with_capacity(generated.len());
+        for (name, bytes) in generated {
+            let safe_name = name.trim();
+            if safe_name.is_empty()
+                || safe_name.chars().count() > 160
+                || safe_name
+                    .chars()
+                    .any(|character| character.is_control() || matches!(character, '/' | '\\'))
+            {
+                return Err(Error::InvalidContent(
+                    "Overlay preview name is invalid.".into(),
+                ));
+            }
+            if bytes.len() > 40 * 1024 * 1024 {
+                return Err(Error::InvalidContent(
+                    "An overlay preview exceeds 40 MB.".into(),
+                ));
+            }
+            let temporary = self
+                .root
+                .join("staging")
+                .join(format!("{}.png", uuid::Uuid::now_v7()));
+            let write_result = (|| {
+                let mut file = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&temporary)
+                    .map_err(storage)?;
+                file.write_all(bytes).map_err(storage)?;
+                file.sync_all().map_err(storage)?;
+                super::validate_texture(&temporary)?;
+                self.import_file(&temporary)
+            })();
+            let _ = fs::remove_file(&temporary);
+            let hash = write_result?;
+            if let Some(owner) = owner {
+                self.pin_content(owner, std::slice::from_ref(&hash))?;
+            }
+            images.push(PublishingImage {
+                hash,
+                name: safe_name.to_owned(),
             });
         }
         self.publishing_previews(&images)

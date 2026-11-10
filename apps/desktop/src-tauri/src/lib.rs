@@ -9,6 +9,7 @@ mod group_revenue;
 mod installer_resources;
 mod media_library;
 mod notes;
+mod overlays;
 mod posts;
 mod projects;
 mod publishing;
@@ -341,6 +342,7 @@ pub fn run() {
             posts::save_post,
             posts::post_sources,
             posts::pick_post_images,
+            posts::import_overlay_previews,
             posts::pin_post_images,
             posts::release_post_images,
             posts::export_post,
@@ -349,6 +351,10 @@ pub fn run() {
             publishing::save_publishing,
             publishing::pick_publishing_images,
             publishing::export_publishing,
+            overlays::list_overlay_templates,
+            overlays::overlay_image_data,
+            overlays::save_overlay_template,
+            overlays::delete_overlay_template,
             workspace_info,
             workspace_startup_status,
             retry_workspace_startup,
