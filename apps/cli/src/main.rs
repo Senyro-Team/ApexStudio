@@ -2270,6 +2270,7 @@ enum Screen {
     Posts,
     PostDetail,
     RobloxQueue,
+    RobloxCancelReview,
     RobloxLiveries,
     RobloxBatchReview,
 }
@@ -2301,6 +2302,9 @@ struct TuiState {
     selected_post: Option<String>,
     post_detail: Option<PublishingDraft>,
     upload_queue: Option<QueueSnapshot>,
+    selected_batch: usize,
+    queue_batches_focused: bool,
+    cancel_batch: Option<String>,
     roblox_account_id: Option<String>,
     roblox_liveries: Vec<RobloxLiverySummary>,
     selected_roblox_liveries: HashSet<String>,
@@ -2328,6 +2332,9 @@ impl TuiState {
             selected_post: None,
             post_detail: None,
             upload_queue: None,
+            selected_batch: 0,
+            queue_batches_focused: true,
+            cancel_batch: None,
             roblox_account_id: None,
             roblox_liveries: Vec::new(),
             selected_roblox_liveries: HashSet::new(),
@@ -2501,7 +2508,13 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                     Screen::RobloxQueue if !state.searching && key.code == KeyCode::Char('u') => {
                         open_roblox_livery_selection(&mut state, &app).map_err(io::Error::other)?;
                     }
-                    Screen::RobloxQueue => handle_queue_key(&mut state, key.code),
+                    Screen::RobloxQueue => {
+                        handle_queue_key(&mut state, key.code, &app).map_err(io::Error::other)?
+                    }
+                    Screen::RobloxCancelReview => {
+                        handle_roblox_cancel_review_key(&mut state, key.code, &app)
+                            .map_err(io::Error::other)?
+                    }
                     Screen::RobloxLiveries => {
                         handle_roblox_liveries_key(&mut state, key.code, &app)
                             .map_err(io::Error::other)?
@@ -2567,10 +2580,30 @@ fn refresh_posts(state: &mut TuiState, app: &ApplicationServices) -> Result<(), 
 }
 
 fn refresh_upload_queue(state: &mut TuiState, app: &ApplicationServices) -> Result<(), Error> {
+    let selected_batch_id = selected_upload_batch(state).map(|(id, _)| id);
+    let selected_job_id = state
+        .visible_upload_jobs()
+        .get(state.selected)
+        .map(|job| job.id.clone());
     state.upload_queue = Some(app.upload_queue()?);
-    state.selected = state
-        .selected
-        .min(state.visible_upload_jobs().len().saturating_sub(1));
+    let batch_count = state
+        .upload_queue
+        .as_ref()
+        .map_or(0, |queue| queue.batches.len());
+    state.selected_batch = selected_batch_id
+        .and_then(|id| {
+            state
+                .upload_queue
+                .as_ref()?
+                .batches
+                .iter()
+                .position(|batch| batch.id == id)
+        })
+        .unwrap_or_else(|| state.selected_batch.min(batch_count.saturating_sub(1)));
+    let visible_jobs = state.visible_upload_jobs();
+    state.selected = selected_job_id
+        .and_then(|id| visible_jobs.iter().position(|job| job.id == id))
+        .unwrap_or_else(|| state.selected.min(visible_jobs.len().saturating_sub(1)));
     Ok(())
 }
 
@@ -2798,7 +2831,11 @@ fn handle_posts_key(
     Ok(())
 }
 
-fn handle_queue_key(state: &mut TuiState, key: KeyCode) {
+fn handle_queue_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
     if state.searching {
         match key {
             KeyCode::Esc | KeyCode::Enter => state.searching = false,
@@ -2812,7 +2849,7 @@ fn handle_queue_key(state: &mut TuiState, key: KeyCode) {
             }
             _ => {}
         }
-        return;
+        return Ok(());
     }
     match key {
         KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
@@ -2821,13 +2858,79 @@ fn handle_queue_key(state: &mut TuiState, key: KeyCode) {
             state.selected = 0;
         }
         KeyCode::Char('/') => state.searching = true,
+        KeyCode::Tab => state.queue_batches_focused = !state.queue_batches_focused,
+        KeyCode::Up | KeyCode::Char('k') if state.queue_batches_focused => {
+            state.selected_batch = state.selected_batch.saturating_sub(1)
+        }
+        KeyCode::Down | KeyCode::Char('j') if state.queue_batches_focused => {
+            let count = state
+                .upload_queue
+                .as_ref()
+                .map_or(0, |queue| queue.batches.len());
+            state.selected_batch = (state.selected_batch + 1).min(count.saturating_sub(1));
+        }
         KeyCode::Up | KeyCode::Char('k') => state.selected = state.selected.saturating_sub(1),
         KeyCode::Down | KeyCode::Char('j') => {
             state.selected =
                 (state.selected + 1).min(state.visible_upload_jobs().len().saturating_sub(1))
         }
+        KeyCode::Char('p') => {
+            if let Some((batch_id, batch_state)) = selected_upload_batch(state) {
+                let action = if batch_state == "paused" {
+                    "resume"
+                } else {
+                    "pause"
+                };
+                app.control_roblox_batch(Some(&batch_id), action)?;
+                refresh_upload_queue(state, app)?;
+            }
+        }
+        KeyCode::Char('t') => {
+            if let Some((batch_id, _)) = selected_upload_batch(state) {
+                app.control_roblox_batch(Some(&batch_id), "retry")?;
+                refresh_upload_queue(state, app)?;
+            }
+        }
+        KeyCode::Char('c') => {
+            state.cancel_batch = selected_upload_batch(state).map(|(batch_id, _)| batch_id);
+            if state.cancel_batch.is_some() {
+                state.screen = Screen::RobloxCancelReview;
+            }
+        }
         _ => {}
     }
+    Ok(())
+}
+
+fn selected_upload_batch(state: &TuiState) -> Option<(String, String)> {
+    let batch = state
+        .upload_queue
+        .as_ref()?
+        .batches
+        .get(state.selected_batch)?;
+    Some((batch.id.clone(), batch.state.clone()))
+}
+
+fn handle_roblox_cancel_review_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    match key {
+        KeyCode::Esc | KeyCode::Char('n') => {
+            state.cancel_batch = None;
+            state.screen = Screen::RobloxQueue;
+        }
+        KeyCode::Char('y') => {
+            if let Some(batch_id) = state.cancel_batch.take() {
+                app.control_roblox_batch(Some(&batch_id), "cancel")?;
+                refresh_upload_queue(state, app)?;
+            }
+            state.screen = Screen::RobloxQueue;
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn handle_project_key(state: &mut TuiState, key: KeyCode) {
@@ -3110,7 +3213,15 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(5),
-            Constraint::Length(2),
+            Constraint::Length(
+                if area.width < 64
+                    && matches!(state.screen, Screen::RobloxQueue | Screen::RobloxLiveries)
+                {
+                    3
+                } else {
+                    2
+                },
+            ),
         ])
         .split(area);
     let accent = if state.no_color {
@@ -3147,6 +3258,9 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Posts => draw_posts(frame, state, regions[1], accent, muted),
         Screen::PostDetail => draw_post_detail(frame, state, regions[1], accent, muted),
         Screen::RobloxQueue => draw_roblox_queue(frame, state, regions[1], accent, muted),
+        Screen::RobloxCancelReview => {
+            draw_roblox_cancel_review(frame, state, regions[1], accent, muted)
+        }
         Screen::RobloxLiveries => draw_roblox_liveries(frame, state, regions[1], accent, muted),
         Screen::RobloxBatchReview => {
             draw_roblox_batch_review(frame, state, regions[1], accent, muted)
@@ -3172,19 +3286,37 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Posts => " ↑/↓ Select   Enter Open   / Search   r Refresh   Esc Back ",
         Screen::PostDetail => " Esc Back   q Home ",
         Screen::RobloxQueue if state.searching => " Type to filter   Enter/Esc Finish search ",
-        Screen::RobloxQueue => {
-            " u Upload liveries   ↑/↓ Select jobs   / Search   r Refresh   Esc Back "
+        Screen::RobloxQueue if regions[2].width < 64 => {
+            "Tab Focus · ↑↓ Select · p Pause\nt Retry · c Cancel · u Upload\n/ Search · r Refresh · Esc Back"
         }
+        Screen::RobloxQueue if regions[2].width < 96 => {
+            "Tab Lists · ↑↓ Select · p Pause · t Retry · c Cancel · u Upload\nr Refresh · / Search · Esc Back"
+        }
+        Screen::RobloxQueue => {
+            " Tab Focus list   ↑/↓ Select   p Pause/Resume batch   t Retry failed   c Cancel batch   u New   / Search   r Refresh "
+        }
+        Screen::RobloxCancelReview if regions[2].width < 64 => {
+            "y Confirm cancel · n/Esc Keep"
+        }
+        Screen::RobloxCancelReview => " y Confirm cancel   n/Esc Keep batch ",
         Screen::RobloxLiveries if state.searching => " Type to filter   Enter/Esc Finish search ",
+        Screen::RobloxLiveries if regions[2].width < 64 => {
+            "↑↓ Move · Space Select · a All\nc Clear · r Re-upload · Enter Review\n/ Search · Esc Back"
+        }
+        Screen::RobloxLiveries if regions[2].width < 96 => {
+            "↑↓ Select · Space Toggle · a Filtered · c Clear · r Re-upload\nEnter Review · / Search · Esc Back"
+        }
         Screen::RobloxLiveries => {
             " ↑/↓ Select   Space Toggle   a Select filtered   c Clear   r Re-upload   Enter Review "
         }
+        Screen::RobloxBatchReview if regions[2].width < 64 => "y Start batch · r Re-upload · Esc Back",
         Screen::RobloxBatchReview => " y Start confirmed batch   r Toggle re-upload   Esc Back ",
     };
     frame.render_widget(
         Paragraph::new(footer)
             .style(Style::default().fg(muted))
-            .alignment(ratatui::layout::Alignment::Center),
+            .alignment(ratatui::layout::Alignment::Center)
+            .wrap(Wrap { trim: true }),
         regions[2],
     );
 }
@@ -3916,13 +4048,24 @@ fn draw_roblox_queue(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    frame.render_widget(
-        List::new(batches).block(
-            Block::default()
-                .title("Upload batches")
-                .borders(Borders::ALL),
-        ),
+    let mut batch_list_state = ListState::default()
+        .with_selected((!batches.is_empty()).then(|| state.selected_batch.min(batches.len() - 1)));
+    frame.render_stateful_widget(
+        List::new(batches)
+            .block(
+                Block::default()
+                    .title("Upload batches · Tab to focus")
+                    .borders(Borders::ALL)
+                    .border_style(if state.queue_batches_focused {
+                        Style::default().fg(accent)
+                    } else {
+                        Style::default().fg(muted)
+                    }),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
         sections[0],
+        &mut batch_list_state,
     );
 
     let visible = state.visible_upload_jobs();
@@ -3942,7 +4085,12 @@ fn draw_roblox_queue(
             .block(
                 Block::default()
                     .title(format!("Texture jobs · {}", visible.len()))
-                    .borders(Borders::ALL),
+                    .borders(Borders::ALL)
+                    .border_style(if state.queue_batches_focused {
+                        Style::default().fg(muted)
+                    } else {
+                        Style::default().fg(accent)
+                    }),
             )
             .highlight_symbol("▶ ")
             .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
@@ -3998,6 +4146,67 @@ fn draw_roblox_queue(
             job_sections[1],
         );
     }
+}
+
+fn draw_roblox_cancel_review(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let Some(batch_id) = state.cancel_batch.as_deref() else {
+        frame.render_widget(
+            Paragraph::new("No Roblox batch is selected.")
+                .block(Block::default().borders(Borders::ALL)),
+            area,
+        );
+        return;
+    };
+    let batch = state
+        .upload_queue
+        .as_ref()
+        .and_then(|queue| queue.batches.iter().find(|batch| batch.id == batch_id));
+    let (account, status) = batch
+        .map(|batch| (batch.account_id.as_str(), batch.state.as_str()))
+        .unwrap_or(("unknown", "missing"));
+    let selected_items = state
+        .upload_queue
+        .as_ref()
+        .map(|queue| {
+            queue
+                .items
+                .iter()
+                .filter(|item| item.batch_id == batch_id)
+                .count()
+        })
+        .unwrap_or_default();
+    let lines = vec![
+        Line::styled(
+            "Cancel this Roblox upload batch?",
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ),
+        Line::raw(format!("Batch: {batch_id}")),
+        Line::raw(format!("Account: {account}")),
+        Line::raw(format!("Current state: {status}")),
+        Line::raw(format!("Texture entries: {selected_items}")),
+        Line::raw(""),
+        Line::raw("Queued work will be cancelled where it is not shared by another active batch."),
+        Line::raw("Requests already accepted by Roblox cannot be recalled."),
+        Line::raw(""),
+        Line::raw("Press Y to confirm, or Esc/N to keep this batch."),
+    ];
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title("Confirm cancellation")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn draw_roblox_liveries(
@@ -4367,6 +4576,32 @@ mod tests {
     }
 
     #[test]
+    fn canceling_a_batch_requires_a_second_confirmation_step() {
+        let directory = tempfile::tempdir().expect("temporary workspace directory");
+        let app = ApplicationServices::open(directory.path()).expect("open dummy workspace");
+        let mut state = TuiState::new(Vec::new());
+        state.screen = Screen::RobloxQueue;
+        state.upload_queue = Some(QueueSnapshot {
+            batches: vec![apex_storage::UploadBatch {
+                id: "batch-1".into(),
+                account_id: "123456".into(),
+                state: "running".into(),
+                created_at: String::new(),
+            }],
+            ..Default::default()
+        });
+
+        handle_queue_key(&mut state, KeyCode::Char('c'), &app).expect("open cancellation review");
+        assert_eq!(state.screen, Screen::RobloxCancelReview);
+        assert_eq!(state.cancel_batch.as_deref(), Some("batch-1"));
+        handle_roblox_cancel_review_key(&mut state, KeyCode::Esc, &app)
+            .expect("dismiss cancellation review");
+        assert_eq!(state.screen, Screen::RobloxQueue);
+        assert!(state.cancel_batch.is_none());
+        assert_eq!(app.upload_queue().expect("read queue").batches.len(), 0);
+    }
+
+    #[test]
     fn roblox_api_key_is_not_an_accepted_command_line_argument() {
         let error = Args::try_parse_from([
             "apex-studio-cli",
@@ -4418,6 +4653,7 @@ mod tests {
                 Screen::Posts,
                 Screen::PostDetail,
                 Screen::RobloxQueue,
+                Screen::RobloxCancelReview,
                 Screen::RobloxLiveries,
                 Screen::RobloxBatchReview,
             ] {
