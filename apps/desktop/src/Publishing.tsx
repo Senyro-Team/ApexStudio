@@ -3,7 +3,7 @@ import AppSelect from "./AppSelect";
 import OverlayStudio from "./OverlayStudio";
 import { readyForPublishing, publishingLivery } from "./RobloxUpload";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, BookmarkPlus, Copy, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, BookmarkPlus, Copy, Plus, Trash2, Upload } from "lucide-react";
 import SlotEditor from "./SlotEditor";
 import {
   browserStatus,
@@ -31,6 +31,7 @@ import {
   saveMarkdownPreset,
   deleteMarkdownPreset,
   syncImageLibrary,
+  syncUploadLibraryImages,
   syncServiceAvailability,
   syncListInviteCampaigns,
   syncCreateInviteCampaign,
@@ -192,6 +193,7 @@ export default function Publishing({
   const [markdownPresetChoice, setMarkdownPresetChoice] = useState("");
   const [savingMarkdownBlockId, setSavingMarkdownBlockId] = useState("");
   const [markdownPresetName, setMarkdownPresetName] = useState("");
+  const [imageHostingAvailable, setImageHostingAvailable] = useState(false);
   const [inviteTrackingAvailable, setInviteTrackingAvailable] = useState(false);
   const [inviteCampaignBusy, setInviteCampaignBusy] = useState(false);
   const inviteRequestId = useRef<{ id: string; payload: string } | null>(null);
@@ -212,7 +214,10 @@ export default function Publishing({
       if (serverUrl && teamId) {
         try {
           const availability = await syncServiceAvailability(serverUrl, teamId);
-          if (active) setInviteTrackingAvailable(availability.inviteTracking);
+          if (active) {
+            setInviteTrackingAvailable(availability.inviteTracking);
+            setImageHostingAvailable(availability.imageHosting);
+          }
           if (availability.inviteTracking) {
             const campaigns = await syncListInviteCampaigns(serverUrl, teamId);
             if (active) setInviteCampaigns(campaigns);
@@ -430,6 +435,65 @@ export default function Publishing({
       setMarkdownImage(item);
       setProjectImageChoice("");
     } catch (e) { setError(errorMessage(e)); }
+  }
+  async function uploadMarkdownImages() {
+    const serverUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
+    const teamId = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
+    if (!serverUrl || !teamId || !imageHostingAvailable) {
+      setError("Image Hosting is not available. Add a public image URL manually or configure Image Hosting in Server.");
+      return;
+    }
+    const missingHashes = new Set(markdownBlocks
+      .filter((block) => block.kind === "image" && !block.imageUrl.trim() && block.mediaHash)
+      .map((block) => block.mediaHash as string));
+    const pending = libraryItems.filter((item) =>
+      item.hash && missingHashes.has(item.hash) && !item.providerImageId && !item.isRemote,
+    ).slice(0, 10);
+    if (!pending.length) return;
+    if (!window.confirm(`Upload ${pending.length} local image${pending.length === 1 ? "" : "s"} to your personal Image Hosting space? Their public URLs will be saved into this draft. Continue?`)) return;
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await syncUploadLibraryImages(serverUrl, teamId, pending.map((item) => item.id), "personal");
+      const byClientId = new Map<string, typeof result.images[number]>();
+      for (const image of result.images) {
+        const local = image.clientId
+          ? pending.find((item) => item.id === image.clientId)
+          : pending.filter((item) => item.name === image.name).length === 1
+            ? pending.find((item) => item.name === image.name)
+            : undefined;
+        if (local) byClientId.set(local.id, image);
+      }
+      setLibraryItems((current) => current.map((item) => {
+        const uploaded = byClientId.get(item.id);
+        return uploaded ? {
+          ...item,
+          imageUrl: uploaded.imageUrl,
+          providerImageId: uploaded.id,
+          ownerScope: "personal",
+          teamId: null,
+        } : item;
+      }));
+      const updatedBlocks = markdownBlocks.map((block) => {
+        if (block.kind !== "image" || block.imageUrl.trim() || !block.mediaHash) return block;
+        const local = pending.find((item) => item.hash === block.mediaHash);
+        const uploaded = local ? byClientId.get(local.id) : undefined;
+        return uploaded ? { ...block, imageUrl: uploaded.imageUrl, altText: block.altText || uploaded.altText } : block;
+      });
+      updateMarkdown(updatedBlocks);
+      const errors = result.errors;
+      const unmapped = result.images.length - byClientId.size;
+      setNotice(`${byClientId.size} image${byClientId.size === 1 ? "" : "s"} uploaded or reused. URLs were added to this draft.${errors.length + unmapped ? ` ${errors.length + unmapped} image${errors.length + unmapped === 1 ? "" : "s"} need attention.` : ""}`);
+      const issues = result.errors.map((entry) => `${entry.name || "Image"}: ${entry.error || "Upload failed"}`);
+      if (unmapped) issues.push(`${unmapped} uploaded image${unmapped === 1 ? " could not" : "s could not"} be matched to a local file. Refresh the Image Library and add its public URL manually.`);
+      if (issues.length) setError(issues.join("\n"));
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setBusy(false);
+    }
   }
   function setMarkdownImage(item: MediaLibraryItem) {
     updateMarkdown([...markdownBlocks, { id: crypto.randomUUID(), kind: "image", text: "", imageUrl: item.imageUrl, altText: item.altText || item.name, linkUrl: item.defaultLinkUrl ?? "", inviteUrl: "", mediaHash: item.hash }]);
@@ -1166,6 +1230,7 @@ export default function Publishing({
             <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => void addLocalLibraryImage()}>Add local PNG</button>
             {projectImages.length > 0 && <><select aria-label="Choose a project image" value={projectImageChoice} disabled={locked} onChange={(event) => setProjectImageChoice(event.target.value)}><option value="">Choose project image</option>{projectImages.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !projectImageChoice || markdownBlocks.length >= 100} onClick={() => void addProjectLibraryImage()}>Add project image</button></>}
             {libraryItems.length > 0 && <><select aria-label="Choose an image from Image Library" value={libraryChoice} disabled={locked} onChange={(event) => setLibraryChoice(event.target.value)}><option value="">Choose library image</option>{libraryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !libraryChoice || markdownBlocks.length >= 100} onClick={addLibraryImage}>Add library image</button></>}
+            {imageHostingAvailable && <button className="secondary" type="button" disabled={locked || !markdownBlocks.some((block) => block.kind === "image" && !block.imageUrl.trim() && block.mediaHash && libraryItems.some((item) => item.hash === block.mediaHash && item.hash && !item.providerImageId && !item.isRemote))} onClick={() => void uploadMarkdownImages()}><Upload size={15} /> Upload missing images</button>}
           </div>
           <section className="publishing-reusable-markdown" aria-label="Reusable Markdown blocks">
             <div><strong>Reusable blocks</strong><p>{markdownPresets.length ? "Saved text, image and invite blocks are available in this workspace." : "Save a block below to reuse it in other posts."}</p></div>
