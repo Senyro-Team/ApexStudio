@@ -101,6 +101,11 @@ function readFile(file: File): Promise<string> {
   });
 }
 
+async function sha256File(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -353,11 +358,12 @@ export default function OverlayStudio({
     setBusy(true);
     setError("");
     try {
-      const next = selectedFiles.map((file) => {
+      const next: SourceImage[] = [];
+      for (const file of selectedFiles) {
         const src = URL.createObjectURL(file);
         sourceObjectUrls.current.add(src);
-        return { name: file.name.replace(/\.[^.]+$/, "") || "Preview", src };
-      });
+        next.push({ name: file.name.replace(/\.[^.]+$/, "") || "Preview", src, hash: await sha256File(file) });
+      }
       setSources((current) => [...current, ...next]);
       if (next.length) setNotice(`${next.length} source image${next.length === 1 ? "" : "s"} ready for export.`);
     } catch (reason) { setError(errorMessage(reason)); }
@@ -450,7 +456,23 @@ export default function OverlayStudio({
         const source = sources[index];
         const canvas = document.createElement("canvas");
         await paintCanvas(canvas, 1920, height, source.src, layers);
-        output.push({ name: `${source.name}-${height === 1080 ? "erlcx" : "execlab"}.png`, dataUrl: canvas.toDataURL("image/png") });
+        const serialLayers = layers.map(({ src, ...layer }) => ({ ...layer, hasEmbeddedImage: Boolean(src) }));
+        const compositionJson = JSON.stringify({
+          target: height === 1080 ? "erlcx" : "execlab",
+          width: 1920,
+          height,
+          templateId: templateId || null,
+          templateName: templateName.trim(),
+          layers: serialLayers,
+        });
+        output.push({
+          name: `${source.name}-${height === 1080 ? "erlcx" : "execlab"}.png`,
+          dataUrl: canvas.toDataURL("image/png"),
+          sourceHash: source.hash!,
+          width: 1920,
+          height,
+          compositionJson,
+        });
       }
       await onExported(output);
       sources.forEach((source) => {
@@ -461,7 +483,7 @@ export default function OverlayStudio({
         imageCache.delete(source.src);
       });
       setSources([]);
-      setNotice(`${output.length} overlay preview${output.length === 1 ? "" : "s"} added to this post.`);
+      setNotice(`${output.length} overlay preview${output.length === 1 ? "" : "s"} added to this post and saved as local Image Library versions.`);
     } catch (reason) { setError(errorMessage(reason)); }
     finally { setBusy(false); }
   }

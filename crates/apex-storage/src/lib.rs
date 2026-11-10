@@ -16,7 +16,7 @@ mod media_library;
 mod overlays;
 pub use assets::validate_png as validate_texture;
 pub use markdown_presets::MarkdownPreset;
-pub use media_library::MediaLibraryItem;
+pub use media_library::{GeneratedPreview, MediaLibraryItem};
 pub use overlays::OverlayTemplate;
 mod notes;
 mod packages;
@@ -39,7 +39,7 @@ pub use posts::*;
 pub use statistics::*;
 pub use team_sync::*;
 pub use trash::*;
-const SCHEMA_VERSION: u32 = 24;
+const SCHEMA_VERSION: u32 = 25;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
@@ -335,6 +335,11 @@ impl Workspace {
         if version < 24 {
             connection
                 .execute_batch(include_str!("schema24.sql"))
+                .map_err(storage)?;
+        }
+        if version < 25 {
+            connection
+                .execute_batch(include_str!("schema25.sql"))
                 .map_err(storage)?;
         }
         *workspace

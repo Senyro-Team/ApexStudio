@@ -1,6 +1,6 @@
 use super::{projects::work, CommandError};
 use apex_core::{Error, MarkdownBlock, PublishingDraft, PublishingInput, PublishingPreview};
-use apex_storage::{MarkdownPreset, PostSourceStatus, PostSummary, Workspace};
+use apex_storage::{GeneratedPreview, MarkdownPreset, PostSourceStatus, PostSummary, Workspace};
 use base64::Engine;
 use serde::Deserialize;
 use tauri_plugin_dialog::DialogExt;
@@ -10,6 +10,10 @@ use tauri_plugin_dialog::DialogExt;
 pub struct OverlayPreviewInput {
     name: String,
     data_url: String,
+    source_hash: String,
+    width: u32,
+    height: u32,
+    composition_json: String,
 }
 
 #[tauri::command]
@@ -54,7 +58,14 @@ pub async fn import_overlay_previews(
             let bytes = base64::engine::general_purpose::STANDARD
                 .decode(encoded)
                 .map_err(|_| Error::InvalidContent("An overlay export is invalid.".into()))?;
-            decoded.push((image.name, bytes));
+            decoded.push(GeneratedPreview {
+                name: image.name,
+                bytes,
+                source_hash: image.source_hash,
+                width: image.width,
+                height: image.height,
+                composition_json: image.composition_json,
+            });
         }
         let owner = post_id.as_deref().map(|id| format!("editor:{id}"));
         ws.add_generated_previews(owner.as_deref(), &decoded)

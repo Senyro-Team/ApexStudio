@@ -298,6 +298,9 @@ export interface MediaLibraryItem {
   defaultLinkUrl: string | null;
   folder: string;
   tags: string[];
+  overlayVersionGroup: string | null;
+  overlayVersion: number | null;
+  overlayTarget: "erlcx" | "execlab" | null;
   ownerScope: "personal" | "team";
   teamId: string | null;
   providerImageId: string | null;
@@ -766,7 +769,14 @@ export interface OverlayTemplate {
   createdAt: string;
   updatedAt: string;
 }
-export interface OverlayPreviewOutput { name: string; dataUrl: string }
+export interface OverlayPreviewOutput {
+  name: string;
+  dataUrl: string;
+  sourceHash: string;
+  width: number;
+  height: number;
+  compositionJson: string;
+}
 export const listOverlayTemplates = () =>
   invoke<OverlayTemplate[]>("list_overlay_templates");
 export const overlayImageData = (hash: string, width: number, height: number) =>

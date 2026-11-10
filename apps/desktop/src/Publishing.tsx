@@ -50,6 +50,7 @@ import {
   type Asset,
   type InviteCampaign,
   type MarkdownPreset,
+  type OverlayPreviewOutput,
 } from "./bridge";
 const steps = ["Liveries", "Details", "Previews", "Markdown", "Review"] as const;
 
@@ -222,7 +223,7 @@ export default function Publishing({
           const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
           const remoteItems: MediaLibraryItem[] = shared.images
             .filter((image) => !localRemoteIds.has(image.id))
-            .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, folder: "", tags: [], ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? teamId : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
+            .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, folder: "", tags: [], overlayVersionGroup: null, overlayVersion: null, overlayTarget: null, ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? teamId : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
           combined = [...remoteItems, ...library];
         } catch { /* The local library stays available without the server. */ }
       }
@@ -471,7 +472,7 @@ export default function Publishing({
       setBusy(false);
     }
   }
-  async function addOverlayPreviews(output: { name: string; dataUrl: string }[]) {
+  async function addOverlayPreviews(output: OverlayPreviewOutput[]) {
     if (!data) return;
     const selected = await importOverlayPreviews(
       draftId ?? null,

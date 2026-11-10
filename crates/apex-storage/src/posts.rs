@@ -1,4 +1,4 @@
-use super::{storage, Workspace};
+use super::{storage, GeneratedPreview, Workspace};
 use apex_core::{
     Error, PublishingDraft, PublishingImage, PublishingInput, PublishingLivery, PublishingPreview,
     PublishingSide,
@@ -475,7 +475,7 @@ impl Workspace {
     pub fn add_generated_previews(
         &self,
         owner: Option<&str>,
-        generated: &[(String, Vec<u8>)],
+        generated: &[GeneratedPreview],
     ) -> Result<Vec<PublishingPreview>, Error> {
         let gate = self.content_gate();
         let _guard = gate.lock();
@@ -485,8 +485,8 @@ impl Workspace {
             ));
         }
         let mut images = Vec::with_capacity(generated.len());
-        for (name, bytes) in generated {
-            let safe_name = name.trim();
+        for image in generated {
+            let safe_name = image.name.trim();
             if safe_name.is_empty()
                 || safe_name.chars().count() > 160
                 || safe_name
@@ -497,11 +497,32 @@ impl Workspace {
                     "Overlay preview name is invalid.".into(),
                 ));
             }
-            if bytes.len() > 40 * 1024 * 1024 {
+            if image.bytes.len() > 40 * 1024 * 1024 {
                 return Err(Error::InvalidContent(
                     "An overlay preview exceeds 40 MB.".into(),
                 ));
             }
+            if image.source_hash.len() != 64
+                || !image
+                    .source_hash
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit())
+                || image.width != 1920
+                || !matches!(image.height, 1080 | 1200)
+                || image.composition_json.len() > 512 * 1024
+                || serde_json::from_str::<serde_json::Value>(&image.composition_json).is_err()
+            {
+                return Err(Error::InvalidContent(
+                    "Overlay version metadata is invalid.".into(),
+                ));
+            }
+            let target = if image.height == 1080 {
+                "erlcx"
+            } else {
+                "execlab"
+            };
+            let group_material = format!("{}:{}x{}", image.source_hash, image.width, image.height);
+            let group_id = format!("{:x}", Sha256::digest(group_material.as_bytes()));
             let temporary = self
                 .root
                 .join("staging")
@@ -512,7 +533,7 @@ impl Workspace {
                     .create_new(true)
                     .open(&temporary)
                     .map_err(storage)?;
-                file.write_all(bytes).map_err(storage)?;
+                file.write_all(&image.bytes).map_err(storage)?;
                 file.sync_all().map_err(storage)?;
                 super::validate_texture(&temporary)?;
                 self.import_file(&temporary)
@@ -521,6 +542,44 @@ impl Workspace {
             let hash = write_result?;
             if let Some(owner) = owner {
                 self.pin_content(owner, std::slice::from_ref(&hash))?;
+            }
+            let mut db = self.connection()?;
+            let tx = db
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(storage)?;
+            let existing_version: Option<i64> = tx
+                .query_row(
+                    "SELECT version FROM overlay_render_versions WHERE version_group_id=?1 AND hash=?2",
+                    params![group_id, hash],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(storage)?;
+            if existing_version.is_none() {
+                let next_version: i64 = tx
+                    .query_row(
+                        "SELECT COALESCE(MAX(version),0)+1 FROM overlay_render_versions WHERE version_group_id=?1",
+                        [&group_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(storage)?;
+                tx.execute(
+                        "INSERT INTO overlay_render_versions(version_group_id,version,hash,name,target,composition_json) VALUES(?1,?2,?3,?4,?5,?6)",
+                        params![group_id, next_version, hash, safe_name, target, image.composition_json],
+                    )
+                    .map_err(storage)?;
+            }
+            tx.commit().map_err(storage)?;
+            if self.existing_hash_item(&hash)?.is_none() {
+                self.insert_media_item(
+                    Some(&hash),
+                    safe_name,
+                    safe_name,
+                    "",
+                    None,
+                    "Generated overlays",
+                    &[target.to_owned()],
+                )?;
             }
             images.push(PublishingImage {
                 hash,

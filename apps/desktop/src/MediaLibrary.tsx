@@ -55,7 +55,7 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
         const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
         const remoteItems: MediaLibraryItem[] = shared.images
           .filter((image) => !localRemoteIds.has(image.id))
-          .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, folder: "", tags: [], ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? savedTeam : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
+          .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, folder: "", tags: [], overlayVersionGroup: null, overlayVersion: null, overlayTarget: null, ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? savedTeam : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
         combined = [...remoteItems, ...library];
       } catch {
         setNotice("Team Image Hosting could not be reached. Local images and manual URLs are still available.");
@@ -240,6 +240,7 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
                 <div className="media-library-card-title"><strong>{item.name}</strong><span>{item.isRemote ? "Shared with team" : item.ownerScope === "personal" ? "Personal" : "Team"}</span></div>
                 <small>{item.altText || "No alt text"}</small>
                 <div className="media-library-card-meta"><span>{item.folder || "Unfiled"}</span>{item.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div>
+                {item.overlayVersion !== null && item.overlayVersion !== undefined && <small>Overlay v{item.overlayVersion} · {item.overlayTarget === "erlcx" ? "ERLCX 16:9" : "ExecLab 16:10"}</small>}
                 {item.imageUrl ? <a href={item.imageUrl} target="_blank" rel="noreferrer"><Link2 size={14} aria-hidden="true" /> Open image <ExternalLink size={13} aria-hidden="true" /></a> : <small>Local only · public URL not set</small>}
                 <div className="media-library-card-actions">
                   {item.hash && !item.providerImageId && <button className="text-button" type="button" disabled={busy} onClick={() => void uploadItem(item)}><Upload size={15} aria-hidden="true" /> Upload public</button>}

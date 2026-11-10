@@ -17,12 +17,24 @@ pub struct MediaLibraryItem {
     pub default_link_url: Option<String>,
     pub folder: String,
     pub tags: Vec<String>,
+    pub overlay_version_group: Option<String>,
+    pub overlay_version: Option<i64>,
+    pub overlay_target: Option<String>,
     pub owner_scope: String,
     pub team_id: Option<String>,
     pub provider_image_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub preview: Option<String>,
+}
+
+pub struct GeneratedPreview {
+    pub name: String,
+    pub bytes: Vec<u8>,
+    pub source_hash: String,
+    pub width: u32,
+    pub height: u32,
+    pub composition_json: String,
 }
 
 fn invalid(message: &str) -> Error {
@@ -112,7 +124,7 @@ impl Workspace {
         let row = self
             .connection()?
             .query_row(
-                "SELECT id,hash,name,alt_text,image_url,default_link_url,folder,tags_json,owner_scope,team_id,provider_image_id,created_at,updated_at FROM media_library WHERE id=?1",
+                "SELECT m.id,m.hash,m.name,m.alt_text,m.image_url,m.default_link_url,m.folder,m.tags_json,m.owner_scope,m.team_id,m.provider_image_id,m.created_at,m.updated_at,(SELECT v.version_group_id FROM overlay_render_versions v WHERE v.hash=m.hash ORDER BY v.created_at DESC,v.version DESC LIMIT 1),(SELECT v.version FROM overlay_render_versions v WHERE v.hash=m.hash ORDER BY v.created_at DESC,v.version DESC LIMIT 1),(SELECT v.target FROM overlay_render_versions v WHERE v.hash=m.hash ORDER BY v.created_at DESC,v.version DESC LIMIT 1) FROM media_library m WHERE m.id=?1",
                 [id],
                 |row| {
                     Ok((
@@ -129,6 +141,9 @@ impl Workspace {
                         row.get::<_, Option<String>>(10)?,
                         row.get::<_, String>(11)?,
                         row.get::<_, String>(12)?,
+                        row.get::<_, Option<String>>(13)?,
+                        row.get::<_, Option<i64>>(14)?,
+                        row.get::<_, Option<String>>(15)?,
                     ))
                 },
             )
@@ -152,6 +167,9 @@ impl Workspace {
             default_link_url: row.5,
             folder: row.6,
             tags: serde_json::from_str(&row.7).map_err(storage)?,
+            overlay_version_group: row.13,
+            overlay_version: row.14,
+            overlay_target: row.15,
             owner_scope: row.8,
             team_id: row.9,
             provider_image_id: row.10,
@@ -183,7 +201,7 @@ impl Workspace {
         self.media_library_item(id)
     }
 
-    fn insert_media_item(
+    pub(super) fn insert_media_item(
         &self,
         hash: Option<&str>,
         name: &str,
@@ -208,7 +226,7 @@ impl Workspace {
         self.media_library_item(&id)
     }
 
-    fn existing_hash_item(&self, hash: &str) -> Result<Option<MediaLibraryItem>, Error> {
+    pub(super) fn existing_hash_item(&self, hash: &str) -> Result<Option<MediaLibraryItem>, Error> {
         let id = self
             .connection()?
             .query_row(
