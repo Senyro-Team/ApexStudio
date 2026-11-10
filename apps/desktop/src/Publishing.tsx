@@ -25,6 +25,9 @@ import {
   exportPublishing,
   assetBoard,
   mediaLibrary,
+  listAssets,
+  pickMediaLibraryImage,
+  addMediaLibraryAsset,
   errorMessage,
   type PublishingData,
   type PublishingDraft,
@@ -35,6 +38,7 @@ import {
   type Project,
   type MarkdownBlock,
   type MediaLibraryItem,
+  type Asset,
 } from "./bridge";
 const steps = ["Liveries", "Details", "Previews", "Markdown", "Review"] as const;
 export default function Publishing({
@@ -95,7 +99,16 @@ export default function Publishing({
     [vehicleIndex, setVehicleIndex] = useState(0);
   const [libraryItems, setLibraryItems] = useState<MediaLibraryItem[]>([]);
   const [libraryChoice, setLibraryChoice] = useState("");
-  useEffect(() => { void mediaLibrary().then(setLibraryItems).catch(() => {}); }, []);
+  const [projectImages, setProjectImages] = useState<Asset[]>([]);
+  const [projectImageChoice, setProjectImageChoice] = useState("");
+  useEffect(() => {
+    void Promise.all([mediaLibrary(), listAssets(null)])
+      .then(([library, assets]) => {
+        setLibraryItems(library);
+        setProjectImages(assets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
+      })
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     let active = true;
     setError("");
@@ -217,6 +230,28 @@ export default function Publishing({
     if (!item) return;
     updateMarkdown([...markdownBlocks, { id: crypto.randomUUID(), kind: "image", text: "", imageUrl: item.imageUrl, altText: item.altText || item.name, linkUrl: item.defaultLinkUrl ?? "", inviteUrl: "", mediaHash: item.hash }]);
     setLibraryChoice("");
+  }
+  async function addLocalLibraryImage() {
+    try {
+      const item = await pickMediaLibraryImage();
+      if (!item) return;
+      setLibraryItems((items) => [item, ...items.filter((existing) => existing.id !== item.id)]);
+      setLibraryChoice(item.id);
+      if (!item.imageUrl) setNotice("Image added to the library. Add its public URL after uploading it where you choose.");
+    } catch (e) { setError(errorMessage(e)); }
+  }
+  async function addProjectLibraryImage() {
+    const asset = projectImages.find((item) => item.id === projectImageChoice);
+    if (!asset) return;
+    try {
+      const item = await addMediaLibraryAsset(asset.projectId, asset.id);
+      setLibraryItems((items) => [item, ...items.filter((existing) => existing.id !== item.id)]);
+      setMarkdownImage(item);
+      setProjectImageChoice("");
+    } catch (e) { setError(errorMessage(e)); }
+  }
+  function setMarkdownImage(item: MediaLibraryItem) {
+    updateMarkdown([...markdownBlocks, { id: crypto.randomUUID(), kind: "image", text: "", imageUrl: item.imageUrl, altText: item.altText || item.name, linkUrl: item.defaultLinkUrl ?? "", inviteUrl: "", mediaHash: item.hash }]);
   }
   function changeLivery(patch: Partial<PublishingLivery>) {
     if (!data) return;
@@ -919,7 +954,9 @@ export default function Publishing({
             <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => addMarkdown("text")}>Add text</button>
             <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => addMarkdown("image")}>Add image URL</button>
             <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => addMarkdown("invite")}>Add invite link</button>
-            {libraryItems.length > 0 && <><select aria-label="Choose an image from Image Library" value={libraryChoice} disabled={locked} onChange={(event) => setLibraryChoice(event.target.value)}><option value="">Choose library image</option>{libraryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !libraryChoice || markdownBlocks.length >= 100} onClick={addLibraryImage}>Add selected</button></>}
+            <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => void addLocalLibraryImage()}>Add local PNG</button>
+            {projectImages.length > 0 && <><select aria-label="Choose a project image" value={projectImageChoice} disabled={locked} onChange={(event) => setProjectImageChoice(event.target.value)}><option value="">Choose project image</option>{projectImages.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !projectImageChoice || markdownBlocks.length >= 100} onClick={() => void addProjectLibraryImage()}>Add project image</button></>}
+            {libraryItems.length > 0 && <><select aria-label="Choose an image from Image Library" value={libraryChoice} disabled={locked} onChange={(event) => setLibraryChoice(event.target.value)}><option value="">Choose library image</option>{libraryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !libraryChoice || markdownBlocks.length >= 100} onClick={addLibraryImage}>Add library image</button></>}
           </div>
           {markdownBlocks.map((block, index) => {
             const patchBlock = (patch: Partial<MarkdownBlock>) => updateMarkdown(markdownBlocks.map((current, i) => i === index ? { ...current, ...patch } : current));
