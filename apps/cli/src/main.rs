@@ -13,7 +13,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -3950,6 +3950,7 @@ fn print_project(project: &Project, json: bool) {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Screen {
     Home,
+    TeamSync,
     Projects,
     Detail,
     Notes,
@@ -3977,6 +3978,13 @@ enum Screen {
     RobloxCancelReview,
     RobloxLiveries,
     RobloxBatchReview,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum TeamSyncPanel {
+    #[default]
+    Projects,
+    Members,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -4166,6 +4174,20 @@ struct TuiState {
     statistics_status: String,
     statistics_panel: StatisticsPanel,
     statistics_range: StatisticsRange,
+    team_sync_server_url: String,
+    team_sync_status: Option<apex_application::team_sync::ConnectionStatus>,
+    team_sync_preview: Option<apex_application::team_sync::project::SyncPreview>,
+    team_sync_members: Vec<apex_application::team_sync::TeamMember>,
+    team_sync_team_selected: usize,
+    team_sync_project_selected: usize,
+    team_sync_member_selected: usize,
+    team_sync_panel: TeamSyncPanel,
+    team_sync_search: String,
+    team_sync_editing_server: bool,
+    team_sync_searching: bool,
+    team_sync_confirm_sync: bool,
+    team_sync_worker_active: bool,
+    team_sync_status_message: Option<(String, bool)>,
     group_revenue: Option<RobloxGroupRevenueData>,
     revenue_group_focus: Option<String>,
     revenue_editor: Option<RevenueEditorState>,
@@ -4228,6 +4250,20 @@ impl TuiState {
             statistics_status: "Profile snapshot history".into(),
             statistics_panel: StatisticsPanel::Overview,
             statistics_range: StatisticsRange::ThirtyDays,
+            team_sync_server_url: load_team_sync_server(),
+            team_sync_status: None,
+            team_sync_preview: None,
+            team_sync_members: Vec::new(),
+            team_sync_team_selected: 0,
+            team_sync_project_selected: 0,
+            team_sync_member_selected: 0,
+            team_sync_panel: TeamSyncPanel::Projects,
+            team_sync_search: String::new(),
+            team_sync_editing_server: false,
+            team_sync_searching: false,
+            team_sync_confirm_sync: false,
+            team_sync_worker_active: false,
+            team_sync_status_message: None,
             group_revenue: None,
             revenue_group_focus: None,
             revenue_editor: None,
@@ -4321,6 +4357,34 @@ impl TuiState {
             .collect()
     }
 
+    fn visible_team_sync_projects(
+        &self,
+    ) -> Vec<&apex_application::team_sync::project::RemoteProject> {
+        let query = self.team_sync_search.to_lowercase();
+        self.team_sync_preview
+            .iter()
+            .flat_map(|preview| preview.remote_projects.iter())
+            .filter(|project| {
+                query.is_empty()
+                    || project.name.to_lowercase().contains(&query)
+                    || project.id.to_lowercase().contains(&query)
+            })
+            .collect()
+    }
+
+    fn visible_team_sync_members(&self) -> Vec<&apex_application::team_sync::TeamMember> {
+        let query = self.team_sync_search.to_lowercase();
+        self.team_sync_members
+            .iter()
+            .filter(|member| {
+                query.is_empty()
+                    || member.display_name.to_lowercase().contains(&query)
+                    || member.email.to_lowercase().contains(&query)
+                    || member.role.to_lowercase().contains(&query)
+            })
+            .collect()
+    }
+
     fn visible_revenue_groups(&self) -> Vec<&apex_application::RobloxRevenueGroup> {
         let query = self.search.to_lowercase();
         self.group_revenue
@@ -4381,6 +4445,98 @@ enum TuiWorkerEvent {
     Finished(Result<QueueSnapshot, String>),
     StatisticsFinished(Result<Vec<StatisticsSnapshot>, String>),
     CreatorSalesFinished(Result<Option<apex_application::SalesSnapshot>, String>),
+    TeamSyncRefreshed(Result<TeamSyncDashboardData, String>),
+    TeamSyncFinished(Result<apex_application::team_sync::project::SyncReport, String>),
+}
+
+struct TeamSyncDashboardData {
+    status: apex_application::team_sync::ConnectionStatus,
+    selected_team_id: Option<String>,
+    preview: Option<apex_application::team_sync::project::SyncPreview>,
+    members: Vec<apex_application::team_sync::TeamMember>,
+}
+
+fn start_tui_team_sync_refresh(
+    app: ApplicationServices,
+    server_url: String,
+    preferred_team_id: Option<String>,
+    events: std::sync::mpsc::Sender<TuiWorkerEvent>,
+) -> Result<std::thread::JoinHandle<()>, Error> {
+    std::thread::Builder::new()
+        .name("apex-team-sync-refresh".into())
+        .spawn(move || {
+            let result = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())
+                .and_then(|runtime| {
+                    runtime.block_on(async {
+                        let status = apex_application::team_sync::connection_status(&server_url)
+                            .await
+                            .map_err(|error| error.to_string())?;
+                        let team = status.user.as_ref().and_then(|user| {
+                            preferred_team_id
+                                .as_deref()
+                                .and_then(|id| user.teams.iter().find(|team| team.id == id))
+                                .or_else(|| user.teams.first())
+                        });
+                        let Some(team) = team else {
+                            return Ok(TeamSyncDashboardData {
+                                status,
+                                selected_team_id: None,
+                                preview: None,
+                                members: Vec::new(),
+                            });
+                        };
+                        let team_id = team.id.clone();
+                        let preview = apex_application::team_sync::project::preview_sync(
+                            &server_url,
+                            &team_id,
+                            app.workspace(),
+                        )
+                        .await?;
+                        let members =
+                            apex_application::team_sync::list_members(&server_url, &team_id)
+                                .await
+                                .map_err(|error| error.to_string())?;
+                        Ok(TeamSyncDashboardData {
+                            status,
+                            selected_team_id: Some(team_id),
+                            preview: Some(preview),
+                            members,
+                        })
+                    })
+                });
+            let _ = events.send(TuiWorkerEvent::TeamSyncRefreshed(result));
+        })
+        .map_err(|error| Error::Storage(format!("Could not start Team Sync refresh: {error}")))
+}
+
+fn start_tui_team_sync_run(
+    app: ApplicationServices,
+    server_url: String,
+    team_id: String,
+    events: std::sync::mpsc::Sender<TuiWorkerEvent>,
+) -> Result<std::thread::JoinHandle<()>, Error> {
+    std::thread::Builder::new()
+        .name("apex-team-sync-run".into())
+        .spawn(move || {
+            let result = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())
+                .and_then(|runtime| {
+                    runtime
+                        .block_on(apex_application::team_sync::project::sync_projects(
+                            &server_url,
+                            &team_id,
+                            app.workspace(),
+                        ))
+                        .map_err(|error| error.to_string())
+                });
+            let _ = events.send(TuiWorkerEvent::TeamSyncFinished(result));
+        })
+        .map_err(|error| Error::Storage(format!("Could not start project sync: {error}")))
 }
 
 fn start_tui_statistics_refresh(
@@ -4547,6 +4703,7 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
     let mut worker: Option<std::thread::JoinHandle<()>> = None;
     let mut worker_stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>> = None;
     let mut statistics_thread: Option<std::thread::JoinHandle<()>> = None;
+    let mut team_sync_thread: Option<std::thread::JoinHandle<()>> = None;
     let mut quitting = false;
     ratatui::run(|terminal| 'tui: loop {
         while let Ok(event) = worker_events_rx.try_recv() {
@@ -4621,12 +4778,106 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         }
                     }
                 }
+                TuiWorkerEvent::TeamSyncRefreshed(result) => {
+                    state.team_sync_worker_active = false;
+                    if let Some(handle) = team_sync_thread.take() {
+                        let _ = handle.join();
+                    }
+                    match result {
+                        Ok(data) => {
+                            state.team_sync_team_selected = data
+                                .selected_team_id
+                                .as_deref()
+                                .and_then(|selected_id| {
+                                    data.status
+                                        .user
+                                        .as_ref()?
+                                        .teams
+                                        .iter()
+                                        .position(|team| team.id == selected_id)
+                                })
+                                .unwrap_or(0);
+                            state.team_sync_status = Some(data.status);
+                            state.team_sync_preview = data.preview;
+                            state.team_sync_members = data.members;
+                            state.team_sync_project_selected = 0;
+                            state.team_sync_member_selected = 0;
+                            state.team_sync_search.clear();
+                            state.team_sync_status_message = Some((
+                                state.team_sync_preview.as_ref().map_or_else(
+                                    || "Connected · no team is available for this account".into(),
+                                    |preview| {
+                                        format!(
+                                            "{} projects · {} members · role {}",
+                                            preview.remote_projects.len(),
+                                            state.team_sync_members.len(),
+                                            preview.team.role
+                                        )
+                                    },
+                                ),
+                                true,
+                            ));
+                        }
+                        Err(error) => {
+                            state.team_sync_status_message = Some((error, false));
+                        }
+                    }
+                }
+                TuiWorkerEvent::TeamSyncFinished(result) => {
+                    state.team_sync_worker_active = false;
+                    state.team_sync_confirm_sync = false;
+                    if let Some(handle) = team_sync_thread.take() {
+                        let _ = handle.join();
+                    }
+                    match result {
+                        Ok(report) => {
+                            state.team_sync_status_message = Some((
+                                format!(
+                                    "{} checked · {} uploaded · {} downloaded · {} up to date",
+                                    report.checked,
+                                    report.uploaded,
+                                    report.downloaded,
+                                    report.up_to_date
+                                ),
+                                report.errors.is_empty(),
+                            ));
+                        }
+                        Err(error) => {
+                            state.team_sync_status_message = Some((error, false));
+                        }
+                    }
+                    if let (Some(status), false) = (state.team_sync_status.as_ref(), quitting) {
+                        if status.user.is_some() && !state.team_sync_server_url.is_empty() {
+                            let selected_team_id = status
+                                .user
+                                .as_ref()
+                                .and_then(|user| user.teams.get(state.team_sync_team_selected))
+                                .map(|team| team.id.clone());
+                            match start_tui_team_sync_refresh(
+                                app.clone(),
+                                state.team_sync_server_url.clone(),
+                                selected_team_id,
+                                worker_events_tx.clone(),
+                            ) {
+                                Ok(handle) => {
+                                    team_sync_thread = Some(handle);
+                                    state.team_sync_worker_active = true;
+                                }
+                                Err(error) => {
+                                    state.team_sync_status_message =
+                                        Some((error.to_string(), false));
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         if quitting
             && !state.roblox_worker_active
             && !state.statistics_refresh_active
             && !state.statistics_sales_refresh_active
+            && !state.team_sync_worker_active
         {
             break 'tui Ok(());
         }
@@ -4635,6 +4886,15 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
             continue;
         }
         match event::read()? {
+            Event::Paste(value) if state.screen == Screen::TeamSync => {
+                if state.team_sync_editing_server {
+                    append_bounded(&mut state.team_sync_server_url, &value, 2048);
+                } else if state.team_sync_searching {
+                    append_bounded(&mut state.team_sync_search, &value, 256);
+                    state.team_sync_project_selected = 0;
+                    state.team_sync_member_selected = 0;
+                }
+            }
             Event::Key(key) if key.kind == KeyEventKind::Press => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
                     if let Some(stopping) = &worker_stop {
@@ -4643,9 +4903,10 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         stopping.store(true, std::sync::atomic::Ordering::Relaxed);
                     } else if state.statistics_refresh_active
                         || state.statistics_sales_refresh_active
+                        || state.team_sync_worker_active
                     {
                         quitting = true;
-                        state.statistics_status = "Finishing profile refresh before exit".into();
+                        state.statistics_status = "Finishing background work before exit".into();
                     } else {
                         break Ok(());
                     }
@@ -4657,7 +4918,9 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                 match state.screen {
                     Screen::Home => match key.code {
                         KeyCode::Char('q') | KeyCode::Esc
-                            if worker_stop.is_some() || state.statistics_refresh_active =>
+                            if worker_stop.is_some()
+                                || state.statistics_refresh_active
+                                || state.team_sync_worker_active =>
                         {
                             quitting = true;
                             if let Some(stopping) = &worker_stop {
@@ -4674,7 +4937,7 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                             state.selected = state.selected.saturating_sub(1)
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
-                            state.selected = (state.selected + 1).min(8)
+                            state.selected = (state.selected + 1).min(9)
                         }
                         KeyCode::Enter if state.selected == 0 => {
                             state.screen = Screen::Projects;
@@ -4718,6 +4981,41 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                             state.selected = 0;
                             refresh_group_revenue_view(&mut state, &app)
                                 .map_err(io::Error::other)?;
+                        }
+                        KeyCode::Enter if state.selected == 8 => {
+                            state.screen = Screen::TeamSync;
+                            state.team_sync_panel = TeamSyncPanel::Projects;
+                            state.team_sync_project_selected = 0;
+                            state.team_sync_status_message = None;
+                            if !state.team_sync_server_url.is_empty()
+                                && !state.team_sync_worker_active
+                            {
+                                match start_tui_team_sync_refresh(
+                                    app.clone(),
+                                    state.team_sync_server_url.clone(),
+                                    state
+                                        .team_sync_status
+                                        .as_ref()
+                                        .and_then(|status| status.user.as_ref())
+                                        .and_then(|user| {
+                                            user.teams.get(state.team_sync_team_selected)
+                                        })
+                                        .map(|team| team.id.clone()),
+                                    worker_events_tx.clone(),
+                                ) {
+                                    Ok(handle) => {
+                                        team_sync_thread = Some(handle);
+                                        state.team_sync_worker_active = true;
+                                        state.team_sync_status_message =
+                                            Some(("Connecting to team server…".into(), true));
+                                    }
+                                    Err(error) => {
+                                        state.team_sync_status_message =
+                                            Some((error.to_string(), false));
+                                    }
+                                }
+                            }
+                            state.selected = 0;
                         }
                         KeyCode::Enter => break Ok(()),
                         _ => {}
@@ -4951,6 +5249,13 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         }
                         _ => {}
                     },
+                    Screen::TeamSync => handle_team_sync_key(
+                        &mut state,
+                        key.code,
+                        &app,
+                        &worker_events_tx,
+                        &mut team_sync_thread,
+                    ),
                     Screen::GroupRevenue if !state.searching && key.code == KeyCode::Char('r') => {
                         refresh_group_revenue_view(&mut state, &app).map_err(io::Error::other)?;
                     }
@@ -7129,6 +7434,7 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
     );
     match state.screen {
         Screen::Home => draw_home(frame, state, regions[1], accent, muted),
+        Screen::TeamSync => draw_team_sync(frame, state, regions[1], accent, muted),
         Screen::Projects => draw_projects(frame, state, regions[1], accent, muted),
         Screen::Detail => draw_detail(frame, state, regions[1], accent, muted),
         Screen::Notes => draw_notes(frame, state, regions[1], accent, muted),
@@ -7167,6 +7473,12 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
     }
     let footer = match state.screen {
         Screen::Home => " ↑/↓ Select   Enter Open   q Quit ",
+        Screen::TeamSync if state.team_sync_editing_server => " Type server URL   Enter Save & connect   Esc Cancel ",
+        Screen::TeamSync if state.team_sync_searching => " Type to filter   Enter/Esc Finish search ",
+        Screen::TeamSync if state.team_sync_confirm_sync => " y Synchronize reviewed team   n/Esc Cancel ",
+        Screen::TeamSync if state.team_sync_worker_active => " Working…   Esc Back to menu ",
+        Screen::TeamSync if state.team_sync_panel == TeamSyncPanel::Members => " Tab Projects   ↑/↓ Members   / Search   r Refresh   Esc Back ",
+        Screen::TeamSync => " Tab Members   [ / ] Team   / Search   e Server   r Refresh   s Sync   Esc Back ",
         Screen::Projects if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::Projects => {
             " ↑/↓ Select   Enter Details   / Search   r Refresh   Esc Back   q Back "
@@ -7299,9 +7611,10 @@ fn draw_home(
         ListItem::new("Roblox uploads"),
         ListItem::new("Statistics"),
         ListItem::new("Group Revenue"),
+        ListItem::new("Team Sync"),
         ListItem::new("Quit"),
     ];
-    let mut list_state = ListState::default().with_selected(Some(state.selected.min(8)));
+    let mut list_state = ListState::default().with_selected(Some(state.selected.min(9)));
     frame.render_stateful_widget(
         List::new(items)
             .block(Block::default().title("Menu").borders(Borders::ALL))
@@ -7311,7 +7624,7 @@ fn draw_home(
         &mut list_state,
     );
     frame.render_widget(
-        Paragraph::new(match state.selected.min(8) {
+        Paragraph::new(match state.selected.min(9) {
             0 => "Browse, search, and inspect project records.",
             1 => "Browse and read project or general notes.",
             2 => "Inspect project folders, liveries, and files.",
@@ -7320,6 +7633,7 @@ fn draw_home(
             5 => "Inspect Roblox upload batches and texture processing status.",
             6 => "Review public ERLCX post metrics and collected snapshots.",
             7 => "Review imported Roblox group sales and refresh coverage.",
+            8 => "Review team projects and members, then synchronize after checking the target summary.",
             _ => "Close the terminal workspace.",
         })
         .block(Block::default().title("Apex Studio").borders(Borders::ALL))
@@ -7327,6 +7641,449 @@ fn draw_home(
         .wrap(Wrap { trim: true }),
         sections[1],
     );
+}
+
+fn team_sync_server_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|root| root.join("ApexStudio").join("team-sync-server.txt"))
+}
+
+fn load_team_sync_server() -> String {
+    team_sync_server_path()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default()
+}
+
+fn save_team_sync_server(server_url: &str) -> Result<(), String> {
+    let path = team_sync_server_path()
+        .ok_or_else(|| "Could not locate the user config folder.".to_owned())?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Could not locate the user config folder.".to_owned())?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Could not save server address: {error}"))?;
+    fs::write(path, server_url.trim())
+        .map_err(|error| format!("Could not save server address: {error}"))
+}
+
+fn append_bounded(input: &mut String, value: &str, max_bytes: usize) {
+    for character in value.chars() {
+        if input.len() + character.len_utf8() > max_bytes {
+            break;
+        }
+        input.push(character);
+    }
+}
+
+fn team_sync_refresh(
+    state: &mut TuiState,
+    app: &ApplicationServices,
+    events: &std::sync::mpsc::Sender<TuiWorkerEvent>,
+    worker: &mut Option<std::thread::JoinHandle<()>>,
+) {
+    if state.team_sync_worker_active {
+        return;
+    }
+    let server_url = state.team_sync_server_url.trim().to_owned();
+    if server_url.is_empty() {
+        state.team_sync_status_message = Some((
+            "Enter your team server address with e to connect".into(),
+            false,
+        ));
+        return;
+    }
+    let preferred_team_id = state
+        .team_sync_status
+        .as_ref()
+        .and_then(|status| status.user.as_ref())
+        .and_then(|user| user.teams.get(state.team_sync_team_selected))
+        .map(|team| team.id.clone());
+    match start_tui_team_sync_refresh(app.clone(), server_url, preferred_team_id, events.clone()) {
+        Ok(handle) => {
+            *worker = Some(handle);
+            state.team_sync_worker_active = true;
+            state.team_sync_status_message = Some(("Refreshing team data…".into(), true));
+        }
+        Err(error) => state.team_sync_status_message = Some((error.to_string(), false)),
+    }
+}
+
+fn handle_team_sync_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+    events: &std::sync::mpsc::Sender<TuiWorkerEvent>,
+    worker: &mut Option<std::thread::JoinHandle<()>>,
+) {
+    if state.team_sync_editing_server {
+        match key {
+            KeyCode::Esc => {
+                state.team_sync_editing_server = false;
+                state.team_sync_server_url = load_team_sync_server();
+            }
+            KeyCode::Enter => {
+                state.team_sync_editing_server = false;
+                match save_team_sync_server(&state.team_sync_server_url) {
+                    Ok(()) => team_sync_refresh(state, app, events, worker),
+                    Err(error) => state.team_sync_status_message = Some((error, false)),
+                }
+            }
+            KeyCode::Backspace => {
+                state.team_sync_server_url.pop();
+            }
+            KeyCode::Char(character) if !character.is_control() => {
+                append_bounded(
+                    &mut state.team_sync_server_url,
+                    &character.to_string(),
+                    2048,
+                );
+            }
+            _ => {}
+        }
+        return;
+    }
+    if state.team_sync_searching {
+        match key {
+            KeyCode::Esc | KeyCode::Enter => state.team_sync_searching = false,
+            KeyCode::Backspace => {
+                state.team_sync_search.pop();
+                state.team_sync_project_selected = 0;
+                state.team_sync_member_selected = 0;
+            }
+            KeyCode::Char(character) if !character.is_control() => {
+                append_bounded(&mut state.team_sync_search, &character.to_string(), 256);
+                state.team_sync_project_selected = 0;
+                state.team_sync_member_selected = 0;
+            }
+            _ => {}
+        }
+        return;
+    }
+    if state.team_sync_confirm_sync {
+        match key {
+            KeyCode::Char('y') | KeyCode::Char('Y') if !state.team_sync_worker_active => {
+                let selected_team = state
+                    .team_sync_status
+                    .as_ref()
+                    .and_then(|status| status.user.as_ref())
+                    .and_then(|user| user.teams.get(state.team_sync_team_selected));
+                if let Some(team) = selected_team {
+                    match start_tui_team_sync_run(
+                        app.clone(),
+                        state.team_sync_server_url.clone(),
+                        team.id.clone(),
+                        events.clone(),
+                    ) {
+                        Ok(handle) => {
+                            *worker = Some(handle);
+                            state.team_sync_worker_active = true;
+                            state.team_sync_status_message =
+                                Some(("Synchronizing reviewed team projects…".into(), true));
+                        }
+                        Err(error) => {
+                            state.team_sync_status_message = Some((error.to_string(), false));
+                            state.team_sync_confirm_sync = false;
+                        }
+                    }
+                } else {
+                    state.team_sync_status_message = Some((
+                        "Sign in and select a team before synchronizing".into(),
+                        false,
+                    ));
+                    state.team_sync_confirm_sync = false;
+                }
+            }
+            KeyCode::Esc | KeyCode::Char('n') | KeyCode::Char('N') => {
+                state.team_sync_confirm_sync = false;
+            }
+            _ => {}
+        }
+        return;
+    }
+    match key {
+        KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
+            state.screen = Screen::Home;
+        }
+        KeyCode::Tab => {
+            state.team_sync_panel = match state.team_sync_panel {
+                TeamSyncPanel::Projects => TeamSyncPanel::Members,
+                TeamSyncPanel::Members => TeamSyncPanel::Projects,
+            };
+        }
+        KeyCode::Char('e') if !state.team_sync_worker_active => {
+            state.team_sync_editing_server = true;
+            state.team_sync_server_url = load_team_sync_server();
+            state.team_sync_status_message = None;
+        }
+        KeyCode::Char('r') => team_sync_refresh(state, app, events, worker),
+        KeyCode::Char('/') => {
+            state.team_sync_searching = true;
+            state.team_sync_search.clear();
+        }
+        KeyCode::Char('[') | KeyCode::Char(']') if !state.team_sync_worker_active => {
+            let Some(teams) = state
+                .team_sync_status
+                .as_ref()
+                .and_then(|status| status.user.as_ref())
+                .map(|user| &user.teams)
+            else {
+                return;
+            };
+            if !teams.is_empty() {
+                let count = teams.len();
+                state.team_sync_team_selected = if key == KeyCode::Char(']') {
+                    (state.team_sync_team_selected + 1) % count
+                } else {
+                    state
+                        .team_sync_team_selected
+                        .checked_sub(1)
+                        .unwrap_or(count - 1)
+                };
+                team_sync_refresh(state, app, events, worker);
+            }
+        }
+        KeyCode::Char('s')
+            if !state.team_sync_worker_active
+                && state.team_sync_status.as_ref().is_some_and(|status| {
+                    status
+                        .user
+                        .as_ref()
+                        .is_some_and(|user| !user.teams.is_empty())
+                }) =>
+        {
+            state.team_sync_confirm_sync = true;
+        }
+        KeyCode::Up | KeyCode::Char('k') if state.team_sync_panel == TeamSyncPanel::Projects => {
+            state.team_sync_project_selected = state.team_sync_project_selected.saturating_sub(1);
+        }
+        KeyCode::Down | KeyCode::Char('j') if state.team_sync_panel == TeamSyncPanel::Projects => {
+            state.team_sync_project_selected = state
+                .team_sync_project_selected
+                .saturating_add(1)
+                .min(state.visible_team_sync_projects().len().saturating_sub(1));
+        }
+        KeyCode::Up | KeyCode::Char('k') if state.team_sync_panel == TeamSyncPanel::Members => {
+            state.team_sync_member_selected = state.team_sync_member_selected.saturating_sub(1);
+        }
+        KeyCode::Down | KeyCode::Char('j') if state.team_sync_panel == TeamSyncPanel::Members => {
+            state.team_sync_member_selected = state
+                .team_sync_member_selected
+                .saturating_add(1)
+                .min(state.visible_team_sync_members().len().saturating_sub(1));
+        }
+        _ => {}
+    }
+}
+
+fn single_line(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect()
+}
+
+fn draw_team_sync(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(if area.height < 14 { 4 } else { 5 }),
+            Constraint::Min(3),
+        ])
+        .split(area);
+    let user = state
+        .team_sync_status
+        .as_ref()
+        .and_then(|status| status.user.as_ref());
+    let team = user.and_then(|user| user.teams.get(state.team_sync_team_selected));
+    let server_label = if state.team_sync_editing_server {
+        format!("Server: {}▏", state.team_sync_server_url)
+    } else if state.team_sync_server_url.is_empty() {
+        "Server: not configured · press e to add the team server URL".to_owned()
+    } else {
+        format!("Server: {}", single_line(&state.team_sync_server_url))
+    };
+    let connection = match (user, team) {
+        (Some(user), Some(team)) => format!(
+            "{} · {} · {} ({}/{})",
+            single_line(&user.display_name),
+            single_line(&user.email),
+            single_line(&team.name),
+            state.team_sync_team_selected + 1,
+            user.teams.len()
+        ),
+        (Some(user), None) => format!("{} · no teams available", single_line(&user.display_name)),
+        (None, _)
+            if state
+                .team_sync_status
+                .as_ref()
+                .is_some_and(|status| status.session_expired) =>
+        {
+            "Session expired · use `apex-studio-cli sync sign-in` in another terminal".to_owned()
+        }
+        (None, _)
+            if state
+                .team_sync_status
+                .as_ref()
+                .is_some_and(|status| status.saved_session_for_different_server) =>
+        {
+            "A session exists for another server · sign in to this server from the CLI".to_owned()
+        }
+        (None, _) if state.team_sync_status.is_some() => {
+            "Connected · sign in with `apex-studio-cli sync sign-in` to load teams".to_owned()
+        }
+        _ if state.team_sync_worker_active => "Connecting to the team server…".to_owned(),
+        _ => "Not connected · enter a server address and press Enter".to_owned(),
+    };
+    let mut header_lines = vec![Line::from(server_label), Line::from(connection)];
+    if let Some((message, success)) = &state.team_sync_status_message {
+        header_lines.push(Line::styled(
+            single_line(message),
+            Style::default().fg(if *success { accent } else { Color::LightRed }),
+        ));
+    }
+    frame.render_widget(
+        Paragraph::new(header_lines)
+            .block(Block::default().title("Team Sync").borders(Borders::ALL))
+            .wrap(Wrap { trim: true }),
+        sections[0],
+    );
+
+    let columns = if sections[1].width < 72 {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+            .split(sections[1])
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(66), Constraint::Percentage(34)])
+            .split(sections[1])
+    };
+    let projects = state.visible_team_sync_projects();
+    let linked = state
+        .team_sync_preview
+        .as_ref()
+        .map(|preview| {
+            preview
+                .linked_projects
+                .iter()
+                .map(|binding| binding.project_id.as_str())
+                .collect::<HashSet<_>>()
+        })
+        .unwrap_or_default();
+    let project_items = if projects.is_empty() {
+        vec![ListItem::new(if state.team_sync_preview.is_some() {
+            "No remote projects"
+        } else {
+            "Project list unavailable"
+        })]
+    } else {
+        projects
+            .iter()
+            .map(|project| {
+                let marker = if linked.contains(project.id.as_str()) {
+                    "● linked"
+                } else {
+                    "○ available"
+                };
+                ListItem::new(Line::from(vec![
+                    Span::styled(single_line(&project.name), Style::default()),
+                    Span::styled(format!("  {marker}"), Style::default().fg(muted)),
+                ]))
+            })
+            .collect()
+    };
+    let mut project_state = ListState::default().with_selected(if projects.is_empty() {
+        None
+    } else {
+        Some(state.team_sync_project_selected.min(projects.len() - 1))
+    });
+    frame.render_stateful_widget(
+        List::new(project_items)
+            .block(
+                Block::default()
+                    .title(format!("Remote projects · {}", projects.len()))
+                    .borders(Borders::ALL),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        columns[0],
+        &mut project_state,
+    );
+    let members = state.visible_team_sync_members();
+    let member_items = if members.is_empty() {
+        vec![ListItem::new(if state.team_sync_status.is_some() {
+            "No members found"
+        } else {
+            "Member list unavailable"
+        })]
+    } else {
+        members
+            .iter()
+            .map(|member| {
+                ListItem::new(vec![
+                    Line::from(single_line(&member.display_name)),
+                    Line::styled(
+                        format!(
+                            "{} · {}",
+                            single_line(&member.email),
+                            single_line(&member.role)
+                        ),
+                        Style::default().fg(muted),
+                    ),
+                ])
+            })
+            .collect()
+    };
+    let mut member_state = ListState::default().with_selected(if members.is_empty() {
+        None
+    } else {
+        Some(state.team_sync_member_selected.min(members.len() - 1))
+    });
+    frame.render_stateful_widget(
+        List::new(member_items)
+            .block(
+                Block::default()
+                    .title(format!("Team members · {}", members.len()))
+                    .borders(Borders::ALL),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        columns[1],
+        &mut member_state,
+    );
+    if state.team_sync_confirm_sync {
+        let width = area.width.saturating_sub(10).min(64);
+        let height = 7.min(area.height);
+        let overlay = ratatui::layout::Rect {
+            x: area.x + area.width.saturating_sub(width) / 2,
+            y: area.y + area.height.saturating_sub(height) / 2,
+            width,
+            height,
+        };
+        frame.render_widget(Clear, overlay);
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from("Synchronize this team's project records and files?"),
+                Line::from("Existing remote copies may be updated."),
+                Line::from(""),
+                Line::styled(
+                    "y  Start sync     n / Esc  Cancel",
+                    Style::default().fg(accent),
+                ),
+            ])
+            .block(Block::default().title("Confirm sync").borders(Borders::ALL))
+            .wrap(Wrap { trim: true }),
+            overlay,
+        );
+    }
 }
 
 fn draw_projects(
@@ -10076,7 +10833,49 @@ mod tests {
             terminal.draw(|frame| draw(frame, &state)).expect("render");
             assert_eq!(terminal.backend().buffer().area.width, width);
             assert_eq!(terminal.backend().buffer().area.height, height);
+
+            let backend = TestBackend::new(width, height);
+            let mut terminal = ratatui::Terminal::new(backend).expect("team sync test terminal");
+            let mut state = TuiState::new(Vec::new());
+            state.screen = Screen::TeamSync;
+            terminal
+                .draw(|frame| draw(frame, &state))
+                .expect("render team sync");
+            assert_eq!(terminal.backend().buffer().area.width, width);
+            assert_eq!(terminal.backend().buffer().area.height, height);
         }
+    }
+
+    #[test]
+    fn team_sync_filter_is_case_insensitive_and_search_bounds_are_unicode_safe() {
+        let mut state = TuiState::new(Vec::new());
+        state.team_sync_preview = Some(apex_application::team_sync::project::SyncPreview {
+            team: apex_application::team_sync::Team {
+                id: "team-1".into(),
+                name: "Design Team".into(),
+                role: "owner".into(),
+            },
+            remote_projects: vec![
+                apex_application::team_sync::project::RemoteProject {
+                    id: "project-1".into(),
+                    name: "Rodenauer Land".into(),
+                },
+                apex_application::team_sync::project::RemoteProject {
+                    id: "project-2".into(),
+                    name: "EMS Fleet".into(),
+                },
+            ],
+            linked_projects: Vec::new(),
+        });
+        state.team_sync_search = "ems".into();
+        assert_eq!(state.visible_team_sync_projects().len(), 1);
+        assert_eq!(state.visible_team_sync_projects()[0].id, "project-2");
+
+        let mut value = String::new();
+        append_bounded(&mut value, "Rodenauer 🚑 EMS", 13);
+        assert!(value.starts_with("Rodenauer "));
+        assert!(value.len() <= 13);
+        assert_eq!(single_line("A\nB\tC"), "ABC");
     }
 
     #[test]
