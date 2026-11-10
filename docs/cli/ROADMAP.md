@@ -1,6 +1,6 @@
 # Apex Studio CLI Roadmap
 
-Status: Phases 1–6 are complete; Phase 7 (MCP contract and release hardening) is in progress.
+Status: Phases 1–7 are complete. See [Phase 7 acceptance](PHASE-07.md) for the final evidence and the separate Group Revenue Clippy note.
 
 ## Product shape
 

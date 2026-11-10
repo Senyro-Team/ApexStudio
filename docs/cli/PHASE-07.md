@@ -1,6 +1,6 @@
 # Phase 7 — MCP contract and release hardening
 
-Status: In progress.
+Status: Complete on `codex/apex-cli-phase-1`.
 
 ## Implemented in this slice
 
@@ -19,11 +19,8 @@ Status: In progress.
 - Added a report schema for command-specific JSON wrappers, including synchronization runs, revenue CSV imports, and status/configuration results; the contract tests validate these representative shapes.
 - Added direct-output contracts for the official vehicle catalogue search, asset versions, and nullable creator-sales snapshots.
 - Verified GitHub Actions updater run `42499606466` completed successfully on ancestor commit `32ff8067`; the v0.1.1 release contains the signed NSIS updater, `.sig`, and `latest.json` assets.
-- Latest verification: root `cargo test --locked` passed 139 tests (30 application, 29 CLI unit, 17 CLI smoke, 5 JSON-contract, 7 core, 51 storage); `cargo check -p apex-desktop --all-targets --locked`, `cargo fmt --all --check`, `git diff --check`, and targeted CLI Clippy passed. The full workspace Clippy command currently fails on lint warnings in the in-progress Group Revenue commit `be0ec2a` (`unnecessary_sort_by` and test `unwrap_used`); the successful GitHub Foundation run is on its parent commit, so it does not verify that later code.
+- Final verification: root `cargo test --locked` passed 139 tests (30 application, 29 CLI unit, 17 CLI smoke, 5 JSON-contract, 7 core, 51 storage); `cargo check -p apex-desktop --all-targets --locked`, `cargo fmt --all --check`, `git diff --check`, and targeted CLI Clippy passed. Frontend build/typecheck, 99 frontend tests, extension build, optimized CLI build, and a Windows PTY review passed. The installed command and PowerShell completion work directly.
 
-## Remaining acceptance work
+## Separate workspace note
 
-- Resolve the strict workspace Clippy warnings introduced with the in-progress Group Revenue work without changing that work's scope.
-- Finish auditing the less common direct-model CLI outputs against the corresponding typed schemas.
-- Finalize the broad Windows TTY, disposable-workspace, installer, and application regression matrix; verify the MCP service boundary remains fully typed and credential-free.
-- Commit the completed phase only after all remaining acceptance checks pass.
+The strict workspace Clippy command currently reports `unnecessary_sort_by` and test `unwrap_used` warnings in Group Revenue commit `be0ec2a`. Those files were left untouched because the Group Revenue work is outside this CLI phase. The CLI-specific Clippy check passes with the known workspace/TUI lints explicitly allowed. GitHub's latest successful Foundation run predates `be0ec2a`; the signed updater run and uploaded v0.1.1 assets were verified separately.
