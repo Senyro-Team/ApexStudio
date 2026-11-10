@@ -319,3 +319,162 @@ fn malformed_cli_values_do_not_pass_strict_contract_schemas() {
         serde_json::json!({"id":"p1","name":"Missing required properties","unknown":true});
     assert!(!validator.is_valid(&invalid));
 }
+
+#[test]
+fn ad_hoc_cli_operation_reports_match_the_documented_schemas() {
+    let archive = serde_json::json!({
+        "title": "Fixture archive",
+        "assets": 2,
+        "notes": 1,
+        "bytes": 4096,
+        "kind": "project"
+    });
+    let workspace = serde_json::json!({
+        "name": "Fixture workspace",
+        "root": "C:/temp/workspace",
+        "schemaVersion": 18,
+        "managedFileCount": 2
+    });
+    let asset = serde_json::json!({
+        "id": "asset-1",
+        "projectId": "project-1",
+        "name": "Left 1.png",
+        "hash": "a".repeat(64),
+        "size": 128,
+        "importedAt": "2026-01-01T00:00:00Z",
+        "preview": null
+    });
+    let schema = read_schema("cli-reports.schema.json");
+    for (definition, value) in [
+        (
+            "action",
+            serde_json::json!({"ok":true,"message":"Completed."}),
+        ),
+        ("packagePreview", archive.clone()),
+        (
+            "packageImport",
+            serde_json::json!({"project":{"id":"project-1"},"archive":archive.clone()}),
+        ),
+        (
+            "workspaceRestore",
+            serde_json::json!({"workspace":workspace,"safetyBackup":"C:/temp/pre-restore.apexbackup","archive":archive}),
+        ),
+        (
+            "importReport",
+            serde_json::json!({"imported":[asset.clone()],"skipped":[],"failed":[]}),
+        ),
+        (
+            "postCreate",
+            serde_json::json!({"id":"post-1","draft":{"data":{},"revision":1}}),
+        ),
+        (
+            "postHandoff",
+            serde_json::json!({"ok":true,"postId":"post-1"}),
+        ),
+        ("statisticsProfile", serde_json::json!({"profileId":null})),
+        (
+            "doubleUploadSetting",
+            serde_json::json!({"doubleUpload":true}),
+        ),
+        (
+            "postSource",
+            serde_json::json!({"folderId":"folder-1","vehicle":"Falcon","state":"current"}),
+        ),
+        (
+            "publishingPreview",
+            serde_json::json!({"hash":"b".repeat(64),"name":"Preview.png","size":1024,"preview":null}),
+        ),
+        (
+            "codesExport",
+            serde_json::json!({"path":"C:/temp/codes.md","posts":2,"liveries":3,"codes":9,"missing":1}),
+        ),
+        (
+            "robloxLivery",
+            serde_json::json!({"id":"folder-1","projectId":"project-1","projectName":"Fixture","name":"Livery","vehicleId":null,"textures":2,"uploaded":1}),
+        ),
+        (
+            "robloxCredentials",
+            serde_json::json!({"configured":true,"accountId":"12345"}),
+        ),
+        (
+            "credentialsSet",
+            serde_json::json!({"configured":true,"accountId":"12345"}),
+        ),
+        (
+            "robloxBatchCreated",
+            serde_json::json!({"batchId":"batch-1","accountId":"12345","liveries":1,"textures":2,"reusedIds":1,"uploadPasses":2,"doubleUpload":true}),
+        ),
+        (
+            "liveryImport",
+            serde_json::json!({"folderId":"folder-1","name":"Livery","vehicleId":"vehicle-1","skippedEntries":1,"assets":[asset]}),
+        ),
+        (
+            "trashCreated",
+            serde_json::json!({"ok":true,"trashId":"trash-1","preview":{"name":"Livery","files":2,"folders":1}}),
+        ),
+        (
+            "statisticsSummary",
+            serde_json::json!({
+                "profileId":"12345","snapshotCount":1,"collectedAt":"2026-01-01T00:00:00Z","freshness":"fresh",
+                "previousCollectedAt":null,"creatorSalesCollectedAt":null,"creatorSalesFreshness":"never","postCount":1,
+                "views":{"total":20,"knownPosts":1},"likes":{"total":4,"knownPosts":1},"copies":{"total":null,"knownPosts":0},
+                "favourites":{"total":2,"knownPosts":1},"ratingCount":{"total":1,"knownPosts":1},"ratingAverage":4.5,
+                "changes":{"views":null,"likes":null,"copies":null,"favourites":null},
+                "topPosts":[{"bundleId":12,"title":"Fixture","views":20,"likes":4,"copies":null,"favourites":2,"ratingCount":1,"ratingAverage":4.5}]
+            }),
+        ),
+        (
+            "revenueGroupSummary",
+            serde_json::json!([{"group":{"groupId":"100","name":"Fixture"},"sales":5}]),
+        ),
+        ("revenueRemove", serde_json::json!({"removedGroupId":"100"})),
+        (
+            "revenueCsvPreview",
+            serde_json::json!({
+                "groupId":"100","files":["sales.csv"],"rows":3,"skippedRows":1,
+                "potentialDuplicates":1,"fromUtc":"2026-01-01T00:00:00Z",
+                "toUtc":"2026-01-02T00:00:00Z","warnings":[]
+            }),
+        ),
+        (
+            "revenueCsvImport",
+            serde_json::json!({
+                "preview": {
+                    "groupId":"100","files":["sales.csv"],"rows":3,"skippedRows":1,
+                    "potentialDuplicates":1,"fromUtc":"2026-01-01T00:00:00Z",
+                    "toUtc":"2026-01-02T00:00:00Z","warnings":[]
+                },
+                "import":{"inserted":2,"duplicates":1}
+            }),
+        ),
+        (
+            "revenueGroupDetails",
+            serde_json::json!({"group":{"groupId":"100"},"sales":[],"passes":[]}),
+        ),
+        (
+            "syncResolution",
+            serde_json::json!({"projectId":"project-1","resolution":"server","previousRevision":3}),
+        ),
+        (
+            "syncRun",
+            serde_json::json!({
+                "preview":{"team":{"id":"team-1"},"remoteProjects":[],"linkedProjects":[]},
+                "report":{"uploaded":1,"downloaded":0,"checked":1,"upToDate":0,"sharedLocal":0,"remoteProjects":0,"errors":[],"entries":[]}
+            }),
+        ),
+        (
+            "liveryUploads",
+            serde_json::json!({
+                "folderId":"folder-1","name":"Livery","vehicle":"Falcon","accountId":"12345",
+                "textures":[{"assetId":"asset-1","name":"Left.png","hash":"c".repeat(64),"side":"Left 1","upload":null}]
+            }),
+        ),
+    ] {
+        assert_valid(
+            &schema_definition("cli-reports.schema.json", definition),
+            &value,
+        );
+    }
+    let validator = jsonschema::validator_for(&schema).expect("compile CLI report definitions");
+    assert!(validator.is_valid(&serde_json::json!({"ok":true})));
+}
