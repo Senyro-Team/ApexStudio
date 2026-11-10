@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/group-revenue.schema.json",
+  "title": "Apex Studio Roblox Group Revenue v1 schemas",
+  "$defs": {
+    "groupsSummary": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["group", "sales"],
+        "properties": { "group": { "$ref": "#/$defs/group" }, "sales": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "groupDetails": {
+      "type": "object", "additionalProperties": false,
+      "required": ["group", "sales", "passes"],
+      "properties": {
+        "group": { "$ref": "#/$defs/group" },
+        "sales": { "type": "array", "items": { "$ref": "#/$defs/sale" } },
+        "passes": { "type": "array", "items": { "$ref": "#/$defs/pass" } }
+      }
+    },
+    "data": {
+      "type": "object", "additionalProperties": false,
+      "required": ["groups", "sales", "passes"],
+      "properties": {
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/group" } },
+        "sales": { "type": "array", "items": { "$ref": "#/$defs/sale" } },
+        "passes": { "type": "array", "items": { "$ref": "#/$defs/pass" } }
+      }
+    },
+    "group": {
+      "type": "object", "additionalProperties": false,
+      "required": ["groupId", "name", "experienceIds", "passMappings", "selectedPassIds", "apiUpdatedAt", "apiCoverageFrom", "apiCoverageTo", "apiSummary", "apiStatus", "updatedAt", "lastImportAt"],
+      "properties": {
+        "groupId": { "type": "string" }, "name": { "type": "string" },
+        "experienceIds": { "type": "array", "items": { "type": "string" } },
+        "passMappings": { "type": "object", "additionalProperties": { "type": "string" } },
+        "selectedPassIds": { "type": "array", "items": { "type": "string" } },
+        "apiUpdatedAt": { "type": ["string", "null"] }, "apiCoverageFrom": { "type": ["string", "null"] },
+        "apiCoverageTo": { "type": ["string", "null"] }, "apiSummary": {},
+        "apiStatus": { "type": ["string", "null"] }, "updatedAt": { "type": ["string", "null"] },
+        "lastImportAt": { "type": ["string", "null"] }
+      }
+    },
+    "sale": {
+      "type": "object", "additionalProperties": false,
+      "required": ["groupId", "saleFingerprint", "universeId", "assetId", "saleAt", "saleLocation", "holdStatus", "price", "revenue", "importBatchId", "externalTransactionId", "source", "dedupeConfidence", "importedAt"],
+      "properties": {
+        "groupId": { "type": "string" }, "saleFingerprint": { "type": "string" },
+        "universeId": { "type": "string" }, "assetId": { "type": "string" },
+        "saleAt": { "type": "string" }, "saleLocation": { "type": "string" },
+        "holdStatus": { "type": "string" }, "price": { "type": "integer", "minimum": 0 },
+        "revenue": { "type": "integer", "minimum": 0 }, "importBatchId": { "type": "string" },
+        "externalTransactionId": { "type": ["string", "null"] }, "source": { "type": "string" },
+        "dedupeConfidence": { "type": "string" }, "importedAt": { "type": ["string", "null"] }
+      }
+    },
+    "pass": {
+      "type": "object", "additionalProperties": false,
+      "required": ["groupId", "assetId", "universeId", "name", "source"],
+      "properties": {
+        "groupId": { "type": "string" }, "assetId": { "type": "string" },
+        "universeId": { "type": "string" }, "name": { "type": "string" }, "source": { "type": "string" }
+      }
+    },
+    "importResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["inserted", "duplicates"],
+      "properties": { "inserted": { "type": "integer", "minimum": 0 }, "duplicates": { "type": "integer", "minimum": 0 } }
+    },
+    "csvPreview": {
+      "type": "object", "additionalProperties": false,
+      "required": ["groupId", "files", "rows", "skippedRows", "potentialDuplicates", "fromUtc", "toUtc", "warnings"],
+      "properties": {
+        "groupId": { "type": "string" }, "files": { "type": "array", "items": { "type": "string" } },
+        "rows": { "type": "integer", "minimum": 0 }, "skippedRows": { "type": "integer", "minimum": 0 },
+        "potentialDuplicates": { "type": "integer", "minimum": 0 }, "fromUtc": { "type": ["string", "null"] },
+        "toUtc": { "type": ["string", "null"] }, "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "csvImport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["preview", "import"],
+      "properties": { "preview": { "$ref": "#/$defs/csvPreview" }, "import": { "$ref": "#/$defs/importResult" } }
+    }
+  }
+}

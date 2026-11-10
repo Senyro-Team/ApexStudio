@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/statistics-comparison.schema.json",
+  "title": "Apex Studio ERLCX and Roblox revenue comparison v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["startDate", "endDate", "rangeDays", "erlcxSales", "erlcxNetRobux", "erlcxGrossRobuxSnapshot", "robloxSelectedGroups", "robloxSelectedPasses", "robloxSaleRows", "robloxPrice", "robloxRevenue", "robloxCoverage", "daily"],
+  "properties": {
+    "startDate": { "type": "string" }, "endDate": { "type": "string" },
+    "rangeDays": { "type": ["integer", "null"] }, "erlcxSales": { "type": "integer", "minimum": 0 },
+    "erlcxNetRobux": { "type": "integer", "minimum": 0 }, "erlcxGrossRobuxSnapshot": { "type": "integer", "minimum": 0 },
+    "robloxSelectedGroups": { "type": "integer", "minimum": 0 }, "robloxSelectedPasses": { "type": "integer", "minimum": 0 },
+    "robloxSaleRows": { "type": "integer", "minimum": 0 }, "robloxPrice": { "type": "integer", "minimum": 0 },
+    "robloxRevenue": { "type": "integer", "minimum": 0 }, "robloxCoverage": { "type": "string" },
+    "daily": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["date", "erlcxSales", "erlcxNetRobux", "robloxPrice", "robloxRevenue"],
+        "properties": {
+          "date": { "type": "string" }, "erlcxSales": { "type": "integer", "minimum": 0 },
+          "erlcxNetRobux": { "type": "integer", "minimum": 0 },
+          "robloxPrice": { "type": ["integer", "null"], "minimum": 0 },
+          "robloxRevenue": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    }
+  }
+}
