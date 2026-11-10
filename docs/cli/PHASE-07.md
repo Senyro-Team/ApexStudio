@@ -18,11 +18,12 @@ Status: In progress.
 - Added an offline, machine-checked schema suite that validates all schema documents, representative serialized workspace/service results, and ad hoc CLI operation reports. The existing CI `cargo test --locked` runs this suite.
 - Added a report schema for command-specific JSON wrappers, including synchronization runs, revenue CSV imports, and status/configuration results; the contract tests validate these representative shapes.
 - Added direct-output contracts for the official vehicle catalogue search, asset versions, and nullable creator-sales snapshots.
-- Latest verification: root `cargo test --locked` passed 139 tests (30 application, 29 CLI unit, 17 CLI smoke, 5 JSON-contract, 7 core, 51 storage); `cargo check -p apex-desktop --all-targets --locked`, `cargo fmt --all --check`, `git diff --check`, and targeted CLI Clippy passed. Clippy explicitly allows two pre-existing warnings in Group Revenue storage and the TUI worker enum; no new warning was reported.
+- Verified GitHub Actions updater run `42499606466` completed successfully on ancestor commit `32ff8067`; the v0.1.1 release contains the signed NSIS updater, `.sig`, and `latest.json` assets.
+- Latest verification: root `cargo test --locked` passed 139 tests (30 application, 29 CLI unit, 17 CLI smoke, 5 JSON-contract, 7 core, 51 storage); `cargo check -p apex-desktop --all-targets --locked`, `cargo fmt --all --check`, `git diff --check`, and targeted CLI Clippy passed. The full workspace Clippy command currently fails on lint warnings in the in-progress Group Revenue commit `be0ec2a` (`unnecessary_sort_by` and test `unwrap_used`); the successful GitHub Foundation run is on its parent commit, so it does not verify that later code.
 
 ## Remaining acceptance work
 
-- Produce and verify a signed updater artifact through the GitHub release workflow; signing credentials are available only to Actions.
-- Finish mapping and checking the less common direct-model CLI outputs against the corresponding typed schemas.
-- Finish the broad Windows TTY, disposable-workspace, and application regression matrix; verify the MCP service boundary remains fully typed and credential-free.
+- Resolve the strict workspace Clippy warnings introduced with the in-progress Group Revenue work without changing that work's scope.
+- Finish auditing the less common direct-model CLI outputs against the corresponding typed schemas.
+- Finalize the broad Windows TTY, disposable-workspace, installer, and application regression matrix; verify the MCP service boundary remains fully typed and credential-free.
 - Commit the completed phase only after all remaining acceptance checks pass.
