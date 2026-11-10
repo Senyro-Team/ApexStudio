@@ -1,6 +1,6 @@
 # CLI Phase 5 — Statistics and Group Revenue
 
-Status: In progress. Planning recorded on 2026-11-10; public statistics, Group Revenue commands, CSV import, and interactive Group Revenue workflows implemented on 2026-11-10.
+Status: In progress. Planning recorded on 2026-11-10; public statistics, Group Revenue commands, CSV import, interactive Group Revenue workflows, and authenticated creator-sales bridge refresh implemented on 2026-11-10.
 
 ## Implemented baseline
 
@@ -10,6 +10,7 @@ Status: In progress. Planning recorded on 2026-11-10; public statistics, Group R
 - `revenue configure` creates or updates a group and its experience IDs; it preserves previously discovered pass mappings and selected passes. `revenue select-pass`, `revenue deselect-pass`, and `revenue remove` manage selections and remove group data, with destructive removal requiring `--yes` in non-interactive use.
 - `revenue import-csv` reads Creator Hub exports without changing them, supports multi-file preview, bounded UTF-8 CSV parsing, quoted fields, header aliases, UTC normalization, safe Robux values, and transaction-ID deduplication. It reports ignored rows and possible duplicates before import; writing requires interactive `YES` or explicit `--yes`. Buyer IDs and raw rows are never saved or printed.
 - The TUI has Statistics and Group Revenue pages. Statistics shows coverage-aware totals and a compact view-history chart. Group Revenue supports searching, add/edit forms, pass selection, CSV file selection and preview, and confirmed group removal.
+- `statistics refresh-sales` and the Statistics TUI `s` action request authenticated creator sales through the running desktop's existing Chrome bridge. Requests use a typed allowlist; the CLI does not read cookies or scrape pages. Refresh runs in the background in the TUI and waits for completion before exit.
 - TUI CSV imports use a preview screen before confirmation, do not touch source files, and show skipped rows and duplicate estimates. The pass list combines discovered passes, imported sale IDs, and manually mapped IDs.
 - Public profile refresh runs in a background thread in the TUI. A disposable Windows terminal review confirmed both pages render, the empty Group Revenue state is understandable, and the terminal is restored after exit.
 - Dummy-workspace smoke coverage verifies saved statistics/revenue JSON output. The profile HTTP test uses a local mock server and confirms the only requested path is `/users/roblox/{id}/bundles`.
@@ -17,7 +18,6 @@ Status: In progress. Planning recorded on 2026-11-10; public statistics, Group R
 ## Remaining in Phase 5
 
 - TUI post ranking and snapshot-to-snapshot deltas, sales-by-day charting, and time-range controls.
-- Authenticated creator-sales refresh through the existing desktop/Chrome bridge; currently CLI/TUI can only read its latest saved snapshot.
 - A unified comparison view for overlapping UTC periods and its coverage/units labels.
 - MCP-facing stable JSON contracts and a final acceptance matrix across CLI, TUI, JSON and dummy workspaces.
 

@@ -202,6 +202,21 @@ fn statistics_and_group_revenue_read_saved_snapshots_from_a_dummy_workspace() {
 }
 
 #[test]
+fn creator_sales_refresh_requires_a_configured_profile_before_opening_chrome() {
+    let temp = tempdir().expect("temporary directory");
+    let root = temp.path().join("workspace");
+    let output = cli_json(&root, &["statistics", "refresh-sales"]);
+    assert!(!output.status.success());
+    let error: serde_json::Value =
+        serde_json::from_slice(&output.stderr).expect("profile validation error JSON");
+    assert_eq!(error["error"]["code"], "statistics_profile_missing");
+    assert!(error["error"]["message"]
+        .as_str()
+        .expect("error message")
+        .contains("Set the Roblox user ID"));
+}
+
+#[test]
 fn revenue_cli_configures_groups_selects_passes_and_confirms_removal() {
     let temp = tempdir().expect("temporary directory");
     let root = temp.path().join("workspace");

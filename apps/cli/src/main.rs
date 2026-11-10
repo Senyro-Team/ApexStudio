@@ -75,23 +75,46 @@ fn request_chrome_handoff_on_pipe(
     revision: u64,
     reviewed: bool,
 ) -> Result<(), Error> {
+    let response = request_chrome_message_on_pipe(
+        pipe_name,
+        serde_json::json!({
+            "origin": "apex-cli",
+            "kind": "prepare_post",
+            "id": id,
+            "revision": revision,
+            "reviewed": reviewed,
+        }),
+    )?;
+    if let Some(message) = response["error"].as_str() {
+        return Err(Error::InvalidContent(message.to_owned()));
+    }
+    if response["ok"] != true || response["postId"].as_str() != Some(id) {
+        return Err(Error::InvalidContent(
+            "The desktop rejected the ERLCX handoff.".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn request_chrome_message(request: serde_json::Value) -> Result<serde_json::Value, Error> {
+    request_chrome_message_on_pipe(&chrome_pipe_name()?, request)
+}
+
+#[cfg(windows)]
+fn request_chrome_message_on_pipe(
+    pipe_name: &str,
+    request: serde_json::Value,
+) -> Result<serde_json::Value, Error> {
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::windows::named_pipe::ClientOptions,
     };
-
-    let request = serde_json::json!({
-        "origin": "apex-cli",
-        "kind": "prepare_post",
-        "id": id,
-        "revision": revision,
-        "reviewed": reviewed,
-    });
     let payload =
         serde_json::to_vec(&request).map_err(|error| Error::Storage(error.to_string()))?;
     if payload.is_empty() || payload.len() > 16 * 1024 {
         return Err(Error::InvalidContent(
-            "Chrome handoff request is too large.".into(),
+            "Chrome bridge request is too large.".into(),
         ));
     }
 
@@ -121,21 +144,18 @@ fn request_chrome_handoff_on_pipe(
         .map_err(|_| Error::InvalidContent("The Apex Studio browser bridge timed out.".into()))?
         .map_err(|error| Error::Storage(error.to_string()))
     })?;
-    let response: serde_json::Value =
-        serde_json::from_slice(&response).map_err(|error| Error::Storage(error.to_string()))?;
-    if let Some(message) = response["error"].as_str() {
-        return Err(Error::InvalidContent(message.to_owned()));
-    }
-    if response["ok"] != true || response["postId"].as_str() != Some(id) {
-        return Err(Error::InvalidContent(
-            "The desktop rejected the ERLCX handoff.".into(),
-        ));
-    }
-    Ok(())
+    serde_json::from_slice(&response).map_err(|error| Error::Storage(error.to_string()))
 }
 
 #[cfg(not(windows))]
 fn request_chrome_handoff(_id: &str, _revision: u64, _reviewed: bool) -> Result<(), Error> {
+    Err(Error::InvalidContent(
+        "Direct Chrome handoff is currently supported on Windows only.".into(),
+    ))
+}
+
+#[cfg(not(windows))]
+fn request_chrome_message(_request: serde_json::Value) -> Result<serde_json::Value, Error> {
     Err(Error::InvalidContent(
         "Direct Chrome handoff is currently supported on Windows only.".into(),
     ))
@@ -329,6 +349,8 @@ enum StatisticsCommand {
     Refresh,
     /// Show the latest authenticated creator-sales snapshot, if available.
     Sales,
+    /// Refresh creator sales through the running desktop and Chrome bridge.
+    RefreshSales,
 }
 
 #[derive(Debug, Subcommand)]
@@ -1511,6 +1533,77 @@ fn run_statistics_command(
                     snapshot.posts.len(),
                     snapshot.collected_at
                 );
+            }
+        }
+        StatisticsCommand::RefreshSales => {
+            app.statistics_profile()
+                .map_err(CliError::from)?
+                .ok_or_else(|| CliError {
+                    code: "statistics_profile_missing".into(),
+                    message: "Set the Roblox user ID in Apex Studio settings first.".into(),
+                })?;
+            let start = checked_chrome_message(serde_json::json!({
+                "origin": "apex-cli",
+                "kind": "refresh_creator_statistics",
+            }))
+            .map_err(CliError::from)?;
+            if start["state"] != "running" {
+                return Err(CliError {
+                    code: "creator_statistics_start_failed".into(),
+                    message: "The desktop did not start the creator dashboard refresh.".into(),
+                });
+            }
+            let started = std::time::Instant::now();
+            let timeout = std::time::Duration::from_secs(150);
+            loop {
+                if started.elapsed() > timeout {
+                    let _ = request_chrome_message(serde_json::json!({
+                        "origin": "apex-cli",
+                        "kind": "cancel_creator_statistics",
+                    }));
+                    return Err(CliError {
+                        code: "creator_statistics_timeout".into(),
+                        message:
+                            "The creator dashboard refresh timed out. Check Apex Studio and Chrome."
+                                .into(),
+                    });
+                }
+                std::thread::sleep(std::time::Duration::from_millis(900));
+                let status = checked_chrome_message(serde_json::json!({
+                    "origin": "apex-cli",
+                    "kind": "creator_statistics_status",
+                }))
+                .map_err(CliError::from)?;
+                match status["state"].as_str().unwrap_or("unknown") {
+                    "complete" => {
+                        let snapshot = app.statistics_sales().map_err(CliError::from)?;
+                        if json {
+                            print_json(&snapshot)?;
+                        } else if let Some(snapshot) = snapshot {
+                            println!(
+                                "Creator dashboard snapshot saved · {} sales · {} net Robux · {}",
+                                snapshot.data.sales, snapshot.data.net_robux, snapshot.collected_at
+                            );
+                        } else {
+                            return Err(CliError {
+                                code: "creator_statistics_snapshot_missing".into(),
+                                message: "Chrome reported success but no snapshot was saved."
+                                    .into(),
+                            });
+                        }
+                        break;
+                    }
+                    "failed" | "cancelled" | "idle" => {
+                        return Err(CliError {
+                            code: "creator_statistics_refresh_failed".into(),
+                            message: status["message"]
+                                .as_str()
+                                .unwrap_or("The browser refresh stopped without a snapshot.")
+                                .to_owned(),
+                        });
+                    }
+                    _ => {}
+                }
             }
         }
         StatisticsCommand::Sales => {
@@ -3277,6 +3370,7 @@ struct TuiState {
     statistics_history: Vec<StatisticsSnapshot>,
     statistics_sales: Option<apex_application::SalesSnapshot>,
     statistics_refresh_active: bool,
+    statistics_sales_refresh_active: bool,
     statistics_status: String,
     group_revenue: Option<RobloxGroupRevenueData>,
     revenue_group_focus: Option<String>,
@@ -3336,6 +3430,7 @@ impl TuiState {
             statistics_history: Vec::new(),
             statistics_sales: None,
             statistics_refresh_active: false,
+            statistics_sales_refresh_active: false,
             statistics_status: "Profile snapshot history".into(),
             group_revenue: None,
             revenue_group_focus: None,
@@ -3489,6 +3584,7 @@ enum TuiWorkerEvent {
     Snapshot(QueueSnapshot, usize),
     Finished(Result<QueueSnapshot, String>),
     StatisticsFinished(Result<Vec<StatisticsSnapshot>, String>),
+    CreatorSalesFinished(Result<Option<apex_application::SalesSnapshot>, String>),
 }
 
 fn start_tui_statistics_refresh(
@@ -3510,6 +3606,78 @@ fn start_tui_statistics_refresh(
             let _ = events.send(TuiWorkerEvent::StatisticsFinished(result));
         })
         .map_err(|error| Error::Storage(format!("Could not start the statistics refresh: {error}")))
+}
+
+fn start_tui_creator_sales_refresh(
+    app: ApplicationServices,
+    events: std::sync::mpsc::Sender<TuiWorkerEvent>,
+) -> Result<std::thread::JoinHandle<()>, Error> {
+    std::thread::Builder::new()
+        .name("apex-creator-sales-refresh".into())
+        .spawn(move || {
+            let result =
+                refresh_creator_sales_through_desktop(&app).map_err(|error| error.to_string());
+            let _ = events.send(TuiWorkerEvent::CreatorSalesFinished(result));
+        })
+        .map_err(|error| {
+            Error::Storage(format!(
+                "Could not start the creator sales refresh: {error}"
+            ))
+        })
+}
+
+fn refresh_creator_sales_through_desktop(
+    app: &ApplicationServices,
+) -> Result<Option<apex_application::SalesSnapshot>, Error> {
+    app.statistics_profile()?.ok_or_else(|| {
+        Error::InvalidContent("Set the Roblox user ID in Apex Studio settings first.".into())
+    })?;
+    let start = checked_chrome_message(serde_json::json!({
+        "origin": "apex-cli",
+        "kind": "refresh_creator_statistics",
+    }))?;
+    if start["state"] != "running" {
+        return Err(Error::InvalidContent(
+            "The desktop did not start the creator dashboard refresh.".into(),
+        ));
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(150);
+    loop {
+        if std::time::Instant::now() >= deadline {
+            let _ = request_chrome_message(serde_json::json!({
+                "origin": "apex-cli",
+                "kind": "cancel_creator_statistics",
+            }));
+            return Err(Error::InvalidContent(
+                "Creator dashboard refresh timed out.".into(),
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(900));
+        let status = checked_chrome_message(serde_json::json!({
+            "origin": "apex-cli",
+            "kind": "creator_statistics_status",
+        }))?;
+        match status["state"].as_str().unwrap_or("unknown") {
+            "complete" => return app.statistics_sales(),
+            "failed" | "cancelled" | "idle" => {
+                return Err(Error::InvalidContent(
+                    status["message"]
+                        .as_str()
+                        .unwrap_or("Creator dashboard refresh stopped without a snapshot.")
+                        .to_owned(),
+                ));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn checked_chrome_message(request: serde_json::Value) -> Result<serde_json::Value, Error> {
+    let response = request_chrome_message(request)?;
+    if let Some(message) = response["error"].as_str() {
+        return Err(Error::InvalidContent(message.to_owned()));
+    }
+    Ok(response)
 }
 
 fn start_tui_roblox_worker(
@@ -3637,9 +3805,33 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         Err(error) => state.statistics_status = format!("Refresh failed · {error}"),
                     }
                 }
+                TuiWorkerEvent::CreatorSalesFinished(result) => {
+                    state.statistics_sales_refresh_active = false;
+                    if let Some(handle) = statistics_thread.take() {
+                        let _ = handle.join();
+                    }
+                    match result {
+                        Ok(snapshot) => {
+                            state.statistics_sales = snapshot;
+                            state.statistics_status = state.statistics_sales.as_ref().map_or_else(
+                                || "Creator dashboard returned no snapshot".into(),
+                                |snapshot| {
+                                    format!("Creator dashboard updated · {}", snapshot.collected_at)
+                                },
+                            );
+                        }
+                        Err(error) => {
+                            state.statistics_status = format!("Sales refresh failed · {error}")
+                        }
+                    }
+                }
             }
         }
-        if quitting && !state.roblox_worker_active && !state.statistics_refresh_active {
+        if quitting
+            && !state.roblox_worker_active
+            && !state.statistics_refresh_active
+            && !state.statistics_sales_refresh_active
+        {
             break 'tui Ok(());
         }
         terminal.draw(|frame| draw(frame, &state))?;
@@ -3653,7 +3845,9 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         quitting = true;
                         state.roblox_worker_status = "Stopping · finishing active requests".into();
                         stopping.store(true, std::sync::atomic::Ordering::Relaxed);
-                    } else if state.statistics_refresh_active {
+                    } else if state.statistics_refresh_active
+                        || state.statistics_sales_refresh_active
+                    {
                         quitting = true;
                         state.statistics_status = "Finishing profile refresh before exit".into();
                     } else {
@@ -3899,7 +4093,9 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         }
                     }
                     Screen::Statistics if !state.searching && key.code == KeyCode::Char('r') => {
-                        if !state.statistics_refresh_active {
+                        if !state.statistics_refresh_active
+                            && !state.statistics_sales_refresh_active
+                        {
                             match start_tui_statistics_refresh(
                                 app.clone(),
                                 worker_events_tx.clone(),
@@ -3911,6 +4107,27 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                                 }
                                 Err(error) => {
                                     state.statistics_status = format!("Refresh failed · {error}");
+                                }
+                            }
+                        }
+                    }
+                    Screen::Statistics if !state.searching && key.code == KeyCode::Char('s') => {
+                        if !state.statistics_refresh_active
+                            && !state.statistics_sales_refresh_active
+                        {
+                            match start_tui_creator_sales_refresh(
+                                app.clone(),
+                                worker_events_tx.clone(),
+                            ) {
+                                Ok(handle) => {
+                                    statistics_thread = Some(handle);
+                                    state.statistics_sales_refresh_active = true;
+                                    state.statistics_status =
+                                        "Opening creator dashboard in Chrome…".into();
+                                }
+                                Err(error) => {
+                                    state.statistics_status =
+                                        format!("Sales refresh failed · {error}");
                                 }
                             }
                         }
@@ -6189,7 +6406,7 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
             " Tab/Enter Next field   ←/→ Edit   Ctrl+S Save   Esc Discard "
         }
         Screen::PostRemoveReview => " y Remove from draft   n/Esc Keep ",
-        Screen::Statistics => " r Refresh public ERLCX profile   Esc/q Back ",
+        Screen::Statistics => " r Refresh public ERLCX profile   s Refresh creator sales in Chrome   Esc/q Back ",
         Screen::GroupRevenue if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::GroupRevenue if regions[2].width < 64 => {
             "↑↓ Select · a Add · e Edit · p Passes\ni Import · d Remove · / Search · r Reload"
@@ -9495,6 +9712,73 @@ mod tests {
         server_thread.join().expect("join test pipe server");
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn creator_sales_refresh_uses_only_the_typed_desktop_bridge_messages() {
+        use tokio::{
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::windows::named_pipe::ServerOptions,
+        };
+
+        let pipe_name = format!(
+            r"\\.\pipe\ApexStudio-sales-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
+        );
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(0);
+        let server_name = pipe_name.clone();
+        let server_thread = std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("create test pipe runtime");
+            runtime.block_on(async move {
+                let mut server = ServerOptions::new()
+                    .first_pipe_instance(true)
+                    .reject_remote_clients(true)
+                    .create(&server_name)
+                    .expect("create test named pipe");
+                ready_tx.send(()).expect("signal pipe readiness");
+                server.connect().await.expect("accept CLI request");
+                let size = server.read_u32_le().await.expect("read request length") as usize;
+                let mut payload = vec![0; size];
+                server
+                    .read_exact(&mut payload)
+                    .await
+                    .expect("read request payload");
+                let request: serde_json::Value =
+                    serde_json::from_slice(&payload).expect("decode request");
+                assert_eq!(request["origin"], "apex-cli");
+                assert_eq!(request["kind"], "refresh_creator_statistics");
+                assert_eq!(request.as_object().map(serde_json::Map::len), Some(2));
+                let response = serde_json::to_vec(&serde_json::json!({
+                    "ok": true,
+                    "state": "running"
+                }))
+                .expect("encode response");
+                server
+                    .write_u32_le(response.len() as u32)
+                    .await
+                    .expect("write response length");
+                server
+                    .write_all(&response)
+                    .await
+                    .expect("write response payload");
+            });
+        });
+        ready_rx.recv().expect("test pipe available");
+        let response = request_chrome_message_on_pipe(
+            &pipe_name,
+            serde_json::json!({"origin":"apex-cli","kind":"refresh_creator_statistics"}),
+        )
+        .expect("send typed creator-sales request");
+        assert_eq!(response["state"], "running");
+        server_thread.join().expect("join test pipe server");
+    }
+
     #[test]
     fn phase_two_screens_render_in_compact_and_wide_terminals() {
         let project = Project {
@@ -9779,7 +10063,15 @@ mod tests {
         state.screen = Screen::RevenueCsvPath;
         handle_revenue_csv_path_key(&mut state, KeyCode::Enter).expect("prepare import preview");
         assert_eq!(state.screen, Screen::RevenueCsvReview);
-        assert_eq!(state.revenue_csv_preview.as_ref().unwrap().sales.len(), 1);
+        assert_eq!(
+            state
+                .revenue_csv_preview
+                .as_ref()
+                .expect("CSV preview should exist after preparation")
+                .sales
+                .len(),
+            1
+        );
         assert_eq!(
             app.roblox_group_revenue()
                 .expect("no pre-import write")

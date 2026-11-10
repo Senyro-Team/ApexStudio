@@ -136,10 +136,21 @@ impl BrowserBridge {
         let kind = r["kind"].as_str().unwrap_or("");
         if r["origin"].as_str() == Some("apex-cli") {
             drop(s);
-            if kind != "prepare_post" {
-                return Err(invalid("The CLI may only request an ERLCX post handoff."));
-            }
-            return self.prepare_cli_post(&r);
+            return match kind {
+                "prepare_post" => self.prepare_cli_post(&r),
+                "refresh_creator_statistics" => {
+                    let workspace = self
+                        .lock()?
+                        .workspace
+                        .clone()
+                        .ok_or_else(|| invalid("Workspace unavailable."))?;
+                    begin_statistics_refresh(self, &workspace)?;
+                    Ok(json!({"ok":true,"state":"running"}))
+                }
+                "creator_statistics_status" => self.creator_statistics_status(),
+                "cancel_creator_statistics" => self.cancel_creator_statistics(),
+                _ => Err(invalid("The CLI request is not allowed.")),
+            };
         }
         if r["origin"].as_str()
             != Some(format!("chrome-extension://{}/", s.config.extension_id).as_str())
@@ -492,6 +503,75 @@ impl BrowserBridge {
         }
         Ok(json!({"ok":true,"postId":id}))
     }
+
+    fn creator_statistics_status(&self) -> Result<Value, Error> {
+        let mut state = self.lock()?;
+        let Some(transfer) = state.statistics.as_mut() else {
+            return Ok(json!({"state":"idle","message":""}));
+        };
+        if transfer.state == "running" && Instant::now() > transfer.expires {
+            transfer.state = "failed".into();
+            transfer.message = "Chrome connection timed out. Try again.".into();
+        }
+        Ok(json!({"state":transfer.state,"message":transfer.message}))
+    }
+
+    fn cancel_creator_statistics(&self) -> Result<Value, Error> {
+        let mut state = self.lock()?;
+        let Some(transfer) = state.statistics.as_mut() else {
+            return Ok(json!({"ok":true,"state":"idle"}));
+        };
+        if transfer.state == "running" {
+            transfer.state = "cancelled".into();
+            transfer.message = "Creator statistics refresh cancelled.".into();
+        }
+        Ok(json!({"ok":true,"state":transfer.state}))
+    }
+}
+
+fn begin_statistics_refresh(bridge: &BrowserBridge, workspace: &Workspace) -> Result<(), Error> {
+    let profile_id = workspace
+        .statistics_profile()?
+        .ok_or_else(|| invalid("Set a Roblox user ID in Settings first."))?;
+    let mut state = bridge.lock()?;
+    if !state
+        .checked
+        .is_some_and(|time| time.elapsed() < Duration::from_secs(300))
+    {
+        return Err(invalid("Verify the Chrome connection in Settings first."));
+    }
+    if state.pending.is_some()
+        || state
+            .transfer
+            .as_ref()
+            .is_some_and(|transfer| Instant::now() < transfer.expires)
+        || state.statistics.as_ref().is_some_and(|transfer| {
+            transfer.state == "running" && Instant::now() < transfer.expires
+        })
+        || state.group_revenue.as_ref().is_some_and(|transfer| {
+            transfer.state == "running" && Instant::now() < transfer.expires
+        })
+    {
+        return Err(invalid("A Chrome operation is already active."));
+    }
+    let token = secret();
+    let config = state.config.clone();
+    state.statistics = Some(StatisticsTransfer {
+        token: token.clone(),
+        session: None,
+        profile_id,
+        expires: Instant::now() + Duration::from_secs(120),
+        state: "running".into(),
+        message: "Opening creator dashboard…".into(),
+    });
+    drop(state);
+    if let Err(error) = launch(&config, &format!("statistics={token}")) {
+        if let Ok(mut state) = bridge.lock() {
+            state.statistics = None;
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 #[cfg(windows)]
 fn initial_pipe(name: &str) -> Result<tokio::net::windows::named_pipe::NamedPipeServer, Error> {
@@ -869,48 +949,7 @@ pub fn start_statistics_browser(
     bridge: tauri::State<'_, BrowserBridge>,
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<(), CommandError> {
-    let id = workspace
-        .statistics_profile()?
-        .ok_or_else(|| invalid("Set a Roblox user ID in Settings first."))?;
-    let mut state = bridge.lock()?;
-    if !state
-        .checked
-        .is_some_and(|t| t.elapsed() < Duration::from_secs(300))
-    {
-        return Err(invalid("Verify the Chrome connection in Settings first.").into());
-    }
-    if state.pending.is_some()
-        || state
-            .transfer
-            .as_ref()
-            .is_some_and(|t| Instant::now() < t.expires)
-        || state
-            .statistics
-            .as_ref()
-            .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
-        || state
-            .group_revenue
-            .as_ref()
-            .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
-    {
-        return Err(invalid("A Chrome operation is already active.").into());
-    }
-    let token = secret();
-    let config = state.config.clone();
-    state.statistics = Some(StatisticsTransfer {
-        token: token.clone(),
-        session: None,
-        profile_id: id,
-        expires: Instant::now() + Duration::from_secs(120),
-        state: "running".into(),
-        message: "Opening creator dashboard…".into(),
-    });
-    drop(state);
-    if let Err(e) = launch(&config, &format!("statistics={token}")) {
-        bridge.lock()?.statistics = None;
-        return Err(e.into());
-    }
-    Ok(())
+    begin_statistics_refresh(&bridge, &workspace).map_err(Into::into)
 }
 #[tauri::command]
 pub async fn prepare_browser(
@@ -1165,5 +1204,40 @@ mod tests {
             ws.statistics_sales("123").unwrap().unwrap().data.net_robux,
             70
         );
+    }
+
+    #[test]
+    fn cli_statistics_status_and_cancel_are_allowlisted_and_do_not_expose_session_data() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = Workspace::open(directory.path()).unwrap();
+        workspace.set_statistics_profile("123").unwrap();
+        let bridge = BrowserBridge::default();
+        {
+            let mut state = bridge.lock().unwrap();
+            state.workspace = Some(workspace);
+            state.statistics = Some(StatisticsTransfer {
+                token: "private-token".into(),
+                session: Some("private-session".into()),
+                profile_id: "123".into(),
+                expires: Instant::now() + Duration::from_secs(60),
+                state: "running".into(),
+                message: "Reading creator dashboard".into(),
+            });
+        }
+        let status = bridge
+            .process(json!({"origin":"apex-cli","kind":"creator_statistics_status"}))
+            .unwrap();
+        assert_eq!(status["state"], "running");
+        assert_eq!(status["message"], "Reading creator dashboard");
+        assert!(!status.to_string().contains("private-token"));
+        assert!(!status.to_string().contains("private-session"));
+
+        let cancelled = bridge
+            .process(json!({"origin":"apex-cli","kind":"cancel_creator_statistics"}))
+            .unwrap();
+        assert_eq!(cancelled["state"], "cancelled");
+        assert!(bridge
+            .process(json!({"origin":"apex-cli","kind":"statistics_submit"}))
+            .is_err());
     }
 }
