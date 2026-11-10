@@ -878,7 +878,7 @@ mod transport_tests {
         let rt = service();
         let c = roblox::Credentials {
             account_id: "123".into(),
-            api_key: "test-only".into(),
+            api_key: "test-only".to_owned().into(),
         };
         tauri::async_runtime::block_on(async {
             for pass in 1..=2 {
@@ -918,7 +918,7 @@ mod transport_tests {
             let rt = service();
             let c = roblox::Credentials {
                 account_id: "123".into(),
-                api_key: "test-only".into(),
+                api_key: "test-only".to_owned().into(),
             };
             tauri::async_runtime::block_on(rt.execute(&ws, &j, false, "123:create", &c, &base));
             server.join().unwrap();
@@ -945,7 +945,7 @@ mod transport_tests {
         let rt = service();
         let c = roblox::Credentials {
             account_id: "123".into(),
-            api_key: "test-only".into(),
+            api_key: "test-only".to_owned().into(),
         };
         tauri::async_runtime::block_on(rt.execute(&ws, &j, false, "123:create", &c, &base));
         server.join().unwrap();

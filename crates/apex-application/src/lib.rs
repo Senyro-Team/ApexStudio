@@ -9,6 +9,13 @@ use apex_core::{
 use apex_storage::Workspace;
 use std::path::{Path, PathBuf};
 
+mod roblox_credentials;
+pub use roblox_credentials::{
+    clear_roblox_credentials, load_roblox_credentials, prepare_roblox_credentials,
+    save_roblox_credentials, store_roblox_credentials, validate_roblox_credentials,
+    RobloxCredentials, ValidatedRobloxCredentials,
+};
+
 pub use apex_storage::{
     LiveryUploads, PackagePreview, PostSourceStatus, PostSummary, QueueSnapshot,
     RobloxLiverySummary, TrashItem, TrashPreview, UploadJob,

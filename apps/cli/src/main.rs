@@ -161,6 +161,27 @@ enum RobloxCommand {
         #[arg(long)]
         disable: bool,
     },
+    /// Read or manage personal Roblox credentials in Windows Credential Manager.
+    Credentials {
+        #[command(subcommand)]
+        action: RobloxCredentialsCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum RobloxCredentialsCommand {
+    /// Show whether credentials are configured and which account is selected.
+    Status,
+    /// Validate and replace credentials; the API key is prompted without echo.
+    Set {
+        #[arg(long)]
+        account_id: String,
+    },
+    /// Remove credentials from Windows Credential Manager.
+    Clear {
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -1007,6 +1028,65 @@ fn run_roblox_command(
                 );
             }
         }
+        RobloxCommand::Credentials { action } => match action {
+            RobloxCredentialsCommand::Status => {
+                let credentials =
+                    apex_application::load_roblox_credentials().map_err(CliError::from)?;
+                if json {
+                    print_json(&serde_json::json!({
+                        "configured": credentials.is_some(),
+                        "accountId": credentials.as_ref().map(|value| &value.account_id)
+                    }))?;
+                } else if let Some(credentials) = credentials {
+                    println!(
+                        "Roblox credentials are configured for account {}.",
+                        credentials.account_id
+                    );
+                } else {
+                    println!("Roblox credentials are not configured.");
+                }
+            }
+            RobloxCredentialsCommand::Set { account_id } => {
+                if !valid_account_id(&account_id) {
+                    return Err(CliError {
+                        code: "invalid_account_id".into(),
+                        message: "Provide a valid numeric Roblox account ID.".into(),
+                    });
+                }
+                let api_key = read_hidden_secret("Roblox API key")?;
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|error| CliError {
+                        code: "runtime_unavailable".into(),
+                        message: error.to_string(),
+                    })?;
+                let credentials = runtime
+                    .block_on(apex_application::prepare_roblox_credentials(
+                        account_id.clone(),
+                        api_key,
+                    ))
+                    .map_err(CliError::from)?;
+                app.control_roblox_batch(None, "pause")
+                    .map_err(CliError::from)?;
+                apex_application::store_roblox_credentials(credentials).map_err(CliError::from)?;
+                if json {
+                    print_json(&serde_json::json!({"configured": true, "accountId": account_id}))?;
+                } else {
+                    println!("Roblox credentials validated and saved for account {account_id}. Upload batches remain paused; resume the ones you want to continue.");
+                }
+            }
+            RobloxCredentialsCommand::Clear { yes } => {
+                confirm_action("remove the saved Roblox API key", yes, json)?;
+                app.control_roblox_batch(None, "pause")
+                    .map_err(CliError::from)?;
+                apex_application::clear_roblox_credentials().map_err(CliError::from)?;
+                print_action(
+                    "Removed Roblox credentials from Windows Credential Manager.",
+                    json,
+                );
+            }
+        },
         RobloxCommand::Batch { action } => match action {
             UploadBatchCommand::Start {
                 account_id,
@@ -1147,6 +1227,85 @@ fn valid_account_id(value: &str) -> bool {
         && value.len() <= 20
         && !value.starts_with('0')
         && value.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+struct RawTerminalGuard;
+
+impl Drop for RawTerminalGuard {
+    fn drop(&mut self) {
+        let _ = crossterm::terminal::disable_raw_mode();
+    }
+}
+
+fn read_hidden_secret(prompt: &str) -> Result<String, CliError> {
+    if !io::stdin().is_terminal() || !io::stderr().is_terminal() {
+        return Err(CliError {
+            code: "interactive_input_required".into(),
+            message: "Run this command in an interactive terminal to enter the API key securely."
+                .into(),
+        });
+    }
+    eprint!("{prompt} (input hidden; Enter to submit, Esc to cancel): ");
+    io::stderr().flush().map_err(|error| CliError {
+        code: "hidden_input_failed".into(),
+        message: error.to_string(),
+    })?;
+    crossterm::terminal::enable_raw_mode().map_err(|error| CliError {
+        code: "hidden_input_failed".into(),
+        message: error.to_string(),
+    })?;
+    let _guard = RawTerminalGuard;
+    let mut secret = zeroize::Zeroizing::new(String::new());
+    loop {
+        match event::read().map_err(|error| CliError {
+            code: "hidden_input_failed".into(),
+            message: error.to_string(),
+        })? {
+            Event::Paste(value) => secret.push_str(&value),
+            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                KeyCode::Enter => {
+                    if secret.is_empty() || secret.len() > 2000 {
+                        return Err(CliError {
+                            code: "invalid_api_key_length".into(),
+                            message: "Enter a non-empty API key of at most 2000 characters.".into(),
+                        });
+                    }
+                    let value = std::mem::take(&mut *secret);
+                    drop(_guard);
+                    eprintln!();
+                    return Ok(value);
+                }
+                KeyCode::Esc => {
+                    return Err(CliError {
+                        code: "cancelled".into(),
+                        message: "No credentials were changed.".into(),
+                    });
+                }
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    return Err(CliError {
+                        code: "cancelled".into(),
+                        message: "No credentials were changed.".into(),
+                    });
+                }
+                KeyCode::Backspace => {
+                    secret.pop();
+                }
+                KeyCode::Char(value)
+                    if !key.modifiers.contains(KeyModifiers::CONTROL) && !value.is_control() =>
+                {
+                    secret.push(value);
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+        if secret.len() > 2000 {
+            return Err(CliError {
+                code: "invalid_api_key_length".into(),
+                message: "Enter an API key of at most 2000 characters.".into(),
+            });
+        }
+    }
 }
 
 fn markdown_escape(text: &str) -> String {
@@ -3716,6 +3875,21 @@ mod tests {
         state.search = "fire".into();
         assert_eq!(state.visible_posts().len(), 1);
         assert!(state.visible_upload_jobs().is_empty());
+    }
+
+    #[test]
+    fn roblox_api_key_is_not_an_accepted_command_line_argument() {
+        let error = Args::try_parse_from([
+            "apex-studio-cli",
+            "roblox",
+            "credentials",
+            "set",
+            "--account-id",
+            "123456",
+            "test-key-must-not-be-an-argument",
+        ])
+        .expect_err("credential command must reject key arguments");
+        assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
     }
 
     #[test]

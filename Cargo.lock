@@ -109,9 +109,14 @@ version = "0.1.1"
 dependencies = [
  "apex-core",
  "apex-storage",
+ "keyring",
  "pulldown-cmark",
+ "reqwest 0.12.28",
+ "serde",
  "serde_json",
  "tempfile",
+ "tokio",
+ "zeroize",
 ]
 
 [[package]]
@@ -129,6 +134,8 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
+ "zeroize",
 ]
 
 [[package]]
