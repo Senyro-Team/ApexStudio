@@ -110,6 +110,24 @@ function drawLayer(ctx: CanvasRenderingContext2D, layer: OverlayLayer) {
 }
 
 const imageCache = new Map<string, HTMLImageElement>();
+const imageLoads = new Map<string, Promise<HTMLImageElement>>();
+
+function cachedImage(src: string): Promise<HTMLImageElement> {
+  const ready = imageCache.get(src);
+  if (ready?.complete) return Promise.resolve(ready);
+  const pending = imageLoads.get(src);
+  if (pending) return pending;
+  const load = loadImage(src).then((image) => {
+    imageCache.set(src, image);
+    imageLoads.delete(src);
+    return image;
+  }).catch((error: unknown) => {
+    imageLoads.delete(src);
+    throw error;
+  });
+  imageLoads.set(src, load);
+  return load;
+}
 
 function numericValue(raw: string, minimum: number, maximum: number): number | null {
   if (!raw.trim()) return null;
@@ -126,17 +144,14 @@ async function paintCanvas(canvas: HTMLCanvasElement, width: number, height: num
   ctx.fillStyle = "#17181d";
   ctx.fillRect(0, 0, width, height);
   if (background) {
-    const image = await loadImage(background);
+    const image = await cachedImage(background);
     const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
     const drawWidth = image.naturalWidth * scale;
     const drawHeight = image.naturalHeight * scale;
     ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
   }
   const pending = layers.filter((layer) => layer.kind === "image" && layer.src && !imageCache.get(layer.src)?.complete);
-  await Promise.all(pending.map(async (layer) => {
-    const image = await loadImage(layer.src!);
-    imageCache.set(layer.src!, image);
-  }));
+  await Promise.all(pending.map((layer) => cachedImage(layer.src!)));
   layers.forEach((layer) => drawLayer(ctx, layer));
   const selected = layers.find((layer) => layer.id === selectedLayerId);
   if (selected) {
@@ -196,7 +211,7 @@ export default function OverlayStudio({
   }, []);
 
   useEffect(() => () => {
-    sourceObjectUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    sourceObjectUrls.current.forEach((url) => { URL.revokeObjectURL(url); imageCache.delete(url); });
     sourceObjectUrls.current.clear();
   }, []);
 
@@ -272,8 +287,7 @@ export default function OverlayStudio({
       const src = await readFile(file);
       const layer = layers.find((item) => item.id === selected);
       if (!layer) return;
-      const image = await loadImage(src);
-      imageCache.set(src, image);
+      const image = await cachedImage(src);
       updateLayer({ name: file.name.replace(/\.[^.]+$/, "") || "Image", src, width: Math.min(500, image.naturalWidth), height: Math.min(300, image.naturalHeight) });
       setError("");
     } catch (reason) { setError(errorMessage(reason)); }
@@ -362,6 +376,7 @@ export default function OverlayStudio({
           URL.revokeObjectURL(source.src);
           sourceObjectUrls.current.delete(source.src);
         }
+        imageCache.delete(source.src);
       });
       setSources([]);
       setNotice(`${output.length} overlay preview${output.length === 1 ? "" : "s"} added to this post.`);
@@ -396,7 +411,7 @@ export default function OverlayStudio({
             <span>{sources.length} selected · {remainingToAdd} preview slots available</span>
             <button className="primary" type="button" disabled={disabled || busy || !sources.length || remainingToAdd < 0} onClick={() => void exportBatch()}><ArrowDownToLine size={16} /> {busy ? "Preparing…" : "Apply to previews"}</button>
           </div>
-          {sources.length > 0 && <div className="overlay-source-list">{sources.map((source, index) => <div key={`${source.name}-${index}`}><img src={source.src} alt="" /><span>{source.name}</span><button className="text-button" type="button" disabled={busy} aria-label={`Remove ${source.name}`} onClick={() => { if (source.src.startsWith("blob:")) { URL.revokeObjectURL(source.src); sourceObjectUrls.current.delete(source.src); } setSources((items) => items.filter((_, i) => i !== index)); }}>Remove</button></div>)}</div>}
+          {sources.length > 0 && <div className="overlay-source-list">{sources.map((source, index) => <div key={`${source.name}-${index}`}><img src={source.src} alt="" /><span>{source.name}</span><button className="text-button" type="button" disabled={busy} aria-label={`Remove ${source.name}`} onClick={() => { if (source.src.startsWith("blob:")) { URL.revokeObjectURL(source.src); sourceObjectUrls.current.delete(source.src); } imageCache.delete(source.src); setSources((items) => items.filter((_, i) => i !== index)); }}>Remove</button></div>)}</div>}
         </div>
         <aside className="overlay-layer-panel" aria-label="Overlay layers">
           <div className="overlay-layer-heading"><strong><Layers3 size={16} /> Layers</strong><span>{layers.length}/{MAX_LAYERS}</span></div>
