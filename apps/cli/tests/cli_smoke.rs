@@ -103,7 +103,7 @@ fn statistics_and_group_revenue_read_saved_snapshots_from_a_dummy_workspace() {
         rating_average: Some(4.5),
     };
     let latest = apex_storage::StatisticsPost {
-        bundle_id: 12,
+        bundle_id: 11,
         title: "Current post".into(),
         views: Some(125),
         likes: Some(12),
@@ -118,12 +118,34 @@ fn statistics_and_group_revenue_read_saved_snapshots_from_a_dummy_workspace() {
     workspace
         .save_statistics_snapshot("2919579206", &[latest])
         .expect("latest dummy profile snapshot");
+    workspace
+        .save_statistics_sales(
+            "2919579206",
+            &apex_storage::SalesData {
+                sales: 1,
+                all_time_sales: 1,
+                net_robux: 70,
+                gross_robux: 100,
+                series: vec![apex_storage::SalesPoint {
+                    date: "2026-11-09".into(),
+                    sales: 1,
+                    net_robux: 70,
+                }],
+            },
+        )
+        .expect("seed dummy creator sales");
+    let summary = cli_json(&root, &["statistics", "summary"]);
+    assert!(summary.status.success());
+    let summary: serde_json::Value = serde_json::from_slice(&summary.stdout).expect("summary JSON");
+    assert_eq!(summary["changes"]["views"], "+25");
+    assert_eq!(summary["topPosts"][0]["bundleId"], 11);
+    assert_eq!(summary["topPosts"][0]["title"], "Current post");
     let group = apex_storage::RobloxRevenueGroup {
         group_id: "12345".into(),
         name: "Apex Dummy Group".into(),
         experience_ids: vec!["67890".into()],
         pass_mappings: BTreeMap::new(),
-        selected_pass_ids: vec![],
+        selected_pass_ids: vec!["45678".into()],
         api_updated_at: None,
         api_coverage_from: None,
         api_coverage_to: None,
@@ -198,6 +220,20 @@ fn statistics_and_group_revenue_read_saved_snapshots_from_a_dummy_workspace() {
         serde_json::from_slice(&output.stdout).expect("valid revenue JSON");
     assert_eq!(group["group"]["name"], "Apex Dummy Group");
     assert_eq!(group["sales"][0]["price"], 100);
+
+    let comparison = cli_json(&root, &["statistics", "compare", "--range", "all"]);
+    assert!(
+        comparison.status.success(),
+        "{}",
+        String::from_utf8_lossy(&comparison.stderr)
+    );
+    let comparison: serde_json::Value =
+        serde_json::from_slice(&comparison.stdout).expect("valid comparison JSON");
+    assert_eq!(comparison["startDate"], "2026-11-09");
+    assert_eq!(comparison["endDate"], "2026-11-09");
+    assert_eq!(comparison["robloxCoverage"], "observed_rows_only");
+    assert_eq!(comparison["robloxPrice"], 100);
+    assert_eq!(comparison["robloxRevenue"], 70);
     assert_eq!(group["sales"][0]["revenue"], 70);
 }
 

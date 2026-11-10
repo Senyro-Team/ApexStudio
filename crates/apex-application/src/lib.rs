@@ -21,9 +21,10 @@ pub use roblox_credentials::{
 pub use apex_storage::{
     LiveryUploads, PackagePreview, PostSourceStatus, PostSummary, QueueSnapshot,
     RobloxGroupRevenueData, RobloxGroupRevenueImportResult, RobloxGroupSale, RobloxLiverySummary,
-    RobloxRevenueGroup, SalesSnapshot, StatisticsPost, StatisticsSnapshot, TrashItem, TrashPreview,
-    UploadJob,
+    RobloxRevenueGroup, SalesData, SalesPoint, SalesSnapshot, StatisticsPost, StatisticsSnapshot,
+    TrashItem, TrashPreview, UploadJob,
 };
+pub use statistics::{compare_statistics_sales, StatisticsComparison, StatisticsComparisonDay};
 
 #[derive(Clone)]
 pub struct ApplicationServices {
@@ -67,6 +68,17 @@ impl ApplicationServices {
             Some(profile_id) => self.workspace.statistics_sales(&profile_id),
             None => Ok(None),
         }
+    }
+
+    pub fn compare_statistics_sales(
+        &self,
+        range_days: Option<i64>,
+    ) -> Result<StatisticsComparison, Error> {
+        let sales = self.statistics_sales()?.ok_or_else(|| {
+            Error::InvalidContent("No creator sales snapshot is available.".into())
+        })?;
+        let roblox = self.roblox_group_revenue()?;
+        statistics::compare_statistics_sales(&sales, &roblox, range_days)
     }
 
     pub async fn refresh_statistics(&self) -> Result<Vec<StatisticsSnapshot>, Error> {

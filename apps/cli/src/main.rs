@@ -351,6 +351,11 @@ enum StatisticsCommand {
     Sales,
     /// Refresh creator sales through the running desktop and Chrome bridge.
     RefreshSales,
+    /// Compare date-overlapping ERLCX creator sales and selected Roblox group passes.
+    Compare {
+        #[arg(long, value_enum, default_value = "30d")]
+        range: StatisticsRange,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -1623,28 +1628,103 @@ fn run_statistics_command(
                 println!("No authenticated creator-sales snapshot is available.");
             }
         }
+        StatisticsCommand::Compare { range } => {
+            let comparison = app
+                .compare_statistics_sales(range.days())
+                .map_err(CliError::from)?;
+            if json {
+                print_json(&comparison)?;
+            } else {
+                println!(
+                    "Sales overlap · {} to {}",
+                    comparison.start_date, comparison.end_date
+                );
+                println!(
+                    "ERLCX: {} sales · {} net Robux; gross {} Robux is the full snapshot window, not date-sliced",
+                    comparison.erlcx_sales,
+                    comparison.erlcx_net_robux,
+                    comparison.erlcx_gross_robux_snapshot
+                );
+                println!(
+                    "Roblox: {} selected groups · {} passes · {} rows · {} price · {} revenue",
+                    comparison.roblox_selected_groups,
+                    comparison.roblox_selected_passes,
+                    comparison.roblox_sale_rows,
+                    comparison.roblox_price,
+                    comparison.roblox_revenue
+                );
+                println!(
+                    "Roblox data coverage: {}",
+                    match comparison.roblox_coverage.as_str() {
+                        "complete_api" => "complete API coverage for selected groups",
+                        _ => "observed sale rows only; unknown days are not zero",
+                    }
+                );
+                for day in comparison.daily {
+                    println!(
+                        "{} · ERLCX {} sales / {} net · Roblox {} price / {} revenue",
+                        day.date,
+                        day.erlcx_sales,
+                        day.erlcx_net_robux,
+                        day.roblox_price
+                            .map_or("unknown".into(), |value| value.to_string()),
+                        day.roblox_revenue
+                            .map_or("unknown".into(), |value| value.to_string())
+                    );
+                }
+            }
+        }
         StatisticsCommand::Summary => {
             let profile_id = app.statistics_profile().map_err(CliError::from)?;
             let history = app.statistics_history().map_err(CliError::from)?;
             let latest = history.last();
             let posts = latest.map_or(&[][..], |snapshot| snapshot.posts.as_slice());
+            let previous = history.iter().rev().nth(1);
             let ratings = posts
                 .iter()
                 .filter_map(|post| post.rating_average)
                 .collect::<Vec<_>>();
             let rating_average =
                 (!ratings.is_empty()).then(|| ratings.iter().sum::<f64>() / ratings.len() as f64);
+            let mut ranked_posts = posts.iter().collect::<Vec<_>>();
+            ranked_posts.sort_by(|left, right| right.views.cmp(&left.views));
+            let changes = |select: fn(&StatisticsPost) -> Option<u64>| {
+                previous.and_then(|previous| {
+                    Some(format!(
+                        "{:+}",
+                        i128::from(statistics_total(posts, select)?)
+                            - i128::from(statistics_total(&previous.posts, select)?)
+                    ))
+                })
+            };
             let summary = serde_json::json!({
                 "profileId": profile_id.clone(),
                 "snapshotCount": history.len(),
                 "collectedAt": latest.map(|snapshot| snapshot.collected_at.as_str()),
+                "previousCollectedAt": previous.map(|snapshot| snapshot.collected_at.as_str()),
                 "postCount": posts.len(),
                 "views": statistics_metric(posts, |post| post.views),
                 "likes": statistics_metric(posts, |post| post.likes),
                 "copies": statistics_metric(posts, |post| post.copies),
                 "favourites": statistics_metric(posts, |post| post.favourites),
                 "ratingCount": statistics_metric(posts, |post| post.rating_count),
-                "ratingAverage": rating_average
+                "ratingAverage": rating_average,
+                "changes": {
+                    "views": changes(|post| post.views),
+                    "likes": changes(|post| post.likes),
+                    "copies": changes(|post| post.copies),
+                    "favourites": changes(|post| post.favourites)
+                },
+                "topPosts": ranked_posts.into_iter().take(10).map(|post| serde_json::json!({
+                    "bundleId": post.bundle_id,
+                    "title": post.title,
+                    "views": post.views,
+                    "likes": post.likes,
+                    "copies": post.copies,
+                    "favourites": post.favourites,
+                    "ratingCount": post.rating_count,
+                    "ratingAverage": post.rating_average
+                })).collect::<Vec<_>>()
             });
             if json {
                 print_json(&summary)?;
@@ -1674,6 +1754,28 @@ fn run_statistics_command(
                 }
                 if let Some(rating) = summary["ratingAverage"].as_f64() {
                     println!("Average rating: {rating:.2} / 5");
+                }
+                if let Some(previous) = previous {
+                    println!("Change since {}:", previous.collected_at);
+                    for name in ["views", "likes", "copies", "favourites"] {
+                        println!(
+                            "  {name}: {}",
+                            summary["changes"][name].as_str().unwrap_or("unknown")
+                        );
+                    }
+                }
+                println!("Top posts by views:");
+                for post in summary["topPosts"].as_array().into_iter().flatten() {
+                    println!(
+                        "  {} · {} views · {} likes",
+                        clean_statistics_title(post["title"].as_str().unwrap_or("Untitled post")),
+                        post["views"]
+                            .as_u64()
+                            .map_or("—".into(), |value| value.to_string()),
+                        post["likes"]
+                            .as_u64()
+                            .map_or("—".into(), |value| value.to_string())
+                    );
                 }
             }
         }
@@ -3230,6 +3332,49 @@ enum Screen {
     RobloxBatchReview,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum StatisticsPanel {
+    #[default]
+    Overview,
+    Posts,
+    Changes,
+    Sales,
+    Compare,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+enum StatisticsRange {
+    #[value(name = "7d")]
+    SevenDays,
+    #[default]
+    #[value(name = "30d")]
+    ThirtyDays,
+    #[value(name = "90d")]
+    NinetyDays,
+    #[value(name = "all")]
+    All,
+}
+
+impl StatisticsRange {
+    fn days(self) -> Option<i64> {
+        match self {
+            Self::SevenDays => Some(7),
+            Self::ThirtyDays => Some(30),
+            Self::NinetyDays => Some(90),
+            Self::All => None,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::SevenDays => "7 days",
+            Self::ThirtyDays => "30 days",
+            Self::NinetyDays => "90 days",
+            Self::All => "all history",
+        }
+    }
+}
+
 struct RevenueEditorState {
     group_id: String,
     name: String,
@@ -3372,6 +3517,8 @@ struct TuiState {
     statistics_refresh_active: bool,
     statistics_sales_refresh_active: bool,
     statistics_status: String,
+    statistics_panel: StatisticsPanel,
+    statistics_range: StatisticsRange,
     group_revenue: Option<RobloxGroupRevenueData>,
     revenue_group_focus: Option<String>,
     revenue_editor: Option<RevenueEditorState>,
@@ -3432,6 +3579,8 @@ impl TuiState {
             statistics_refresh_active: false,
             statistics_sales_refresh_active: false,
             statistics_status: "Profile snapshot history".into(),
+            statistics_panel: StatisticsPanel::Overview,
+            statistics_range: StatisticsRange::ThirtyDays,
             group_revenue: None,
             revenue_group_focus: None,
             revenue_editor: None,
@@ -3914,6 +4063,8 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                             state.screen = Screen::Statistics;
                             state.selected = 0;
                             refresh_statistics_view(&mut state, &app).map_err(io::Error::other)?;
+                            state.group_revenue =
+                                Some(app.roblox_group_revenue().map_err(io::Error::other)?);
                         }
                         KeyCode::Enter if state.selected == 7 => {
                             state.screen = Screen::GroupRevenue;
@@ -4132,6 +4283,21 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                             }
                         }
                     }
+                    Screen::Statistics if !state.searching => match key.code {
+                        KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
+                            state.screen = Screen::Home
+                        }
+                        KeyCode::Char('1') => state.statistics_panel = StatisticsPanel::Overview,
+                        KeyCode::Char('2') => state.statistics_panel = StatisticsPanel::Posts,
+                        KeyCode::Char('3') => state.statistics_panel = StatisticsPanel::Changes,
+                        KeyCode::Char('4') => state.statistics_panel = StatisticsPanel::Sales,
+                        KeyCode::Char('5') => state.statistics_panel = StatisticsPanel::Compare,
+                        KeyCode::Char('w') => state.statistics_range = StatisticsRange::SevenDays,
+                        KeyCode::Char('m') => state.statistics_range = StatisticsRange::ThirtyDays,
+                        KeyCode::Char('y') => state.statistics_range = StatisticsRange::NinetyDays,
+                        KeyCode::Char('a') => state.statistics_range = StatisticsRange::All,
+                        _ => {}
+                    },
                     Screen::Statistics => match key.code {
                         KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
                             state.screen = Screen::Home;
@@ -6406,7 +6572,10 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
             " Tab/Enter Next field   ←/→ Edit   Ctrl+S Save   Esc Discard "
         }
         Screen::PostRemoveReview => " y Remove from draft   n/Esc Keep ",
-        Screen::Statistics => " r Refresh public ERLCX profile   s Refresh creator sales in Chrome   Esc/q Back ",
+        Screen::Statistics if regions[2].width < 64 => {
+            "1 Overview · 2 Posts · 3 Changes · 4 Sales · 5 Compare\nw/m/y/a Range · r Profile · s Sales refresh · Esc Back"
+        }
+        Screen::Statistics => " 1 Overview   2 Posts   3 Changes   4 Sales   5 Compare   w/m/y/a Range   r Refresh profile   s Refresh sales   Esc Back ",
         Screen::GroupRevenue if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::GroupRevenue if regions[2].width < 64 => {
             "↑↓ Select · a Add · e Edit · p Passes\ni Import · d Remove · / Search · r Reload"
@@ -7928,68 +8097,347 @@ fn draw_statistics(
         sections[0],
     );
 
-    let mut history = state
-        .statistics_history
-        .iter()
-        .rev()
-        .take(12)
-        .collect::<Vec<_>>();
-    history.reverse();
-    let view_totals = history
-        .iter()
-        .map(|snapshot| {
-            snapshot
-                .posts
-                .iter()
-                .filter_map(|post| post.views)
-                .fold(None, |sum, value| {
-                    Some(sum.unwrap_or(0u64).saturating_add(value))
-                })
-        })
-        .collect::<Vec<_>>();
-    let max_value = view_totals
-        .iter()
-        .flatten()
-        .copied()
-        .max()
-        .unwrap_or(0)
-        .max(1);
-    let bar_width = sections[1].width.saturating_sub(24).max(1) as usize;
-    let chart_lines = history
-        .iter()
-        .zip(view_totals.iter())
-        .map(|(snapshot, total)| {
-            let date = snapshot
-                .collected_at
-                .get(0..10)
-                .unwrap_or(&snapshot.collected_at);
-            let bar_len = total.map_or(0, |value| {
-                ((value as f64 / max_value as f64) * bar_width as f64).round() as usize
-            });
-            Line::raw(format!(
-                "{date} {:<bar_width$} {}",
-                "█".repeat(bar_len.min(bar_width)),
-                total.map_or("unknown".into(), |value| value.to_string()),
-                bar_width = bar_width
-            ))
-        })
-        .collect::<Vec<_>>();
-    let chart = if chart_lines.is_empty() {
-        vec![Line::raw("No snapshots available yet.")]
-    } else {
-        chart_lines
-    };
+    let (panel_title, panel_lines) = statistics_panel_lines(
+        state,
+        sections[1].width,
+        sections[1].height.saturating_sub(2) as usize,
+    );
     frame.render_widget(
-        Paragraph::new(chart)
+        Paragraph::new(panel_lines)
             .block(
                 Block::default()
-                    .title("Views over time · total views")
+                    .title(format!(
+                        "{panel_title} · {}",
+                        state.statistics_range.label()
+                    ))
                     .borders(Borders::ALL),
             )
             .style(Style::default().fg(muted))
-            .wrap(Wrap { trim: false }),
+            .wrap(Wrap { trim: true }),
         sections[1],
     );
+}
+
+fn statistics_panel_lines(
+    state: &TuiState,
+    width: u16,
+    max_lines: usize,
+) -> (&'static str, Vec<Line<'static>>) {
+    let empty = || vec![Line::raw("No statistics available yet.")];
+    let latest = state.statistics_history.last();
+    let lines = match state.statistics_panel {
+        StatisticsPanel::Overview => {
+            let history =
+                statistics_history_in_range(&state.statistics_history, state.statistics_range);
+            if history.is_empty() {
+                empty()
+            } else {
+                let totals = history
+                    .iter()
+                    .map(|snapshot| statistics_total(&snapshot.posts, |post| post.views))
+                    .collect::<Vec<_>>();
+                let max_value = totals.iter().flatten().copied().max().unwrap_or(0).max(1);
+                let bar_width = width.saturating_sub(24).max(1) as usize;
+                history
+                    .iter()
+                    .zip(totals)
+                    .rev()
+                    .take(max_lines.min(12))
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .map(|(snapshot, total)| {
+                        let date = snapshot
+                            .collected_at
+                            .get(0..10)
+                            .unwrap_or(&snapshot.collected_at);
+                        let bar_len = total.map_or(0, |value| {
+                            ((value as f64 / max_value as f64) * bar_width as f64).round() as usize
+                        });
+                        Line::raw(format!(
+                            "{date} {:<bar_width$} {}",
+                            "█".repeat(bar_len.min(bar_width)),
+                            total.map_or("unknown".into(), |value| value.to_string()),
+                            bar_width = bar_width
+                        ))
+                    })
+                    .collect()
+            }
+        }
+        StatisticsPanel::Posts => {
+            let Some(snapshot) = latest else {
+                return ("Top posts by views", empty());
+            };
+            let mut posts = snapshot.posts.iter().collect::<Vec<_>>();
+            posts.sort_by(|left, right| right.views.cmp(&left.views));
+            let mut rows = vec![Line::styled(
+                format!("Latest snapshot · {} posts", posts.len()),
+                Style::default().add_modifier(Modifier::BOLD),
+            )];
+            rows.extend(
+                posts
+                    .into_iter()
+                    .take(max_lines.saturating_sub(1).min(10))
+                    .enumerate()
+                    .map(|(index, post)| {
+                        Line::raw(format!(
+                            "{:>2}. {:>8} views · {:>5} likes · {}",
+                            index + 1,
+                            stat_number(post.views),
+                            stat_number(post.likes),
+                            clean_statistics_title(&post.title)
+                        ))
+                    }),
+            );
+            rows
+        }
+        StatisticsPanel::Changes => {
+            if state.statistics_history.len() < 2 {
+                vec![Line::raw(
+                    "Collect a second profile snapshot to compare changes.",
+                )]
+            } else {
+                let history =
+                    statistics_history_in_range(&state.statistics_history, state.statistics_range);
+                if history.len() < 2 {
+                    vec![Line::raw("No earlier snapshot falls within this range.")]
+                } else {
+                    let previous = history[history.len() - 2];
+                    let current = history[history.len() - 1];
+                    let mut before = previous
+                        .posts
+                        .iter()
+                        .map(|post| (post.bundle_id, post))
+                        .collect::<BTreeMap<_, _>>();
+                    let mut deltas = current
+                        .posts
+                        .iter()
+                        .filter_map(|post| {
+                            let prior = before.remove(&post.bundle_id)?;
+                            let views = signed_delta(prior.views, post.views)?;
+                            Some((views, post))
+                        })
+                        .collect::<Vec<_>>();
+                    deltas.sort_by(|left, right| right.0.cmp(&left.0));
+                    let mut rows = vec![Line::raw(format!(
+                        "{} → {} · matched posts",
+                        previous.collected_at.get(0..10).unwrap_or("previous"),
+                        current.collected_at.get(0..10).unwrap_or("latest")
+                    ))];
+                    rows.extend(
+                        deltas
+                            .into_iter()
+                            .take(max_lines.saturating_sub(1).min(10))
+                            .map(|(views, post)| {
+                                Line::raw(format!(
+                                    "{views:+} views · {}",
+                                    clean_statistics_title(&post.title)
+                                ))
+                            }),
+                    );
+                    if rows.len() == 1 {
+                        rows.push(Line::raw(
+                            "No matched posts have view counts in both snapshots.",
+                        ));
+                    }
+                    rows
+                }
+            }
+        }
+        StatisticsPanel::Sales => {
+            let Some(snapshot) = &state.statistics_sales else {
+                return (
+                    "Creator sales by day",
+                    vec![Line::raw("No creator sales snapshot saved.")],
+                );
+            };
+            let points = sales_points_in_range(&snapshot.data.series, state.statistics_range);
+            if points.is_empty() {
+                vec![Line::raw("No daily sales points fall within this range.")]
+            } else {
+                let max_robux = points
+                    .iter()
+                    .map(|point| point.net_robux)
+                    .max()
+                    .unwrap_or(0)
+                    .max(1);
+                let bar_width = width.saturating_sub(36).max(1) as usize;
+                points
+                    .iter()
+                    .rev()
+                    .take(max_lines.min(31))
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .map(|point| {
+                        let bar_len = ((point.net_robux as f64 / max_robux as f64)
+                            * bar_width as f64)
+                            .round() as usize;
+                        Line::raw(format!(
+                            "{} {:<bar_width$} {} sales · {} R$",
+                            point.date,
+                            "█".repeat(bar_len.min(bar_width)),
+                            point.sales,
+                            point.net_robux,
+                            bar_width = bar_width
+                        ))
+                    })
+                    .collect()
+            }
+        }
+        StatisticsPanel::Compare => comparison_panel_lines(state, max_lines),
+    };
+    let title = match state.statistics_panel {
+        StatisticsPanel::Overview => "Views over time · total views",
+        StatisticsPanel::Posts => "Top posts by views",
+        StatisticsPanel::Changes => "View changes between snapshots",
+        StatisticsPanel::Sales => "Creator sales by day · net Robux",
+        StatisticsPanel::Compare => "ERLCX and Roblox comparison",
+    };
+    (title, lines)
+}
+
+fn statistics_history_in_range(
+    history: &[StatisticsSnapshot],
+    range: StatisticsRange,
+) -> Vec<&StatisticsSnapshot> {
+    let Some(days) = range.days() else {
+        return history.iter().collect();
+    };
+    let Some(end) = history
+        .last()
+        .and_then(|snapshot| chrono::DateTime::parse_from_rfc3339(&snapshot.collected_at).ok())
+    else {
+        return history.iter().collect();
+    };
+    let start = end - chrono::Duration::days(days);
+    history
+        .iter()
+        .filter(|snapshot| {
+            chrono::DateTime::parse_from_rfc3339(&snapshot.collected_at)
+                .is_ok_and(|collected| collected >= start)
+        })
+        .collect()
+}
+
+fn sales_points_in_range(
+    series: &[apex_application::SalesPoint],
+    range: StatisticsRange,
+) -> Vec<&apex_application::SalesPoint> {
+    let days = range.days();
+    let end = series
+        .iter()
+        .filter_map(|point| chrono::NaiveDate::parse_from_str(&point.date, "%Y-%m-%d").ok())
+        .max();
+    let start =
+        days.and_then(|days| end.map(|end| end - chrono::Duration::days(days.saturating_sub(1))));
+    let mut points = series
+        .iter()
+        .filter(|point| {
+            start.is_none_or(|start| {
+                chrono::NaiveDate::parse_from_str(&point.date, "%Y-%m-%d")
+                    .is_ok_and(|date| date >= start)
+            })
+        })
+        .collect::<Vec<_>>();
+    points.sort_by(|left, right| left.date.cmp(&right.date));
+    points
+}
+
+fn comparison_panel_lines(state: &TuiState, max_lines: usize) -> Vec<Line<'static>> {
+    let Some(erlcx) = state.statistics_sales.as_ref() else {
+        return vec![Line::raw(
+            "Refresh creator sales first with s in the Overview panel.",
+        )];
+    };
+    let Some(roblox) = state.group_revenue.as_ref() else {
+        return vec![Line::raw("No Roblox group sales data is loaded.")];
+    };
+    let comparison = match apex_application::compare_statistics_sales(
+        erlcx,
+        roblox,
+        state.statistics_range.days(),
+    ) {
+        Ok(comparison) => comparison,
+        Err(error) => return vec![Line::raw(error.to_string())],
+    };
+    let mut rows = vec![
+        Line::raw(format!(
+            "Overlap: {} to {} · {} ERLCX sales",
+            comparison.start_date, comparison.end_date, comparison.erlcx_sales
+        )),
+        Line::raw(format!(
+            "ERLCX net: {} Robux · gross {} is the full snapshot window",
+            comparison.erlcx_net_robux, comparison.erlcx_gross_robux_snapshot
+        )),
+        Line::raw(format!(
+            "Roblox: {} groups · {} passes · {} rows · {} price · {} revenue",
+            comparison.roblox_selected_groups,
+            comparison.roblox_selected_passes,
+            comparison.roblox_sale_rows,
+            comparison.roblox_price,
+            comparison.roblox_revenue
+        )),
+        Line::raw(if comparison.roblox_coverage == "complete_api" {
+            "Roblox coverage: API range overlaps for every selected group."
+        } else {
+            "Roblox coverage: observed rows only; missing days may be unknown, not zero."
+        }),
+        Line::raw("Daily · ERLCX net · Roblox price/revenue"),
+    ];
+    rows.extend(
+        comparison
+            .daily
+            .iter()
+            .rev()
+            .take(max_lines.saturating_sub(rows.len()).min(12))
+            .map(|day| {
+                Line::raw(format!(
+                    "{} · E {} / {} sales · R {} / {}",
+                    day.date.get(5..).unwrap_or(&day.date),
+                    day.erlcx_net_robux,
+                    day.erlcx_sales,
+                    day.roblox_price
+                        .map_or("unknown".into(), |value| value.to_string()),
+                    day.roblox_revenue
+                        .map_or("unknown".into(), |value| value.to_string())
+                ))
+            }),
+    );
+    rows
+}
+
+fn statistics_total(
+    posts: &[StatisticsPost],
+    select: fn(&StatisticsPost) -> Option<u64>,
+) -> Option<u64> {
+    let mut values = posts.iter().filter_map(select);
+    let first = values.next()?;
+    Some(values.fold(first, u64::saturating_add))
+}
+
+fn signed_delta(previous: Option<u64>, current: Option<u64>) -> Option<i128> {
+    Some(i128::from(current?) - i128::from(previous?))
+}
+
+fn stat_number(value: Option<u64>) -> String {
+    value.map_or("—".into(), |value| value.to_string())
+}
+
+fn clean_statistics_title(title: &str) -> String {
+    title
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn draw_group_revenue(
@@ -8936,6 +9384,172 @@ mod tests {
             assert_eq!(terminal.backend().buffer().area.width, width);
             assert_eq!(terminal.backend().buffer().area.height, height);
         }
+    }
+
+    #[test]
+    fn statistics_panels_rank_compare_and_filter_history_and_sales() {
+        let first = StatisticsSnapshot {
+            collected_at: "2026-10-01T00:00:00.000Z".into(),
+            posts: vec![StatisticsPost {
+                bundle_id: 11,
+                title: "Rescue livery".into(),
+                views: Some(12),
+                likes: Some(2),
+                copies: Some(1),
+                favourites: Some(0),
+                rating_count: Some(1),
+                rating_average: Some(5.0),
+            }],
+        };
+        let second = StatisticsSnapshot {
+            collected_at: "2026-10-25T00:00:00.000Z".into(),
+            posts: vec![
+                StatisticsPost {
+                    bundle_id: 11,
+                    title: "Rescue livery".into(),
+                    views: Some(27),
+                    likes: Some(5),
+                    copies: Some(3),
+                    favourites: Some(2),
+                    rating_count: Some(4),
+                    rating_average: Some(4.5),
+                },
+                StatisticsPost {
+                    bundle_id: 12,
+                    title: "Night patrol".into(),
+                    views: Some(9),
+                    likes: Some(1),
+                    copies: Some(0),
+                    favourites: Some(1),
+                    rating_count: Some(0),
+                    rating_average: None,
+                },
+            ],
+        };
+        let mut state = TuiState::new(Vec::new());
+        state.statistics_history = vec![first, second];
+        assert_eq!(
+            statistics_history_in_range(&state.statistics_history, StatisticsRange::SevenDays)
+                .len(),
+            1
+        );
+        state.statistics_range = StatisticsRange::All;
+
+        state.statistics_panel = StatisticsPanel::Posts;
+        let (_, ranked) = statistics_panel_lines(&state, 80, 8);
+        assert!(statistics_lines_text(&ranked).contains("Rescue livery"));
+        assert!(statistics_lines_text(&ranked).contains("Night patrol"));
+
+        state.statistics_panel = StatisticsPanel::Changes;
+        let (_, changes) = statistics_panel_lines(&state, 80, 8);
+        assert!(statistics_lines_text(&changes).contains("+15 views"));
+
+        state.statistics_sales = Some(apex_application::SalesSnapshot {
+            collected_at: "2026-10-25T00:00:00.000Z".into(),
+            data: apex_application::SalesData {
+                sales: 4,
+                all_time_sales: 20,
+                net_robux: 80,
+                gross_robux: 100,
+                series: vec![
+                    apex_application::SalesPoint {
+                        date: "2026-10-01".into(),
+                        sales: 1,
+                        net_robux: 20,
+                    },
+                    apex_application::SalesPoint {
+                        date: "2026-10-25".into(),
+                        sales: 3,
+                        net_robux: 60,
+                    },
+                ],
+            },
+        });
+        assert_eq!(
+            sales_points_in_range(
+                &state
+                    .statistics_sales
+                    .as_ref()
+                    .expect("sales fixture")
+                    .data
+                    .series,
+                StatisticsRange::SevenDays
+            )
+            .len(),
+            1
+        );
+        state.statistics_panel = StatisticsPanel::Sales;
+        let (_, sales) = statistics_panel_lines(&state, 80, 8);
+        assert!(statistics_lines_text(&sales).contains("60 R$"));
+
+        state.group_revenue = Some(RobloxGroupRevenueData {
+            groups: vec![RobloxRevenueGroup {
+                group_id: "group-1".into(),
+                name: "Apex".into(),
+                experience_ids: vec!["experience-1".into()],
+                pass_mappings: BTreeMap::new(),
+                selected_pass_ids: vec!["pass-1".into()],
+                api_updated_at: None,
+                api_coverage_from: Some("2026-10-24".into()),
+                api_coverage_to: Some("2026-10-25".into()),
+                api_summary: None,
+                api_status: Some("ok".into()),
+                updated_at: None,
+                last_import_at: None,
+            }],
+            sales: vec![apex_application::RobloxGroupSale {
+                group_id: "group-1".into(),
+                sale_fingerprint: "fingerprint".into(),
+                universe_id: "experience-1".into(),
+                asset_id: "pass-1".into(),
+                sale_at: "2026-10-25T18:00:00Z".into(),
+                sale_location: "Game".into(),
+                hold_status: "released".into(),
+                price: 100,
+                revenue: 70,
+                import_batch_id: "batch-1".into(),
+                external_transaction_id: None,
+                source: "api".into(),
+                dedupe_confidence: "exact_fields".into(),
+                imported_at: None,
+            }],
+            passes: Vec::new(),
+        });
+        state.statistics_panel = StatisticsPanel::Compare;
+        let (_, comparison) = statistics_panel_lines(&state, 80, 10);
+        let comparison = statistics_lines_text(&comparison);
+        assert!(
+            comparison.contains("2026-10-24 to 2026-10-25"),
+            "comparison output: {comparison}"
+        );
+        assert!(comparison.contains("100 price · 70 revenue"));
+        assert!(comparison.contains("API range overlaps for every selected group"));
+
+        state.screen = Screen::Statistics;
+        for width in [40, 80, 120] {
+            let backend = TestBackend::new(width, 24);
+            let mut terminal = ratatui::Terminal::new(backend).expect("statistics terminal");
+            for panel in [
+                StatisticsPanel::Overview,
+                StatisticsPanel::Posts,
+                StatisticsPanel::Changes,
+                StatisticsPanel::Sales,
+                StatisticsPanel::Compare,
+            ] {
+                state.statistics_panel = panel;
+                terminal
+                    .draw(|frame| draw(frame, &state))
+                    .expect("statistics panel renders at all widths");
+            }
+        }
+    }
+
+    fn statistics_lines_text(lines: &[Line<'_>]) -> String {
+        lines
+            .iter()
+            .flat_map(|line| line.spans.iter().map(|span| span.content.as_ref()))
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     #[test]

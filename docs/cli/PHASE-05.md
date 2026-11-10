@@ -1,6 +1,6 @@
 # CLI Phase 5 — Statistics and Group Revenue
 
-Status: In progress. Planning recorded on 2026-11-10; public statistics, Group Revenue commands, CSV import, interactive Group Revenue workflows, and authenticated creator-sales bridge refresh implemented on 2026-11-10.
+Status: In progress. Planning recorded on 2026-11-10; public statistics, Group Revenue commands, CSV import, interactive Group Revenue workflows, authenticated creator-sales bridge refresh, and detailed statistics panels implemented on 2026-11-10.
 
 ## Implemented baseline
 
@@ -11,15 +11,16 @@ Status: In progress. Planning recorded on 2026-11-10; public statistics, Group R
 - `revenue import-csv` reads Creator Hub exports without changing them, supports multi-file preview, bounded UTF-8 CSV parsing, quoted fields, header aliases, UTC normalization, safe Robux values, and transaction-ID deduplication. It reports ignored rows and possible duplicates before import; writing requires interactive `YES` or explicit `--yes`. Buyer IDs and raw rows are never saved or printed.
 - The TUI has Statistics and Group Revenue pages. Statistics shows coverage-aware totals and a compact view-history chart. Group Revenue supports searching, add/edit forms, pass selection, CSV file selection and preview, and confirmed group removal.
 - `statistics refresh-sales` and the Statistics TUI `s` action request authenticated creator sales through the running desktop's existing Chrome bridge. Requests use a typed allowlist; the CLI does not read cookies or scrape pages. Refresh runs in the background in the TUI and waits for completion before exit.
+- The Statistics TUI has Overview, Posts, Changes and Sales panels; `w/m/y/a` filters history to 7/30/90 days or all available history. Posts are ranked by views, Changes compares matching posts across the two most recent snapshots in range, and Sales charts daily net Robux from the latest authenticated snapshot.
+- `statistics summary --json` includes coverage-aware totals, aggregate deltas from the previous snapshot and the top ten posts by views. Signed deltas are strings so large values remain lossless in JSON clients.
+- `statistics compare --range 7d|30d|90d|all [--json]` uses a shared application-layer comparison contract for ERLCX creator sales and selected Roblox passes. The report restricts daily figures to overlapping UTC dates, labels Roblox `price`/`revenue` separately from ERLCX `netRobux`, and reports CSV/partial dates as observed rows rather than treating missing days as zero. ERLCX gross Robux is identified as the full snapshot window because the source exposes no per-day gross series.
 - TUI CSV imports use a preview screen before confirmation, do not touch source files, and show skipped rows and duplicate estimates. The pass list combines discovered passes, imported sale IDs, and manually mapped IDs.
 - Public profile refresh runs in a background thread in the TUI. A disposable Windows terminal review confirmed both pages render, the empty Group Revenue state is understandable, and the terminal is restored after exit.
 - Dummy-workspace smoke coverage verifies saved statistics/revenue JSON output. The profile HTTP test uses a local mock server and confirms the only requested path is `/users/roblox/{id}/bundles`.
 
 ## Remaining in Phase 5
 
-- TUI post ranking and snapshot-to-snapshot deltas, sales-by-day charting, and time-range controls.
-- A unified comparison view for overlapping UTC periods and its coverage/units labels.
-- MCP-facing stable JSON contracts and a final acceptance matrix across CLI, TUI, JSON and dummy workspaces.
+- A final acceptance matrix across CLI, TUI, JSON and dummy workspaces, including the stable JSON contracts expected by future MCP clients.
 
 ## User workflows
 
