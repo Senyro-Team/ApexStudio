@@ -9,12 +9,16 @@ license.workspace = true
 apex-core = { path = "../apex-core" }
 apex-storage = { path = "../apex-storage" }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
+futures-util = "0.3"
 httpdate = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
 pulldown-cmark = "0.13.6"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart"] }
 serde.workspace = true
 serde_json = "1"
-tokio = { version = "1", features = ["rt", "time"] }
+sha2 = "0.10"
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "sync", "time"] }
 uuid = "1"
 zeroize = "1"
 

@@ -79,9 +79,9 @@ See [Phase 5 acceptance record](PHASE-05.md#acceptance-record) for the Windows t
 
 ### Phase 6 — Team Sync (in progress)
 
-- Shared `apex-application::team_sync` service now provides API identity/status checks, Windows Credential Manager sign-in, invitation acceptance/creation, member listing/removal, and disconnect.
-- CLI commands now cover `sync check`, `status`, `sign-in`, `accept-invitation`, `invite`, `members`, `remove-member`, and `disconnect`; passwords and invitation acceptance codes use a non-echoing terminal prompt and never become command-line arguments or JSON output.
-- Remaining: move the desktop adapter onto the shared account service; add project bindings, project sync, conflict resolution and shared Roblox decal-code views to the application layer, CLI commands and interactive TUI; test the transfer flows against a local mock server.
+- The shared `apex-application::team_sync` service now owns API identity/status, owner setup, Credential Manager sessions, invitation acceptance/creation, member listing/removal, project bindings, chunked project transfer, conflict resolution, streamed livery previews and shared Roblox decal codes. The desktop Tauri module is now an adapter to those services.
+- CLI commands cover `sync check`, `setup`, `status`, `sign-in`, `accept-invitation`, `invite`, `members`, `remove-member`, `projects`, `bindings`, `link`, `unlink`, `run`, `resolve`, `codes` and `disconnect`. Sync and destructive actions show their target and require confirmation; passwords and bootstrap/invitation acceptance secrets use non-echoing prompts rather than command-line arguments or JSON output.
+- Remaining: add the Team Sync workflows to the interactive TUI, broaden mock-server coverage for auth/member/preview flows, verify CLI and desktop behavior together on Windows, and complete the Phase 6 exit gate.
 - Keep credentials in the OS credential store; show account/team/target summaries before sync or member removal.
 
 **Exit gate:** Local mock-server cases cover invite expiry, role access, offline state, project conflict, retry and shared-code reuse. No live destructive team action is part of automated verification.

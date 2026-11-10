@@ -23,11 +23,19 @@ fn team_sync_help_exposes_member_workflows_without_password_arguments() {
     let sync_help = String::from_utf8(sync_help.stdout).expect("sync help is UTF-8");
     for command in [
         "check",
+        "setup",
         "status",
         "sign-in",
         "accept-invitation",
         "invite",
         "members",
+        "projects",
+        "bindings",
+        "link",
+        "unlink",
+        "run",
+        "resolve",
+        "codes",
         "remove-member",
         "disconnect",
     ] {

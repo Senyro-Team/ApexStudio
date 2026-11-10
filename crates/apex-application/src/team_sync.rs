@@ -11,6 +11,8 @@ use serde_json::json;
 use std::{net::IpAddr, time::Duration};
 use zeroize::{Zeroize, Zeroizing};
 
+pub mod project;
+
 const CREDENTIAL_SERVICE: &str = "studio.apexdesigns.apexstudio";
 const CREDENTIAL_ACCOUNT: &str = "team-sync-session";
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
@@ -168,6 +170,12 @@ async fn response_json<T: DeserializeOwned>(response: Response) -> Result<T, Err
             "setup_unavailable" => "First-time setup is not enabled on this server.",
             "invitation_unavailable" => "This invitation is expired or has already been used.",
             "already_exists" => "An account with this email already exists.",
+            "upload_capacity_reached" => {
+                "The team server has reached its temporary upload limit. Retry synchronization after other uploads finish."
+            }
+            "blob_storage_capacity_reached" => {
+                "The team server has reached its blob storage limit. Contact its administrator."
+            }
             "authentication_required" | "invalid_session" => {
                 "Your server session has expired. Sign in again."
             }
@@ -410,6 +418,34 @@ pub async fn accept_invitation(
         "api/v1/invitations/accept",
         json!({
             "invitationToken": invitation_token.trim(),
+            "email": email.trim(),
+            "displayName": display_name.trim(),
+            "password": password.as_str(),
+        }),
+    )
+    .await
+}
+
+/// Initialize a new sync server with its one-time bootstrap credential.
+pub async fn initial_setup(
+    server_url: &str,
+    bootstrap_token: &str,
+    team_name: &str,
+    email: &str,
+    display_name: &str,
+    password: &str,
+) -> Result<ConnectionStatus, Error> {
+    let bootstrap_token = Zeroizing::new(bootstrap_token.to_owned());
+    let password = Zeroizing::new(password.to_owned());
+    let base = parse_origin(server_url)?;
+    let server = server_info(&base).await?;
+    authenticate(
+        base,
+        server,
+        "api/v1/setup",
+        json!({
+            "bootstrapToken": bootstrap_token.trim(),
+            "teamName": team_name.trim(),
             "email": email.trim(),
             "displayName": display_name.trim(),
             "password": password.as_str(),

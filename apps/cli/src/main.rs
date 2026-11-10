@@ -420,6 +420,16 @@ enum RevenueCommand {
 enum TeamSyncCommand {
     /// Check a server's identity and supported API version.
     Check { server: String },
+    /// Create the first Owner account on a server with its one-time setup key.
+    Setup {
+        server: String,
+        #[arg(long)]
+        team_name: String,
+        #[arg(long)]
+        email: String,
+        #[arg(long)]
+        display_name: String,
+    },
     /// Show the signed-in account and its teams for a server.
     Status { server: String },
     /// Sign in and store the session in Windows Credential Manager.
@@ -449,6 +459,55 @@ enum TeamSyncCommand {
         server: String,
         #[arg(long)]
         team: String,
+    },
+    /// Preview remote projects and local links for a team before synchronization.
+    Projects {
+        server: String,
+        #[arg(long)]
+        team: String,
+    },
+    /// List local projects linked to their current team-sync destination.
+    Bindings,
+    /// Share a local project with a team.
+    Link {
+        project: String,
+        server: String,
+        #[arg(long)]
+        team: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Stop synchronizing a project while retaining its local and server copies.
+    Unlink {
+        project: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Synchronize the remote project list after reviewing its target summary.
+    Run {
+        server: String,
+        #[arg(long)]
+        team: String,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Resolve a project conflict by explicitly keeping local or server data.
+    Resolve {
+        project: String,
+        #[arg(long, group = "resolution", required = true)]
+        use_server: bool,
+        #[arg(long, group = "resolution", required = true)]
+        use_local: bool,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Refresh and show Roblox decal codes shared for one local project.
+    Codes {
+        server: String,
+        #[arg(long)]
+        team: String,
+        #[arg(long)]
+        project: String,
     },
     /// Remove a member after showing the resolved account and requiring confirmation.
     RemoveMember {
@@ -864,7 +923,7 @@ fn run(args: Args) -> Result<(), CliError> {
         Some(Command::Roblox { action }) => run_roblox_command(&app, action, json)?,
         Some(Command::Statistics { action }) => run_statistics_command(&app, action, json)?,
         Some(Command::Revenue { action }) => run_revenue_command(&app, action, json)?,
-        Some(Command::Sync { action }) => run_team_sync_command(action, json)?,
+        Some(Command::Sync { action }) => run_team_sync_command(&app, action, json)?,
         Some(Command::Workspace { action: None }) => print_workspace(&app, json)?,
         Some(Command::Workspace {
             action: Some(WorkspaceCommand::Rename { name }),
@@ -1868,7 +1927,11 @@ fn statistics_summary_value(
     })
 }
 
-fn run_team_sync_command(action: TeamSyncCommand, json: bool) -> Result<(), CliError> {
+fn run_team_sync_command(
+    app: &ApplicationServices,
+    action: TeamSyncCommand,
+    json: bool,
+) -> Result<(), CliError> {
     use apex_application::team_sync as sync;
 
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -1891,6 +1954,24 @@ fn run_team_sync_command(action: TeamSyncCommand, json: bool) -> Result<(), CliE
                 println!("Origin: {}", info.origin);
                 println!("Instance: {}", info.server_instance_id);
             }
+        }
+        TeamSyncCommand::Setup {
+            server,
+            team_name,
+            email,
+            display_name,
+        } => {
+            let bootstrap = read_secret("One-time setup key: ")?;
+            let password = read_secret("Owner password: ")?;
+            let status = runtime.block_on(sync::initial_setup(
+                &server,
+                &bootstrap,
+                &team_name,
+                &email,
+                &display_name,
+                &password,
+            ))?;
+            print_sync_status(&status, json)?;
         }
         TeamSyncCommand::Status { server } => {
             let status = runtime.block_on(sync::connection_status(&server))?;
@@ -1970,6 +2051,261 @@ fn run_team_sync_command(action: TeamSyncCommand, json: bool) -> Result<(), CliE
                 }
             }
         }
+        TeamSyncCommand::Projects { server, team } => {
+            let preview = runtime
+                .block_on(sync::project::preview_sync(&server, &team, app.workspace()))
+                .map_err(sync_cli_error)?;
+            if json {
+                print_json(&preview)?;
+            } else {
+                println!("Team: {} · {}", preview.team.name, preview.team.role);
+                println!(
+                    "{} server projects · {} local projects linked",
+                    preview.remote_projects.len(),
+                    preview.linked_projects.len()
+                );
+                for project in preview.remote_projects {
+                    println!("{} · {}", project.name, project.id);
+                }
+            }
+        }
+        TeamSyncCommand::Bindings => {
+            let bindings = runtime
+                .block_on(sync::project::list_project_sync_settings(app.workspace()))
+                .map_err(sync_cli_error)?;
+            if json {
+                print_json(&bindings)?;
+            } else if bindings.is_empty() {
+                println!("No local projects are linked to a team server.");
+            } else {
+                for binding in bindings {
+                    let name = app
+                        .project(&binding.project_id)
+                        .map(|project| project.fields.name)
+                        .unwrap_or_else(|_| binding.project_id.clone());
+                    println!(
+                        "{} · {} · {} · {}",
+                        name,
+                        if binding.enabled {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        },
+                        binding.origin,
+                        binding.team_id
+                    );
+                    if !binding.message.is_empty() {
+                        println!("  {}", binding.message);
+                    }
+                }
+            }
+        }
+        TeamSyncCommand::Link {
+            project,
+            server,
+            team,
+            yes,
+        } => {
+            let local = app.project(&project).map_err(CliError::from)?;
+            let preview = runtime
+                .block_on(sync::project::preview_sync(&server, &team, app.workspace()))
+                .map_err(sync_cli_error)?;
+            if json {
+                eprintln!(
+                    "Target summary: project '{}' → team '{}' on {}.",
+                    local.fields.name, preview.team.name, preview.team.id
+                );
+            }
+            if preview.team.role == "read_only" {
+                return Err(sync_cli_error(
+                    "Read-only members cannot share local projects.".into(),
+                ));
+            }
+            confirm_action(
+                &format!(
+                    "share local project '{}' with team '{}' on {}",
+                    local.fields.name, preview.team.name, preview.team.id
+                ),
+                yes,
+                json,
+            )?;
+            let binding = runtime
+                .block_on(sync::project::set_project_sync(
+                    &project,
+                    sync::project::ProjectSyncChoice {
+                        enabled: true,
+                        server_url: server,
+                        team_id: team,
+                    },
+                    app.workspace(),
+                ))
+                .map_err(sync_cli_error)?;
+            if json {
+                print_json(&binding)?;
+            } else {
+                println!(
+                    "Project '{}' is linked to {}.",
+                    local.fields.name, preview.team.name
+                );
+            }
+        }
+        TeamSyncCommand::Unlink { project, yes } => {
+            let local = app.project(&project).map_err(CliError::from)?;
+            confirm_action(
+                &format!(
+                    "disable synchronization for '{}' while keeping both copies",
+                    local.fields.name
+                ),
+                yes,
+                json,
+            )?;
+            let binding = runtime
+                .block_on(sync::project::set_project_sync(
+                    &project,
+                    sync::project::ProjectSyncChoice {
+                        enabled: false,
+                        server_url: String::new(),
+                        team_id: String::new(),
+                    },
+                    app.workspace(),
+                ))
+                .map_err(sync_cli_error)?;
+            if json {
+                print_json(&binding)?;
+            } else {
+                println!(
+                    "Synchronization disabled for '{}'. Local and server copies were kept.",
+                    local.fields.name
+                );
+            }
+        }
+        TeamSyncCommand::Run { server, team, yes } => {
+            let preview = runtime
+                .block_on(sync::project::preview_sync(&server, &team, app.workspace()))
+                .map_err(sync_cli_error)?;
+            if !json {
+                println!("Team: {} · {}", preview.team.name, preview.team.role);
+                println!(
+                    "Target: {} remote projects; {} local projects already linked.",
+                    preview.remote_projects.len(),
+                    preview.linked_projects.len()
+                );
+                for project in &preview.remote_projects {
+                    println!("  {}", project.name);
+                }
+            } else {
+                eprintln!(
+                    "Target summary: {} remote project(s) in team '{}' on {}.",
+                    preview.remote_projects.len(),
+                    preview.team.name,
+                    preview.team.id
+                );
+            }
+            confirm_action(
+                &format!(
+                    "synchronize {} remote project(s) with team '{}'",
+                    preview.remote_projects.len(),
+                    preview.team.name
+                ),
+                yes,
+                json,
+            )?;
+            let report = runtime
+                .block_on(sync::project::sync_projects(
+                    &server,
+                    &team,
+                    app.workspace(),
+                ))
+                .map_err(sync_cli_error)?;
+            if json {
+                print_json(&serde_json::json!({ "preview": preview, "report": report }))?;
+            } else {
+                println!(
+                    "{} checked · {} uploaded · {} downloaded · {} up to date",
+                    report.checked, report.uploaded, report.downloaded, report.up_to_date
+                );
+                for entry in report.entries {
+                    println!(
+                        "{} · {} · {}",
+                        entry.status, entry.project_name, entry.message
+                    );
+                }
+            }
+        }
+        TeamSyncCommand::Resolve {
+            project,
+            use_server,
+            yes,
+            ..
+        } => {
+            let local = app.project(&project).map_err(CliError::from)?;
+            let binding = runtime
+                .block_on(sync::project::project_sync_settings(
+                    &project,
+                    app.workspace(),
+                ))
+                .map_err(sync_cli_error)?
+                .ok_or_else(|| {
+                    sync_cli_error("This project is not linked to a team server.".into())
+                })?;
+            let choice = if use_server {
+                "replace local data with the latest server snapshot"
+            } else {
+                "upload local data over the server snapshot"
+            };
+            if json {
+                eprintln!("Target summary: '{}' will {choice}.", local.fields.name);
+            }
+            confirm_action(
+                &format!(
+                    "resolve '{}' by {choice} (local edits may be replaced)",
+                    local.fields.name
+                ),
+                yes,
+                json,
+            )?;
+            runtime
+                .block_on(sync::project::resolve_project_sync(
+                    &project,
+                    use_server,
+                    app.workspace(),
+                ))
+                .map_err(sync_cli_error)?;
+            if json {
+                print_json(
+                    &serde_json::json!({ "projectId": project, "resolution": if use_server { "server" } else { "local" }, "previousRevision": binding.revision }),
+                )?;
+            } else {
+                println!("Conflict resolution completed for '{}'.", local.fields.name);
+            }
+        }
+        TeamSyncCommand::Codes {
+            server,
+            team,
+            project,
+        } => {
+            let codes = runtime
+                .block_on(sync::project::refresh_shared_decal_codes(
+                    &server,
+                    &team,
+                    &project,
+                    app.workspace(),
+                ))
+                .map_err(sync_cli_error)?;
+            if json {
+                print_json(&codes)?;
+            } else if codes.is_empty() {
+                println!("No shared Roblox decal codes are available for this project.");
+            } else {
+                for code in codes {
+                    println!(
+                        "{} · {}",
+                        code.decal_asset_id.as_deref().unwrap_or("not uploaded"),
+                        code.content_hash
+                    );
+                }
+            }
+        }
         TeamSyncCommand::RemoveMember {
             server,
             team,
@@ -1984,6 +2320,12 @@ fn run_team_sync_command(action: TeamSyncCommand, json: bool) -> Result<(), CliE
                     code: "member_not_found".into(),
                     message: "That account is not a member of the selected team.".into(),
                 })?;
+            if json {
+                eprintln!(
+                    "Target summary: remove {} ({}, {}) from team {}.",
+                    member.display_name, member.email, member.role, team
+                );
+            }
             confirm_action(
                 &format!(
                     "remove {} ({}, {}) from this team",
@@ -2001,6 +2343,13 @@ fn run_team_sync_command(action: TeamSyncCommand, json: bool) -> Result<(), CliE
         }
     }
     Ok(())
+}
+
+fn sync_cli_error(message: String) -> CliError {
+    CliError {
+        code: "team_sync_error".into(),
+        message,
+    }
 }
 
 fn print_sync_status(
