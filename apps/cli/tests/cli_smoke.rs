@@ -211,6 +211,7 @@ fn roblox_commands_show_liveries_and_queue_without_starting_network_uploads() {
         serde_json::from_slice(&liveries.stdout).expect("livery JSON");
     assert_eq!(liveries[0]["name"], "Highway Patrol");
     assert_eq!(liveries[0]["textures"], 1);
+    let livery_id = liveries[0]["id"].as_str().expect("livery ID");
 
     let queue = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
         .args([
@@ -226,6 +227,61 @@ fn roblox_commands_show_liveries_and_queue_without_starting_network_uploads() {
     let queue: serde_json::Value = serde_json::from_slice(&queue.stdout).expect("queue JSON");
     assert_eq!(queue["batches"].as_array().expect("batch list").len(), 0);
     assert_eq!(queue["jobs"].as_array().expect("job list").len(), 0);
+
+    let batch = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args([
+            "--workspace",
+            root.to_str().expect("workspace path is UTF-8"),
+            "roblox",
+            "batch",
+            "start",
+            "--account-id",
+            "123456",
+            "--livery",
+            livery_id,
+            "--yes",
+            "--json",
+        ])
+        .output()
+        .expect("create offline batch");
+    assert!(batch.status.success());
+    let batch: serde_json::Value = serde_json::from_slice(&batch.stdout).expect("batch JSON");
+    assert_eq!(batch["uploadPasses"], 2);
+    let batch_id = batch["batchId"].as_str().expect("batch ID");
+
+    let paused = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args([
+            "--workspace",
+            root.to_str().expect("workspace path is UTF-8"),
+            "roblox",
+            "batch",
+            "pause",
+            batch_id,
+            "--json",
+        ])
+        .output()
+        .expect("pause offline batch");
+    assert!(paused.status.success());
+    let workspace = Workspace::open(&root).expect("reopen workspace");
+    let snapshot = workspace.upload_snapshot().expect("queue snapshot");
+    assert_eq!(snapshot.batches[0].state, "paused");
+    assert_eq!(snapshot.jobs.len(), 1);
+
+    let double_upload = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args([
+            "--workspace",
+            root.to_str().expect("workspace path is UTF-8"),
+            "roblox",
+            "double-upload",
+            "--disable",
+            "--json",
+        ])
+        .output()
+        .expect("disable double upload");
+    assert!(double_upload.status.success());
+    let setting: serde_json::Value =
+        serde_json::from_slice(&double_upload.stdout).expect("setting JSON");
+    assert_eq!(setting["doubleUpload"], false);
 }
 
 #[test]

@@ -101,6 +101,29 @@ impl ApplicationServices {
         self.workspace.upload_snapshot()
     }
 
+    pub fn set_roblox_double_upload(&self, enabled: bool) -> Result<(), Error> {
+        self.workspace.set_roblox_double_upload(enabled)
+    }
+
+    pub fn roblox_double_upload(&self) -> Result<bool, Error> {
+        self.workspace.roblox_double_upload()
+    }
+
+    pub fn create_roblox_batch(
+        &self,
+        request_id: &str,
+        account_id: &str,
+        livery_ids: &[String],
+        force: bool,
+    ) -> Result<String, Error> {
+        self.workspace
+            .create_upload_batch(request_id, account_id, livery_ids, force)
+    }
+
+    pub fn control_roblox_batch(&self, batch_id: Option<&str>, action: &str) -> Result<(), Error> {
+        self.workspace.control_upload_batch(batch_id, action)
+    }
+
     pub fn rename_workspace(&self, name: &str) -> Result<WorkspaceInfo, Error> {
         apex_core::rename_workspace(&self.workspace, name)
     }

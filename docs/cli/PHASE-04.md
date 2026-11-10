@@ -8,11 +8,13 @@ Status: In progress.
 - `posts list|create|show|save|sources|add-images|export` provides JSON-editable global draft workflows. Saving uses the draft revision for conflict detection; adding media imports and pins PNGs through the storage service.
 - `codes export <PATH> --post <ID>...` combines up to 50 saved post snapshots into one escaped Markdown file, requires `--reviewed` for stale/missing source liveries, and refuses to overwrite files.
 - `roblox liveries --account-id <ID>` and `roblox queue` expose read-only account-specific livery coverage and persisted queue state. These commands do not start network transfers or perform startup recovery.
-- Disposable integration coverage checks multi-post Markdown output, escaping, no-overwrite, livery listing, and queue inspection without any live Roblox requests.
+- `roblox batch start` creates an explicitly confirmed durable batch; pause/resume/cancel/retry controls operate on the shared queue. The existing desktop worker handles network requests while the desktop app is running, using credentials configured in Settings.
+- `roblox double-upload --enable|--disable` changes the persisted preference used by future batches.
+- Disposable integration coverage checks multi-post Markdown output, escaping, no-overwrite, livery listing, queue creation/pause, and the double-upload preference without any live Roblox requests.
 
 ## Current limitations
 
-- Roblox credential configuration, shared queue-worker extraction/controls, and Roblox upload execution have not been implemented in the CLI yet.
+- Roblox credential configuration and an upload worker that can run without the desktop app have not been implemented in the CLI yet. A CLI-created batch is durable, but it waits for the existing desktop worker.
 - Drafts can be edited through typed JSON files; interactive selection/editing and preview image ordering in the TUI remain to be added.
 - `.apexpublish` export is available; a CLI importer and direct Chrome bridge handoff are not yet available.
 - The planned Chrome path is confirmed: request a handoff through the running desktop bridge; retain `.apexpublish` as the manual fallback.

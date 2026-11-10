@@ -149,6 +149,47 @@ enum RobloxCommand {
     },
     /// Show durable batches, upload jobs, and livery assignments.
     Queue,
+    /// Create a reviewed batch; the desktop upload worker can process it while Apex Studio is running.
+    Batch {
+        #[command(subcommand)]
+        action: UploadBatchCommand,
+    },
+    /// Show or change whether newly created Roblox batches use two upload passes.
+    DoubleUpload {
+        #[arg(long, conflicts_with = "disable")]
+        enable: bool,
+        #[arg(long)]
+        disable: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum UploadBatchCommand {
+    /// Queue one or more livery folders for a Roblox account.
+    Start {
+        #[arg(long)]
+        account_id: String,
+        #[arg(long = "livery", required = true)]
+        liveries: Vec<String>,
+        /// Upload again even when a usable account-specific ID already exists.
+        #[arg(long)]
+        reupload: bool,
+        /// Confirm network work without an interactive prompt.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Pause the selected batch or all batches.
+    Pause { id: Option<String> },
+    /// Resume the selected batch or all batches.
+    Resume { id: Option<String> },
+    /// Cancel pending work in the selected batch or all batches.
+    Cancel {
+        id: Option<String>,
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Retry failed passes in the selected batch or all batches.
+    Retry { id: Option<String> },
 }
 
 #[derive(Debug, Subcommand)]
@@ -896,7 +937,7 @@ fn run_roblox_command(
 ) -> Result<(), CliError> {
     match action {
         RobloxCommand::Liveries { account_id } => {
-            if account_id.trim().is_empty() || account_id.len() > 20 {
+            if !valid_account_id(&account_id) {
                 return Err(CliError {
                     code: "invalid_account_id".into(),
                     message: "Provide the Roblox account ID to inspect account-specific uploads."
@@ -951,8 +992,161 @@ fn run_roblox_command(
                 }
             }
         }
+        RobloxCommand::DoubleUpload { enable, disable } => {
+            if enable || disable {
+                app.set_roblox_double_upload(enable)
+                    .map_err(CliError::from)?;
+            }
+            let enabled = app.roblox_double_upload().map_err(CliError::from)?;
+            if json {
+                print_json(&serde_json::json!({"doubleUpload": enabled}))?;
+            } else {
+                println!(
+                    "Double upload is {} for newly created batches.",
+                    if enabled { "enabled" } else { "disabled" }
+                );
+            }
+        }
+        RobloxCommand::Batch { action } => match action {
+            UploadBatchCommand::Start {
+                account_id,
+                liveries,
+                reupload,
+                yes,
+            } => {
+                if !valid_account_id(&account_id) {
+                    return Err(CliError {
+                        code: "invalid_account_id".into(),
+                        message: "Provide the Roblox account ID for this batch.".into(),
+                    });
+                }
+                if liveries.is_empty() || liveries.len() > 500 {
+                    return Err(CliError {
+                        code: "invalid_livery_selection".into(),
+                        message: "Choose between 1 and 500 livery folders.".into(),
+                    });
+                }
+                let double_upload = app.roblox_double_upload().map_err(CliError::from)?;
+                let mut unique = std::collections::HashSet::new();
+                let mut selected_ids = Vec::new();
+                let mut textures = 0usize;
+                let mut reusable = 0usize;
+                for id in &liveries {
+                    if !unique.insert(id) {
+                        continue;
+                    }
+                    selected_ids.push(id.clone());
+                    let livery = app
+                        .livery_uploads(id, &account_id)
+                        .map_err(CliError::from)?;
+                    for texture in livery.textures {
+                        textures += 1;
+                        let usable = texture.upload.as_ref().is_some_and(|upload| {
+                            upload.state == "uploaded"
+                                && upload.account_id == account_id
+                                && upload.hash == texture.hash
+                                && upload.moderation != "rejected"
+                                && upload.asset_id.as_deref().is_some_and(valid_decal_id)
+                        });
+                        if usable {
+                            reusable += 1;
+                        }
+                    }
+                }
+                let selected = unique.len();
+                let uploads = if reupload {
+                    textures
+                } else {
+                    textures.saturating_sub(reusable)
+                };
+                if textures == 0 {
+                    return Err(CliError {
+                        code: "no_assigned_textures".into(),
+                        message: "The selected livery folders have no assigned textures.".into(),
+                    });
+                }
+                if uploads == 0 {
+                    print_action(
+                        "All selected textures already have reusable Roblox IDs.",
+                        json,
+                    );
+                    return Ok(());
+                }
+                let passes = uploads * if double_upload { 2 } else { 1 };
+                if !json {
+                    println!(
+                        "Review: {selected} livery/liveries, {textures} texture(s), {reusable} reusable IDs, {passes} upload pass(es)."
+                    );
+                    if reupload {
+                        println!(
+                            "Selected existing IDs will be replaced only after successful uploads."
+                        );
+                    }
+                }
+                confirm_action("start this Roblox upload batch", yes, json)?;
+                let request_id = format!(
+                    "cli-{}-{}",
+                    std::process::id(),
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_nanos())
+                        .unwrap_or_default()
+                );
+                let id = app
+                    .create_roblox_batch(&request_id, &account_id, &selected_ids, reupload)
+                    .map_err(CliError::from)?;
+                if json {
+                    print_json(&serde_json::json!({
+                        "batchId": id,
+                        "accountId": account_id,
+                        "liveries": selected,
+                        "textures": textures,
+                        "reusedIds": if reupload { 0 } else { reusable },
+                        "uploadPasses": passes,
+                        "doubleUpload": double_upload
+                    }))?;
+                } else {
+                    println!("Created batch {id}. Configure Roblox credentials in Apex Studio Settings and keep the desktop app running to process it.");
+                }
+            }
+            UploadBatchCommand::Pause { id } => {
+                app.control_roblox_batch(id.as_deref(), "pause")
+                    .map_err(CliError::from)?;
+                print_action("Paused the selected Roblox batch(es).", json);
+            }
+            UploadBatchCommand::Resume { id } => {
+                app.control_roblox_batch(id.as_deref(), "resume")
+                    .map_err(CliError::from)?;
+                print_action("Resumed the selected Roblox batch(es).", json);
+            }
+            UploadBatchCommand::Cancel { id, yes } => {
+                confirm_action("cancel pending Roblox upload work", yes, json)?;
+                app.control_roblox_batch(id.as_deref(), "cancel")
+                    .map_err(CliError::from)?;
+                print_action("Cancelled pending Roblox upload work.", json);
+            }
+            UploadBatchCommand::Retry { id } => {
+                app.control_roblox_batch(id.as_deref(), "retry")
+                    .map_err(CliError::from)?;
+                print_action("Queued failed Roblox passes for retry.", json);
+            }
+        },
     }
     Ok(())
+}
+
+fn valid_decal_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 20
+        && !value.starts_with('0')
+        && value.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn valid_account_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 20
+        && !value.starts_with('0')
+        && value.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 fn markdown_escape(text: &str) -> String {
