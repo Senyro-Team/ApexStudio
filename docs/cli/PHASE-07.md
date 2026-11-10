@@ -13,6 +13,7 @@ Status: In progress.
 - Added the CLI executable to signed updater resources and the release workflow build, so app updates refresh the command-line binary too.
 - Verified Inno first install with and without the CLI component, component removal on upgrade, and uninstall; unrelated `PATH` entries remained byte-for-byte unchanged.
 - Verified the updated release CLI in a Windows PTY against a new disposable workspace and exited cleanly.
+- Rechecked the installed `apex-studio-cli` in a fresh Windows PTY: the boxed navigation renders all modules, the selection hints are visible, and `q` exits cleanly with terminal state restored.
 - Added an offline, machine-checked schema suite that validates all schema documents, representative serialized workspace/service results, and ad hoc CLI operation reports. The existing CI `cargo test --locked` runs this suite.
 - Added a report schema for command-specific JSON wrappers, including synchronization runs, revenue CSV imports, and status/configuration results; the contract tests validate these representative shapes.
 - Added direct-output contracts for the official vehicle catalogue search, asset versions, and nullable creator-sales snapshots.
