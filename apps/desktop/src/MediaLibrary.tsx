@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, FileImage, Link2, PencilLine, Plus, Trash2, Upload, X } from "lucide-react";
 import {
   addMediaLibraryAsset,
@@ -42,37 +42,41 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
   const [teamId, setTeamId] = useState("");
   const [uploadScope, setUploadScope] = useState<"personal" | "team">("personal");
   const [selectedForUpload, setSelectedForUpload] = useState<string[]>([]);
+  const refreshSequence = useRef(0);
 
   async function refresh() {
+    const sequence = ++refreshSequence.current;
     const savedUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
     const savedTeam = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
     setServerUrl(savedUrl);
     setTeamId(savedTeam);
     const [library, projectAssets] = await Promise.all([mediaLibrary(), listAssets(null)]);
-    let combined = library;
+    if (sequence !== refreshSequence.current) return library;
+    setItems(library);
+    setAssets(projectAssets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
+    const availableIds = new Set(library.filter((item) => item.hash && !item.providerImageId && !item.isRemote).map((item) => item.id));
+    setSelectedForUpload((current) => current.filter((id) => availableIds.has(id)));
+
     if (savedUrl && savedTeam) {
-      try {
-        const shared = await syncImageLibrary(savedUrl, savedTeam);
+      void syncImageLibrary(savedUrl, savedTeam).then((shared) => {
+        if (sequence !== refreshSequence.current) return;
         const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
         const remoteItems: MediaLibraryItem[] = shared.images
           .filter((image) => !localRemoteIds.has(image.id))
           .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, folder: "", tags: [], overlayVersionGroup: null, overlayVersion: null, overlayTarget: null, ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? savedTeam : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
-        combined = [...remoteItems, ...library];
-      } catch {
+        setItems([...remoteItems, ...library]);
+      }).catch(() => {
+        if (sequence !== refreshSequence.current) return;
         setNotice("Team Image Hosting could not be reached. Local images and manual URLs are still available.");
-      }
+      });
     }
-    setItems(combined);
-    const availableIds = new Set(combined.filter((item) => item.hash && !item.providerImageId && !item.isRemote).map((item) => item.id));
-    setSelectedForUpload((current) => current.filter((id) => availableIds.has(id)));
-    setAssets(projectAssets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
-    return combined;
+    return library;
   }
   useEffect(() => {
     let active = true;
     void refresh().then(() => { if (active) setError(""); })
       .catch((reason: unknown) => { if (active) setError(errorMessage(reason)); });
-    return () => { active = false; };
+    return () => { active = false; refreshSequence.current += 1; };
   }, []);
   useEffect(() => { onBusy(busy); return () => onBusy(false); }, [busy, onBusy]);
 
@@ -203,7 +207,7 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
           <button className="primary" type="button" disabled={busy} onClick={() => { setEditing(null); setForm(blank); }}>
             <Plus size={16} aria-hidden="true" /> Add image URL
           </button>
-          <button className="secondary" type="button" disabled={busy} onClick={() => void refresh()}>Refresh library</button>
+          <button className="secondary" type="button" disabled={busy} onClick={() => { void refresh().catch((reason: unknown) => setError(errorMessage(reason))); }}>Refresh library</button>
         </div>
       </header>
       <p className="field-hint">Adding an image here does not upload it to a server. Add the public URL manually after uploading it wherever you choose.</p>
