@@ -6,6 +6,7 @@ use apex_core::{
 };
 use apex_storage::Workspace;
 use std::{
+    collections::BTreeMap,
     fs,
     path::Path,
     process::{Command, Stdio},
@@ -81,6 +82,123 @@ fn lists_dummy_projects_as_json_from_a_disposable_workspace() {
         .expect("filter dummy projects");
     assert!(filtered.status.success());
     assert_eq!(filtered.stdout, b"[]\n");
+}
+
+#[test]
+fn statistics_and_group_revenue_read_saved_snapshots_from_a_dummy_workspace() {
+    let temp = tempdir().expect("temporary directory");
+    let root = temp.path().join("workspace");
+    let workspace = Workspace::open(&root).expect("dummy workspace");
+    workspace
+        .set_statistics_profile("2919579206")
+        .expect("set dummy ERLCX profile");
+    let old = apex_storage::StatisticsPost {
+        bundle_id: 11,
+        title: "Older post".into(),
+        views: Some(100),
+        likes: Some(9),
+        copies: None,
+        favourites: Some(4),
+        rating_count: Some(2),
+        rating_average: Some(4.5),
+    };
+    let latest = apex_storage::StatisticsPost {
+        bundle_id: 12,
+        title: "Current post".into(),
+        views: Some(125),
+        likes: Some(12),
+        copies: Some(3),
+        favourites: None,
+        rating_count: Some(4),
+        rating_average: Some(4.0),
+    };
+    workspace
+        .save_statistics_snapshot("2919579206", &[old])
+        .expect("first dummy profile snapshot");
+    workspace
+        .save_statistics_snapshot("2919579206", &[latest])
+        .expect("latest dummy profile snapshot");
+    let group = apex_storage::RobloxRevenueGroup {
+        group_id: "12345".into(),
+        name: "Apex Dummy Group".into(),
+        experience_ids: vec!["67890".into()],
+        pass_mappings: BTreeMap::new(),
+        selected_pass_ids: vec![],
+        api_updated_at: None,
+        api_coverage_from: None,
+        api_coverage_to: None,
+        api_summary: None,
+        api_status: None,
+        updated_at: None,
+        last_import_at: None,
+    };
+    let sale = apex_storage::RobloxGroupSale {
+        group_id: "12345".into(),
+        sale_fingerprint: "a".repeat(64),
+        universe_id: "67890".into(),
+        asset_id: "45678".into(),
+        sale_at: "2026-11-09T12:00:00Z".into(),
+        sale_location: "Game".into(),
+        hold_status: "Released".into(),
+        price: 100,
+        revenue: 70,
+        import_batch_id: "dummy-batch".into(),
+        external_transaction_id: None,
+        source: "csv".into(),
+        dedupe_confidence: "exact_fields".into(),
+        imported_at: None,
+    };
+    workspace
+        .import_roblox_group_sales(&group, "dummy-batch", &[sale])
+        .expect("import dummy group sale");
+    drop(workspace);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args([
+            "--workspace",
+            root.to_str().expect("workspace path is UTF-8"),
+            "statistics",
+            "summary",
+            "--json",
+        ])
+        .output()
+        .expect("run statistics summary");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let summary: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid summary JSON");
+    assert_eq!(summary["profileId"], "2919579206");
+    assert_eq!(summary["snapshotCount"], 2);
+    assert_eq!(summary["postCount"], 1);
+    assert_eq!(summary["views"]["total"], 125);
+    assert_eq!(summary["views"]["knownPosts"], 1);
+    assert_eq!(summary["copies"]["knownPosts"], 1);
+    assert_eq!(summary["favourites"]["total"], serde_json::Value::Null);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_apex-studio-cli"))
+        .args([
+            "--workspace",
+            root.to_str().expect("workspace path is UTF-8"),
+            "revenue",
+            "show",
+            "12345",
+            "--json",
+        ])
+        .output()
+        .expect("run Group Revenue detail");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let group: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid revenue JSON");
+    assert_eq!(group["group"]["name"], "Apex Dummy Group");
+    assert_eq!(group["sales"][0]["price"], 100);
+    assert_eq!(group["sales"][0]["revenue"], 70);
 }
 
 #[test]

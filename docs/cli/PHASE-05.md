@@ -1,6 +1,24 @@
 # CLI Phase 5 — Statistics and Group Revenue
 
-Status: In progress. Planning recorded on 2026-11-10.
+Status: In progress. Planning recorded on 2026-11-10; public statistics and read-only Group Revenue CLI baseline implemented on 2026-11-10.
+
+## Implemented baseline
+
+- `statistics profile [--set ID]`, `statistics summary`, `statistics history`, `statistics refresh`, and `statistics sales` are available in both human-readable and `--json` output.
+- Statistics refresh uses the same typed application service as the desktop app. It requests only ERLCX's paginated public profile bundles endpoint, validates the entire result, and saves a local snapshot. No post detail pages are opened.
+- `revenue groups` and `revenue show <group_id>` expose locally stored group settings, imported sales, and discovered passes as text or JSON.
+- The TUI has Statistics and Group Revenue pages. Statistics shows coverage-aware totals and a compact view-history chart; Group Revenue supports searching configured groups and inspecting selected-pass totals.
+- Public profile refresh runs in a background thread in the TUI. A disposable Windows terminal review confirmed both pages render, the empty Group Revenue state is understandable, and the terminal is restored after exit.
+- Dummy-workspace smoke coverage verifies saved statistics/revenue JSON output. The profile HTTP test uses a local mock server and confirms the only requested path is `/users/roblox/{id}/bundles`.
+
+## Remaining in Phase 5
+
+- Group Revenue group creation/edit/removal and pass/experience configuration from CLI/TUI.
+- Robust CSV preview/import with explicit confirmation, reporting skipped/duplicate rows, and preserving source files.
+- TUI post ranking and snapshot-to-snapshot deltas, sales-by-day charting, and time-range controls.
+- Authenticated creator-sales refresh through the existing desktop/Chrome bridge; currently CLI/TUI can only read its latest saved snapshot.
+- A unified comparison view for overlapping UTC periods and its coverage/units labels.
+- MCP-facing stable JSON contracts and a final acceptance matrix across CLI, TUI, JSON and dummy workspaces.
 
 ## User workflows
 

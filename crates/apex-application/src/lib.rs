@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 mod roblox_credentials;
 pub mod roblox_upload;
+mod statistics;
 pub use roblox_credentials::{
     clear_roblox_credentials, load_roblox_credentials, prepare_roblox_credentials,
     save_roblox_credentials, store_roblox_credentials, validate_roblox_credentials,
@@ -19,7 +20,9 @@ pub use roblox_credentials::{
 
 pub use apex_storage::{
     LiveryUploads, PackagePreview, PostSourceStatus, PostSummary, QueueSnapshot,
-    RobloxLiverySummary, TrashItem, TrashPreview, UploadJob,
+    RobloxGroupRevenueData, RobloxGroupRevenueImportResult, RobloxGroupSale, RobloxLiverySummary,
+    RobloxRevenueGroup, SalesSnapshot, StatisticsPost, StatisticsSnapshot, TrashItem, TrashPreview,
+    UploadJob,
 };
 
 #[derive(Clone)]
@@ -42,6 +45,58 @@ impl ApplicationServices {
 
     pub fn workspace_info(&self) -> Result<WorkspaceInfo, Error> {
         self.workspace.info()
+    }
+
+    pub fn statistics_profile(&self) -> Result<Option<String>, Error> {
+        self.workspace.statistics_profile()
+    }
+
+    pub fn set_statistics_profile(&self, profile_id: &str) -> Result<(), Error> {
+        self.workspace.set_statistics_profile(profile_id)
+    }
+
+    pub fn statistics_history(&self) -> Result<Vec<StatisticsSnapshot>, Error> {
+        match self.workspace.statistics_profile()? {
+            Some(profile_id) => self.workspace.statistics_snapshots(&profile_id),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    pub fn statistics_sales(&self) -> Result<Option<SalesSnapshot>, Error> {
+        match self.workspace.statistics_profile()? {
+            Some(profile_id) => self.workspace.statistics_sales(&profile_id),
+            None => Ok(None),
+        }
+    }
+
+    pub async fn refresh_statistics(&self) -> Result<Vec<StatisticsSnapshot>, Error> {
+        statistics::refresh_public_profile(&self.workspace).await
+    }
+
+    pub fn roblox_group_revenue(&self) -> Result<RobloxGroupRevenueData, Error> {
+        self.workspace.roblox_group_revenue()
+    }
+
+    pub fn save_roblox_revenue_group(
+        &self,
+        group: &RobloxRevenueGroup,
+    ) -> Result<RobloxGroupRevenueData, Error> {
+        self.workspace.save_roblox_revenue_group(group)?;
+        self.workspace.roblox_group_revenue()
+    }
+
+    pub fn import_roblox_group_sales(
+        &self,
+        group: &RobloxRevenueGroup,
+        batch_id: &str,
+        sales: &[RobloxGroupSale],
+    ) -> Result<RobloxGroupRevenueImportResult, Error> {
+        self.workspace
+            .import_roblox_group_sales(group, batch_id, sales)
+    }
+
+    pub fn remove_roblox_group_revenue(&self, group_id: &str) -> Result<(), Error> {
+        self.workspace.remove_roblox_group_revenue(group_id)
     }
 
     pub fn posts(&self) -> Result<Vec<PostSummary>, Error> {

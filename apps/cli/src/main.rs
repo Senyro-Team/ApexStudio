@@ -1,5 +1,6 @@
 use apex_application::{
-    ApplicationServices, PostSummary, QueueSnapshot, RobloxLiverySummary, TrashItem, UploadJob,
+    ApplicationServices, PostSummary, QueueSnapshot, RobloxGroupRevenueData, RobloxLiverySummary,
+    StatisticsPost, StatisticsSnapshot, TrashItem, UploadJob,
 };
 use apex_core::{
     AssetBoard, Error, Note, Project, ProjectInput, PublishingDraft, PublishingImage,
@@ -209,6 +210,16 @@ enum Command {
         #[command(subcommand)]
         action: RobloxCommand,
     },
+    /// Inspect ERLCX profile metrics and locally collected history.
+    Statistics {
+        #[command(subcommand)]
+        action: StatisticsCommand,
+    },
+    /// Inspect locally stored Roblox Group Revenue data.
+    Revenue {
+        #[command(subcommand)]
+        action: RevenueCommand,
+    },
     /// Show the workspace name and storage summary.
     Workspace {
         #[command(subcommand)]
@@ -299,6 +310,31 @@ enum RobloxCommand {
         #[command(subcommand)]
         action: RobloxCredentialsCommand,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum StatisticsCommand {
+    /// Show or set the Roblox profile whose public ERLCX posts are tracked.
+    Profile {
+        #[arg(long)]
+        set: Option<String>,
+    },
+    /// Show totals from the most recent public ERLCX profile snapshot.
+    Summary,
+    /// Show locally saved public-profile snapshots.
+    History,
+    /// Fetch the public profile bundle list without opening individual posts.
+    Refresh,
+    /// Show the latest authenticated creator-sales snapshot, if available.
+    Sales,
+}
+
+#[derive(Debug, Subcommand)]
+enum RevenueCommand {
+    /// List configured Roblox groups and their imported sale counts.
+    Groups,
+    /// Show one group's settings, imported sales and discovered passes.
+    Show { group_id: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -699,6 +735,8 @@ fn run(args: Args) -> Result<(), CliError> {
         Some(Command::Posts { action }) => run_post_command(&app, action, json)?,
         Some(Command::Codes { action }) => run_code_command(&app, action, json)?,
         Some(Command::Roblox { action }) => run_roblox_command(&app, action, json)?,
+        Some(Command::Statistics { action }) => run_statistics_command(&app, action, json)?,
+        Some(Command::Revenue { action }) => run_revenue_command(&app, action, json)?,
         Some(Command::Workspace { action: None }) => print_workspace(&app, json)?,
         Some(Command::Workspace {
             action: Some(WorkspaceCommand::Rename { name }),
@@ -1372,6 +1410,243 @@ fn run_roblox_command(
                 print_action("Queued failed Roblox passes for retry.", json);
             }
         },
+    }
+    Ok(())
+}
+
+fn run_statistics_command(
+    app: &ApplicationServices,
+    action: StatisticsCommand,
+    json: bool,
+) -> Result<(), CliError> {
+    match action {
+        StatisticsCommand::Profile { set } => {
+            if let Some(profile_id) = set {
+                app.set_statistics_profile(&profile_id)
+                    .map_err(CliError::from)?;
+            }
+            let profile_id = app.statistics_profile().map_err(CliError::from)?;
+            if json {
+                print_json(&serde_json::json!({"profileId": profile_id}))?;
+            } else if let Some(profile_id) = profile_id {
+                println!("ERLCX public profile: {profile_id}");
+            } else {
+                println!("No ERLCX profile is configured. Set one with `statistics profile --set <ROBLOX_USER_ID>`. ");
+            }
+        }
+        StatisticsCommand::History => {
+            let history = app.statistics_history().map_err(CliError::from)?;
+            if json {
+                print_json(&history)?;
+            } else if history.is_empty() {
+                println!("No ERLCX profile snapshots have been collected.");
+            } else {
+                for snapshot in history {
+                    println!("{} · {} posts", snapshot.collected_at, snapshot.posts.len());
+                }
+            }
+        }
+        StatisticsCommand::Refresh => {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| CliError {
+                    code: "runtime_unavailable".into(),
+                    message: error.to_string(),
+                })?;
+            let history = runtime
+                .block_on(app.refresh_statistics())
+                .map_err(CliError::from)?;
+            if json {
+                print_json(&history)?;
+            } else if let Some(snapshot) = history.last() {
+                println!(
+                    "Saved ERLCX public profile snapshot · {} posts · {}",
+                    snapshot.posts.len(),
+                    snapshot.collected_at
+                );
+            }
+        }
+        StatisticsCommand::Sales => {
+            let sales = app.statistics_sales().map_err(CliError::from)?;
+            if json {
+                print_json(&sales)?;
+            } else if let Some(snapshot) = sales {
+                println!("Creator sales snapshot · {}", snapshot.collected_at);
+                println!(
+                    "{} sales · {} all-time · {} net Robux · {} gross Robux",
+                    snapshot.data.sales,
+                    snapshot.data.all_time_sales,
+                    snapshot.data.net_robux,
+                    snapshot.data.gross_robux
+                );
+            } else {
+                println!("No authenticated creator-sales snapshot is available.");
+            }
+        }
+        StatisticsCommand::Summary => {
+            let profile_id = app.statistics_profile().map_err(CliError::from)?;
+            let history = app.statistics_history().map_err(CliError::from)?;
+            let latest = history.last();
+            let posts = latest.map_or(&[][..], |snapshot| snapshot.posts.as_slice());
+            let ratings = posts
+                .iter()
+                .filter_map(|post| post.rating_average)
+                .collect::<Vec<_>>();
+            let rating_average =
+                (!ratings.is_empty()).then(|| ratings.iter().sum::<f64>() / ratings.len() as f64);
+            let summary = serde_json::json!({
+                "profileId": profile_id.clone(),
+                "snapshotCount": history.len(),
+                "collectedAt": latest.map(|snapshot| snapshot.collected_at.as_str()),
+                "postCount": posts.len(),
+                "views": statistics_metric(posts, |post| post.views),
+                "likes": statistics_metric(posts, |post| post.likes),
+                "copies": statistics_metric(posts, |post| post.copies),
+                "favourites": statistics_metric(posts, |post| post.favourites),
+                "ratingCount": statistics_metric(posts, |post| post.rating_count),
+                "ratingAverage": rating_average
+            });
+            if json {
+                print_json(&summary)?;
+            } else if profile_id.is_none() {
+                println!("No ERLCX profile is configured. Set one with `statistics profile --set <ROBLOX_USER_ID>`. ");
+            } else if latest.is_none() {
+                println!(
+                    "No snapshot has been collected. Run `apex-studio-cli statistics refresh` to collect one."
+                );
+            } else {
+                println!(
+                    "ERLCX public statistics · {}",
+                    summary["collectedAt"].as_str().unwrap_or("unknown time")
+                );
+                println!("Posts: {}", posts.len());
+                for name in ["views", "likes", "copies", "favourites", "ratingCount"] {
+                    let metric = &summary[name];
+                    println!(
+                        "{}: {} ({}/{} posts)",
+                        name,
+                        metric["total"]
+                            .as_u64()
+                            .map_or("—".into(), |value| value.to_string()),
+                        metric["knownPosts"].as_u64().unwrap_or(0),
+                        posts.len()
+                    );
+                }
+                if let Some(rating) = summary["ratingAverage"].as_f64() {
+                    println!("Average rating: {rating:.2} / 5");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn statistics_metric(
+    posts: &[StatisticsPost],
+    value: impl Fn(&StatisticsPost) -> Option<u64>,
+) -> serde_json::Value {
+    let values = posts.iter().filter_map(value).collect::<Vec<_>>();
+    serde_json::json!({
+        "total": (!values.is_empty()).then(|| values.iter().fold(0u64, |sum, value| sum.saturating_add(*value))),
+        "knownPosts": values.len()
+    })
+}
+
+fn run_revenue_command(
+    app: &ApplicationServices,
+    action: RevenueCommand,
+    json: bool,
+) -> Result<(), CliError> {
+    let data = app.roblox_group_revenue().map_err(CliError::from)?;
+    match action {
+        RevenueCommand::Groups => {
+            if json {
+                let groups = data
+                    .groups
+                    .iter()
+                    .map(|group| {
+                        let sales = data
+                            .sales
+                            .iter()
+                            .filter(|sale| sale.group_id == group.group_id)
+                            .count();
+                        serde_json::json!({"group": group, "sales": sales})
+                    })
+                    .collect::<Vec<_>>();
+                print_json(&groups)?;
+            } else if data.groups.is_empty() {
+                println!("No Roblox groups are configured for revenue tracking.");
+            } else {
+                for group in &data.groups {
+                    let sales = data
+                        .sales
+                        .iter()
+                        .filter(|sale| sale.group_id == group.group_id)
+                        .count();
+                    println!(
+                        "{} · {} · {} imported sales",
+                        group.name, group.group_id, sales
+                    );
+                }
+            }
+        }
+        RevenueCommand::Show { group_id } => {
+            let group = data
+                .groups
+                .iter()
+                .find(|group| group.group_id == group_id)
+                .ok_or_else(|| CliError {
+                    code: "revenue_group_not_found".into(),
+                    message: format!("No Group Revenue data exists for group {group_id}."),
+                })?;
+            let sales = data
+                .sales
+                .into_iter()
+                .filter(|sale| sale.group_id == group_id)
+                .collect::<Vec<_>>();
+            let passes = data
+                .passes
+                .into_iter()
+                .filter(|pass| pass.group_id == group_id)
+                .collect::<Vec<_>>();
+            if json {
+                print_json(&serde_json::json!({"group": group, "sales": sales, "passes": passes}))?;
+            } else {
+                let selected_passes = group
+                    .selected_pass_ids
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<HashSet<_>>();
+                let selected_sales = sales
+                    .iter()
+                    .filter(|sale| selected_passes.contains(sale.asset_id.as_str()))
+                    .collect::<Vec<_>>();
+                let gross = selected_sales
+                    .iter()
+                    .filter(|sale| sale.hold_status != "Cancelled")
+                    .fold(0u64, |sum, sale| sum.saturating_add(sale.price));
+                let revenue = selected_sales
+                    .iter()
+                    .filter(|sale| sale.hold_status != "Cancelled")
+                    .fold(0u64, |sum, sale| sum.saturating_add(sale.revenue));
+                println!("{} · group {}", group.name, group.group_id);
+                println!(
+                    "Experiences: {} · passes: {} · selected sales: {}",
+                    group.experience_ids.len(),
+                    passes.len(),
+                    selected_sales.len()
+                );
+                println!("Selected pass price total: {} Robux", gross);
+                println!("Selected pass revenue total: {} Robux", revenue);
+                if let Some(updated) = &group.api_updated_at {
+                    println!(
+                        "Roblox API refresh: {updated} · status {}",
+                        group.api_status.as_deref().unwrap_or("unknown")
+                    );
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -2569,6 +2844,8 @@ enum Screen {
     PostCodeEditor,
     PostRemoveReview,
     RobloxQueue,
+    Statistics,
+    GroupRevenue,
     RobloxCancelReview,
     RobloxLiveries,
     RobloxBatchReview,
@@ -2694,6 +2971,12 @@ struct TuiState {
     upload_queue: Option<QueueSnapshot>,
     roblox_worker_active: bool,
     roblox_worker_status: String,
+    statistics_profile: Option<String>,
+    statistics_history: Vec<StatisticsSnapshot>,
+    statistics_sales: Option<apex_application::SalesSnapshot>,
+    statistics_refresh_active: bool,
+    statistics_status: String,
+    group_revenue: Option<RobloxGroupRevenueData>,
     selected_batch: usize,
     queue_batches_focused: bool,
     cancel_batch: Option<String>,
@@ -2741,6 +3024,12 @@ impl TuiState {
             upload_queue: None,
             roblox_worker_active: false,
             roblox_worker_status: "Stopped".into(),
+            statistics_profile: None,
+            statistics_history: Vec::new(),
+            statistics_sales: None,
+            statistics_refresh_active: false,
+            statistics_status: "Profile snapshot history".into(),
+            group_revenue: None,
             selected_batch: 0,
             queue_batches_focused: true,
             cancel_batch: None,
@@ -2826,11 +3115,46 @@ impl TuiState {
             })
             .collect()
     }
+
+    fn visible_revenue_groups(&self) -> Vec<&apex_application::RobloxRevenueGroup> {
+        let query = self.search.to_lowercase();
+        self.group_revenue
+            .iter()
+            .flat_map(|data| data.groups.iter())
+            .filter(|group| {
+                query.is_empty()
+                    || group.name.to_lowercase().contains(&query)
+                    || group.group_id.to_lowercase().contains(&query)
+            })
+            .collect()
+    }
 }
 
 enum TuiWorkerEvent {
     Snapshot(QueueSnapshot, usize),
     Finished(Result<QueueSnapshot, String>),
+    StatisticsFinished(Result<Vec<StatisticsSnapshot>, String>),
+}
+
+fn start_tui_statistics_refresh(
+    app: ApplicationServices,
+    events: std::sync::mpsc::Sender<TuiWorkerEvent>,
+) -> Result<std::thread::JoinHandle<()>, Error> {
+    std::thread::Builder::new()
+        .name("apex-erlcx-statistics-refresh".into())
+        .spawn(move || {
+            let result = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())
+                .and_then(|runtime| {
+                    runtime
+                        .block_on(app.refresh_statistics())
+                        .map_err(|error| error.to_string())
+                });
+            let _ = events.send(TuiWorkerEvent::StatisticsFinished(result));
+        })
+        .map_err(|error| Error::Storage(format!("Could not start the statistics refresh: {error}")))
 }
 
 fn start_tui_roblox_worker(
@@ -2903,6 +3227,7 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
     let (worker_events_tx, worker_events_rx) = std::sync::mpsc::channel();
     let mut worker: Option<std::thread::JoinHandle<()>> = None;
     let mut worker_stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>> = None;
+    let mut statistics_thread: Option<std::thread::JoinHandle<()>> = None;
     let mut quitting = false;
     ratatui::run(|terminal| 'tui: loop {
         while let Ok(event) = worker_events_rx.try_recv() {
@@ -2940,11 +3265,27 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                             state.roblox_worker_status = format!("Worker error · {error}")
                         }
                     }
-                    if quitting {
-                        break 'tui Ok(());
+                }
+                TuiWorkerEvent::StatisticsFinished(result) => {
+                    state.statistics_refresh_active = false;
+                    if let Some(handle) = statistics_thread.take() {
+                        let _ = handle.join();
+                    }
+                    match result {
+                        Ok(history) => {
+                            state.statistics_history = history;
+                            state.statistics_status = state.statistics_history.last().map_or_else(
+                                || "No snapshots collected".into(),
+                                |snapshot| format!("Updated · {}", snapshot.collected_at),
+                            );
+                        }
+                        Err(error) => state.statistics_status = format!("Refresh failed · {error}"),
                     }
                 }
             }
+        }
+        if quitting && !state.roblox_worker_active && !state.statistics_refresh_active {
+            break 'tui Ok(());
         }
         terminal.draw(|frame| draw(frame, &state))?;
         if !event::poll(std::time::Duration::from_millis(200))? {
@@ -2957,6 +3298,9 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         quitting = true;
                         state.roblox_worker_status = "Stopping · finishing active requests".into();
                         stopping.store(true, std::sync::atomic::Ordering::Relaxed);
+                    } else if state.statistics_refresh_active {
+                        quitting = true;
+                        state.statistics_status = "Finishing profile refresh before exit".into();
                     } else {
                         break Ok(());
                     }
@@ -2967,12 +3311,17 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                 }
                 match state.screen {
                     Screen::Home => match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc if worker_stop.is_some() => {
+                        KeyCode::Char('q') | KeyCode::Esc
+                            if worker_stop.is_some() || state.statistics_refresh_active =>
+                        {
                             quitting = true;
-                            state.roblox_worker_status =
-                                "Stopping · finishing active requests".into();
                             if let Some(stopping) = &worker_stop {
+                                state.roblox_worker_status =
+                                    "Stopping · finishing active requests".into();
                                 stopping.store(true, std::sync::atomic::Ordering::Relaxed);
+                            } else {
+                                state.statistics_status =
+                                    "Finishing profile refresh before exit".into();
                             }
                         }
                         KeyCode::Char('q') | KeyCode::Esc => break Ok(()),
@@ -2980,7 +3329,7 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                             state.selected = state.selected.saturating_sub(1)
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
-                            state.selected = (state.selected + 1).min(6)
+                            state.selected = (state.selected + 1).min(8)
                         }
                         KeyCode::Enter if state.selected == 0 => {
                             state.screen = Screen::Projects;
@@ -3011,6 +3360,17 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                             state.screen = Screen::RobloxQueue;
                             state.selected = 0;
                             refresh_upload_queue(&mut state, &app).map_err(io::Error::other)?;
+                        }
+                        KeyCode::Enter if state.selected == 6 => {
+                            state.screen = Screen::Statistics;
+                            state.selected = 0;
+                            refresh_statistics_view(&mut state, &app).map_err(io::Error::other)?;
+                        }
+                        KeyCode::Enter if state.selected == 7 => {
+                            state.screen = Screen::GroupRevenue;
+                            state.selected = 0;
+                            refresh_group_revenue_view(&mut state, &app)
+                                .map_err(io::Error::other)?;
                         }
                         KeyCode::Enter => break Ok(()),
                         _ => {}
@@ -3183,6 +3543,33 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                             }
                         }
                     }
+                    Screen::Statistics if !state.searching && key.code == KeyCode::Char('r') => {
+                        if !state.statistics_refresh_active {
+                            match start_tui_statistics_refresh(
+                                app.clone(),
+                                worker_events_tx.clone(),
+                            ) {
+                                Ok(handle) => {
+                                    statistics_thread = Some(handle);
+                                    state.statistics_refresh_active = true;
+                                    state.statistics_status = "Refreshing public profile…".into();
+                                }
+                                Err(error) => {
+                                    state.statistics_status = format!("Refresh failed · {error}");
+                                }
+                            }
+                        }
+                    }
+                    Screen::Statistics => match key.code {
+                        KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
+                            state.screen = Screen::Home;
+                        }
+                        _ => {}
+                    },
+                    Screen::GroupRevenue if !state.searching && key.code == KeyCode::Char('r') => {
+                        refresh_group_revenue_view(&mut state, &app).map_err(io::Error::other)?;
+                    }
+                    Screen::GroupRevenue => handle_group_revenue_key(&mut state, key.code),
                     Screen::RobloxCancelReview => {
                         handle_roblox_cancel_review_key(&mut state, key.code, &app)
                             .map_err(io::Error::other)?
@@ -3197,12 +3584,17 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                     }
                     Screen::Detail => match key.code {
                         KeyCode::Esc | KeyCode::Backspace => state.screen = Screen::Projects,
-                        KeyCode::Char('q') if worker_stop.is_some() => {
+                        KeyCode::Char('q')
+                            if worker_stop.is_some() || state.statistics_refresh_active =>
+                        {
                             quitting = true;
-                            state.roblox_worker_status =
-                                "Stopping · finishing active requests".into();
                             if let Some(stopping) = &worker_stop {
+                                state.roblox_worker_status =
+                                    "Stopping · finishing active requests".into();
                                 stopping.store(true, std::sync::atomic::Ordering::Relaxed);
+                            } else {
+                                state.statistics_status =
+                                    "Finishing profile refresh before exit".into();
                             }
                         }
                         KeyCode::Char('q') => break Ok(()),
@@ -3289,6 +3681,24 @@ fn refresh_upload_queue(state: &mut TuiState, app: &ApplicationServices) -> Resu
     state.selected = selected_job_id
         .and_then(|id| visible_jobs.iter().position(|job| job.id == id))
         .unwrap_or_else(|| state.selected.min(visible_jobs.len().saturating_sub(1)));
+    Ok(())
+}
+
+fn refresh_statistics_view(state: &mut TuiState, app: &ApplicationServices) -> Result<(), Error> {
+    state.statistics_profile = app.statistics_profile()?;
+    state.statistics_history = app.statistics_history()?;
+    state.statistics_sales = app.statistics_sales()?;
+    Ok(())
+}
+
+fn refresh_group_revenue_view(
+    state: &mut TuiState,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    state.group_revenue = Some(app.roblox_group_revenue()?);
+    state.selected = state
+        .selected
+        .min(state.visible_revenue_groups().len().saturating_sub(1));
     Ok(())
 }
 
@@ -4574,6 +4984,38 @@ fn handle_queue_key(
     Ok(())
 }
 
+fn handle_group_revenue_key(state: &mut TuiState, key: KeyCode) {
+    if state.searching {
+        match key {
+            KeyCode::Esc | KeyCode::Enter => state.searching = false,
+            KeyCode::Backspace => {
+                state.search.pop();
+                state.selected = 0;
+            }
+            KeyCode::Char(value) if !value.is_control() => {
+                state.search.push(value);
+                state.selected = 0;
+            }
+            _ => {}
+        }
+        return;
+    }
+    match key {
+        KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
+            state.screen = Screen::Home;
+            state.search.clear();
+            state.selected = 0;
+        }
+        KeyCode::Char('/') => state.searching = true,
+        KeyCode::Up | KeyCode::Char('k') => state.selected = state.selected.saturating_sub(1),
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.selected =
+                (state.selected + 1).min(state.visible_revenue_groups().len().saturating_sub(1));
+        }
+        _ => {}
+    }
+}
+
 fn selected_upload_batch(state: &TuiState) -> Option<(String, String)> {
     let batch = state
         .upload_queue
@@ -4946,6 +5388,8 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::PostCodeEditor => draw_post_code_editor(frame, state, regions[1], accent, muted),
         Screen::PostRemoveReview => draw_post_remove_review(frame, state, regions[1], muted),
         Screen::RobloxQueue => draw_roblox_queue(frame, state, regions[1], accent, muted),
+        Screen::Statistics => draw_statistics(frame, state, regions[1], accent, muted),
+        Screen::GroupRevenue => draw_group_revenue(frame, state, regions[1], accent, muted),
         Screen::RobloxCancelReview => {
             draw_roblox_cancel_review(frame, state, regions[1], accent, muted)
         }
@@ -5008,6 +5452,9 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
             " Tab/Enter Next field   ←/→ Edit   Ctrl+S Save   Esc Discard "
         }
         Screen::PostRemoveReview => " y Remove from draft   n/Esc Keep ",
+        Screen::Statistics => " r Refresh public ERLCX profile   Esc/q Back ",
+        Screen::GroupRevenue if state.searching => " Type to filter   Enter/Esc Finish search ",
+        Screen::GroupRevenue => " ↑/↓ Select group   / Search   r Refresh   Esc/q Back ",
         Screen::RobloxQueue if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::RobloxQueue if regions[2].width < 64 => {
             "Tab Focus · ↑↓ Select · g Run · x Stop\np Pause · t Retry · c Cancel · u Upload\n/ Search · r Refresh · Esc Back"
@@ -5071,9 +5518,11 @@ fn draw_home(
         ListItem::new("Trash"),
         ListItem::new("ERLCX drafts"),
         ListItem::new("Roblox uploads"),
+        ListItem::new("Statistics"),
+        ListItem::new("Group Revenue"),
         ListItem::new("Quit"),
     ];
-    let mut list_state = ListState::default().with_selected(Some(state.selected.min(6)));
+    let mut list_state = ListState::default().with_selected(Some(state.selected.min(8)));
     frame.render_stateful_widget(
         List::new(items)
             .block(Block::default().title("Menu").borders(Borders::ALL))
@@ -5083,13 +5532,15 @@ fn draw_home(
         &mut list_state,
     );
     frame.render_widget(
-        Paragraph::new(match state.selected.min(6) {
+        Paragraph::new(match state.selected.min(8) {
             0 => "Browse, search, and inspect project records.",
             1 => "Browse and read project or general notes.",
             2 => "Inspect project folders, liveries, and files.",
             3 => "Browse deleted project assets.",
             4 => "Browse global ERLCX post drafts and their saved snapshots.",
             5 => "Inspect Roblox upload batches and texture processing status.",
+            6 => "Review public ERLCX post metrics and collected snapshots.",
+            7 => "Review imported Roblox group sales and refresh coverage.",
             _ => "Close the terminal workspace.",
         })
         .block(Block::default().title("Apex Studio").borders(Borders::ALL))
@@ -6419,6 +6870,312 @@ fn draw_post_remove_review(
     );
 }
 
+fn draw_statistics(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let sections = if area.width < 88 {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+            .split(area)
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(52), Constraint::Percentage(48)])
+            .split(area)
+    };
+    let latest = state.statistics_history.last();
+    let posts = latest.map_or(&[][..], |snapshot| snapshot.posts.as_slice());
+    let total = |select: fn(&StatisticsPost) -> Option<u64>| {
+        let values = posts.iter().filter_map(select).collect::<Vec<_>>();
+        (
+            values.len(),
+            (!values.is_empty()).then(|| {
+                values
+                    .iter()
+                    .fold(0u64, |sum, value| sum.saturating_add(*value))
+            }),
+        )
+    };
+    let metrics = [
+        ("Views", total(|post| post.views)),
+        ("Likes", total(|post| post.likes)),
+        ("Copies", total(|post| post.copies)),
+        ("Favourites", total(|post| post.favourites)),
+        ("Ratings", total(|post| post.rating_count)),
+    ];
+    let mut summary = vec![
+        Line::styled(
+            "ERLCX public profile",
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ),
+        Line::raw(format!(
+            "Profile: {}",
+            state
+                .statistics_profile
+                .as_deref()
+                .unwrap_or("not configured")
+        )),
+        Line::raw(format!("Snapshots: {}", state.statistics_history.len())),
+        Line::raw(format!("Refresh: {}", state.statistics_status)),
+        Line::raw(format!(
+            "Latest collection: {}",
+            latest.map_or("—", |snapshot| snapshot.collected_at.as_str())
+        )),
+        Line::raw(format!("Posts: {}", posts.len())),
+        Line::raw(""),
+    ];
+    for (name, (measured, value)) in metrics {
+        summary.push(Line::raw(format!(
+            "{name}: {} · {measured}/{} posts",
+            value.map_or("unknown".into(), |number| number.to_string()),
+            posts.len()
+        )));
+    }
+    if let Some(sales) = &state.statistics_sales {
+        summary.push(Line::raw(""));
+        summary.push(Line::styled(
+            "Creator dashboard sales",
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ));
+        summary.push(Line::raw(format!(
+            "{} · {} sales · {} net Robux",
+            sales.collected_at, sales.data.sales, sales.data.net_robux
+        )));
+    }
+    if state.statistics_profile.is_none() {
+        summary.push(Line::raw(""));
+        summary.push(Line::raw(
+            "Set a profile with `apex-studio-cli statistics profile --set <ID>`.",
+        ));
+    } else if latest.is_none() {
+        summary.push(Line::raw(
+            "Press r to refresh, or run `apex-studio-cli statistics refresh`.",
+        ));
+    }
+    frame.render_widget(
+        Paragraph::new(summary)
+            .block(Block::default().title("Overview").borders(Borders::ALL))
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        sections[0],
+    );
+
+    let mut history = state
+        .statistics_history
+        .iter()
+        .rev()
+        .take(12)
+        .collect::<Vec<_>>();
+    history.reverse();
+    let view_totals = history
+        .iter()
+        .map(|snapshot| {
+            snapshot
+                .posts
+                .iter()
+                .filter_map(|post| post.views)
+                .fold(None, |sum, value| {
+                    Some(sum.unwrap_or(0u64).saturating_add(value))
+                })
+        })
+        .collect::<Vec<_>>();
+    let max_value = view_totals
+        .iter()
+        .flatten()
+        .copied()
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    let bar_width = sections[1].width.saturating_sub(24).max(1) as usize;
+    let chart_lines = history
+        .iter()
+        .zip(view_totals.iter())
+        .map(|(snapshot, total)| {
+            let date = snapshot
+                .collected_at
+                .get(0..10)
+                .unwrap_or(&snapshot.collected_at);
+            let bar_len = total.map_or(0, |value| {
+                ((value as f64 / max_value as f64) * bar_width as f64).round() as usize
+            });
+            Line::raw(format!(
+                "{date} {:<bar_width$} {}",
+                "█".repeat(bar_len.min(bar_width)),
+                total.map_or("unknown".into(), |value| value.to_string()),
+                bar_width = bar_width
+            ))
+        })
+        .collect::<Vec<_>>();
+    let chart = if chart_lines.is_empty() {
+        vec![Line::raw("No snapshots available yet.")]
+    } else {
+        chart_lines
+    };
+    frame.render_widget(
+        Paragraph::new(chart)
+            .block(
+                Block::default()
+                    .title("Views over time · total views")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: false }),
+        sections[1],
+    );
+}
+
+fn draw_group_revenue(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let sections = if area.width < 88 {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+            .split(area)
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
+            .split(area)
+    };
+    let groups = state.visible_revenue_groups();
+    let items = groups
+        .iter()
+        .map(|group| {
+            let count = state.group_revenue.as_ref().map_or(0, |data| {
+                let selected_passes = group
+                    .selected_pass_ids
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<HashSet<_>>();
+                data.sales
+                    .iter()
+                    .filter(|sale| {
+                        sale.group_id == group.group_id
+                            && selected_passes.contains(sale.asset_id.as_str())
+                    })
+                    .count()
+            });
+            ListItem::new(format!("{} · {} sales", group.name, count))
+        })
+        .collect::<Vec<_>>();
+    let mut list_state = ListState::default()
+        .with_selected((!items.is_empty()).then(|| state.selected.min(items.len() - 1)));
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(
+                Block::default()
+                    .title(format!("Groups · {}", groups.len()))
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(accent)),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        sections[0],
+        &mut list_state,
+    );
+    let details =
+        if let Some(group) = groups.get(state.selected.min(groups.len().saturating_sub(1))) {
+            let sales = state
+                .group_revenue
+                .as_ref()
+                .map(|data| {
+                    let selected_passes = group
+                        .selected_pass_ids
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<HashSet<_>>();
+                    data.sales
+                        .iter()
+                        .filter(|sale| {
+                            sale.group_id == group.group_id
+                                && selected_passes.contains(sale.asset_id.as_str())
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let price = sales
+                .iter()
+                .filter(|sale| sale.hold_status != "Cancelled")
+                .fold(0u64, |sum, sale| sum.saturating_add(sale.price));
+            let revenue = sales
+                .iter()
+                .filter(|sale| sale.hold_status != "Cancelled")
+                .fold(0u64, |sum, sale| sum.saturating_add(sale.revenue));
+            let released = sales
+                .iter()
+                .filter(|sale| sale.hold_status == "Released")
+                .count();
+            let held = sales
+                .iter()
+                .filter(|sale| sale.hold_status == "Held")
+                .count();
+            let cancelled = sales
+                .iter()
+                .filter(|sale| sale.hold_status == "Cancelled")
+                .count();
+            let mut lines = vec![
+                Line::styled(
+                    &group.name,
+                    Style::default().fg(accent).add_modifier(Modifier::BOLD),
+                ),
+                Line::raw(format!("Group ID: {}", group.group_id)),
+                Line::raw(format!(
+                    "Experience IDs: {}",
+                    group.experience_ids.join(", ")
+                )),
+                Line::raw(format!("Imported sales: {}", sales.len())),
+                Line::raw(format!("Selected pass price: {price} Robux")),
+                Line::raw(format!("Selected pass revenue: {revenue} Robux")),
+                Line::raw(format!(
+                    "Released {released} · held {held} · cancelled {cancelled}"
+                )),
+            ];
+            if let Some(updated) = &group.api_updated_at {
+                lines.push(Line::raw(format!(
+                    "Roblox API: {} · coverage {} to {}",
+                    group.api_status.as_deref().unwrap_or("unknown"),
+                    group.api_coverage_from.as_deref().unwrap_or("unknown"),
+                    group.api_coverage_to.as_deref().unwrap_or("unknown")
+                )));
+                lines.push(Line::raw(format!("Last API refresh: {updated}")));
+            }
+            if let Some(imported) = &group.last_import_at {
+                lines.push(Line::raw(format!("Last CSV import: {imported}")));
+            }
+            lines.push(Line::raw(""));
+            lines.push(Line::styled(
+                "Price and revenue are kept as separate source fields.",
+                Style::default().fg(muted),
+            ));
+            lines
+        } else if state.search.is_empty() {
+            vec![Line::raw("No Group Revenue groups are configured yet.")]
+        } else {
+            vec![Line::raw("No groups match this search.")]
+        };
+    frame.render_widget(
+        Paragraph::new(details)
+            .block(
+                Block::default()
+                    .title("Group details")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        sections[1],
+    );
+}
+
 fn draw_roblox_queue(
     frame: &mut Frame<'_>,
     state: &TuiState,
@@ -7706,6 +8463,8 @@ mod tests {
                 Screen::PostCodeEditor,
                 Screen::PostRemoveReview,
                 Screen::RobloxQueue,
+                Screen::Statistics,
+                Screen::GroupRevenue,
                 Screen::RobloxCancelReview,
                 Screen::RobloxLiveries,
                 Screen::RobloxBatchReview,
@@ -7811,5 +8570,53 @@ mod tests {
                 assert_eq!(terminal.backend().buffer().area.height, height);
             }
         }
+    }
+
+    #[test]
+    fn group_revenue_tui_search_filters_the_group_list() {
+        let mut state = TuiState::new(Vec::new());
+        state.screen = Screen::GroupRevenue;
+        state.group_revenue = Some(RobloxGroupRevenueData {
+            groups: vec![
+                apex_application::RobloxRevenueGroup {
+                    group_id: "123".into(),
+                    name: "Apex Designs".into(),
+                    experience_ids: vec![],
+                    pass_mappings: Default::default(),
+                    selected_pass_ids: vec![],
+                    api_updated_at: None,
+                    api_coverage_from: None,
+                    api_coverage_to: None,
+                    api_summary: None,
+                    api_status: None,
+                    updated_at: None,
+                    last_import_at: None,
+                },
+                apex_application::RobloxRevenueGroup {
+                    group_id: "456".into(),
+                    name: "Rescue Fleet".into(),
+                    experience_ids: vec![],
+                    pass_mappings: Default::default(),
+                    selected_pass_ids: vec![],
+                    api_updated_at: None,
+                    api_coverage_from: None,
+                    api_coverage_to: None,
+                    api_summary: None,
+                    api_status: None,
+                    updated_at: None,
+                    last_import_at: None,
+                },
+            ],
+            sales: vec![],
+            passes: vec![],
+        });
+        handle_group_revenue_key(&mut state, KeyCode::Char('/'));
+        for character in "rescue".chars() {
+            handle_group_revenue_key(&mut state, KeyCode::Char(character));
+        }
+        handle_group_revenue_key(&mut state, KeyCode::Enter);
+        let groups = state.visible_revenue_groups();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].group_id, "456");
     }
 }
