@@ -8,6 +8,13 @@ import {
   assetBoard,
   savePublishing,
   exportPublishing,
+  listAssets,
+  mediaLibrary,
+  syncImageLibrary,
+  syncListInviteCampaigns,
+  syncServiceAvailability,
+  type MediaLibraryItem,
+  type SyncServiceAvailability,
   type PublishingData,
   type Project,
   type Catalogue,
@@ -21,6 +28,12 @@ vi.mock("./bridge", () => ({
   savePublishing: vi.fn(),
   exportPublishing: vi.fn(),
   pickPublishingImages: vi.fn(),
+  listAssets: vi.fn(),
+  mediaLibrary: vi.fn(),
+  syncImageLibrary: vi.fn(),
+  syncListInviteCampaigns: vi.fn(),
+  syncServiceAvailability: vi.fn(),
+  listMarkdownPresets: vi.fn().mockResolvedValue([]),
   errorMessage: (e: unknown) => (e instanceof Error ? e.message : "Failed"),
 }));
 const project: Project = {
@@ -62,6 +75,7 @@ const catalogue: Catalogue = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   HTMLDialogElement.prototype.showModal = vi.fn(function (
     this: HTMLDialogElement,
   ) {
@@ -76,6 +90,15 @@ beforeEach(() => {
     folders: [],
     placements: [],
   });
+  vi.mocked(listAssets).mockResolvedValue([]);
+  vi.mocked(mediaLibrary).mockResolvedValue([]);
+  vi.mocked(syncServiceAvailability).mockResolvedValue({
+    projectSync: true,
+    imageHosting: false,
+    inviteTracking: false,
+  });
+  vi.mocked(syncListInviteCampaigns).mockResolvedValue([]);
+  vi.mocked(syncImageLibrary).mockResolvedValue({ images: [], errors: [] });
 });
 afterEach(cleanup);
 it("uses an app menu for vehicle suggestions", async () => {
@@ -296,4 +319,102 @@ it("asks before uploading a missing livery and lets the user skip just that live
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.getByText("No liveries selected.")).toBeTruthy();
   expect(savePublishing).not.toHaveBeenCalled();
+});
+
+it("shows local library images in the composer without waiting for optional server services", async () => {
+  const user = userEvent.setup();
+  const localImage: MediaLibraryItem = {
+    id: "local-banner",
+    hash: "b".repeat(64),
+    name: "Local banner",
+    altText: "Reusable local banner",
+    imageUrl: "",
+    defaultLinkUrl: null,
+    folder: "",
+    tags: [],
+    overlayVersionGroup: null,
+    overlayVersion: null,
+    overlayTarget: null,
+    ownerScope: "personal",
+    teamId: null,
+    providerImageId: null,
+    createdAt: "2026-11-10T00:00:00Z",
+    updatedAt: "2026-11-10T00:00:00Z",
+    preview: null,
+  };
+  let finishAvailability!: (value: SyncServiceAvailability) => void;
+  let finishSharedImages!: (value: { images: []; errors: [] }) => void;
+  window.localStorage.setItem("apex-studio.team-sync.server-url", "https://team.example");
+  window.localStorage.setItem("apex-studio.team-sync.active-team", "team-1");
+  vi.mocked(mediaLibrary).mockResolvedValue([localImage]);
+  vi.mocked(syncServiceAvailability).mockImplementation(() => new Promise((resolve) => {
+    finishAvailability = resolve;
+  }));
+  vi.mocked(syncImageLibrary).mockImplementation(() => new Promise((resolve) => {
+    finishSharedImages = resolve;
+  }));
+
+  render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
+  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  const librarySelect = await screen.findByRole("combobox", { name: "Choose an image from Image Library" });
+  expect(Array.from((librarySelect as HTMLSelectElement).options).map((option) => option.textContent)).toContain("Local banner");
+  expect(syncServiceAvailability).toHaveBeenCalledWith("https://team.example", "team-1");
+  expect(syncImageLibrary).toHaveBeenCalledWith("https://team.example", "team-1");
+
+  finishAvailability({ projectSync: true, imageHosting: true, inviteTracking: true });
+  finishSharedImages({ images: [], errors: [] });
+  await vi.waitFor(() => expect(screen.getByText("Local banner")).toBeTruthy());
+});
+
+it("keeps a fast team-library response when the local media query finishes later", async () => {
+  const user = userEvent.setup();
+  const localImage: MediaLibraryItem = {
+    id: "local-banner",
+    hash: "c".repeat(64),
+    name: "Local banner",
+    altText: "",
+    imageUrl: "",
+    defaultLinkUrl: null,
+    folder: "",
+    tags: [],
+    overlayVersionGroup: null,
+    overlayVersion: null,
+    overlayTarget: null,
+    ownerScope: "personal",
+    teamId: null,
+    providerImageId: null,
+    createdAt: "2026-11-10T00:00:00Z",
+    updatedAt: "2026-11-10T00:00:00Z",
+    preview: null,
+  };
+  let finishLocal!: (rows: MediaLibraryItem[]) => void;
+  window.localStorage.setItem("apex-studio.team-sync.server-url", "https://team.example");
+  window.localStorage.setItem("apex-studio.team-sync.active-team", "team-1");
+  vi.mocked(mediaLibrary).mockImplementation(() => new Promise((resolve) => {
+    finishLocal = resolve;
+  }));
+  vi.mocked(syncImageLibrary).mockResolvedValue({
+    images: [{
+      id: "shared-banner",
+      name: "Shared banner",
+      clientId: null,
+      imageUrl: "https://images.example/shared.png",
+      hash: "d".repeat(64),
+      altText: "",
+      defaultLinkUrl: null,
+      ownerScope: "team",
+      createdAt: "2026-11-10T00:00:00Z",
+      reused: true,
+    }],
+    errors: [],
+  });
+
+  render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
+  await vi.waitFor(() => expect(syncImageLibrary).toHaveBeenCalled());
+  finishLocal([localImage]);
+  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  const librarySelect = await screen.findByRole("combobox", { name: "Choose an image from Image Library" });
+  const availableImages = Array.from((librarySelect as HTMLSelectElement).options).map((option) => option.textContent);
+  expect(availableImages).toContain("Local banner");
+  expect(availableImages).toContain("Shared banner");
 });

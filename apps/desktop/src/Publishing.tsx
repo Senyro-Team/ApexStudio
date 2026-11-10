@@ -206,37 +206,43 @@ export default function Publishing({
   useEffect(() => {
     let active = true;
     void listMarkdownPresets().then((presets) => { if (active) setMarkdownPresets(presets); }).catch(() => {});
-    const load = async () => {
+    const serverUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
+    const teamId = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
+    const loadLocalMedia = async () => {
       const [library, assets] = await Promise.all([mediaLibrary(), listAssets(null)]);
-      let combined = library;
-      const serverUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
-      const teamId = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
-      if (serverUrl && teamId) {
-        try {
-          const availability = await syncServiceAvailability(serverUrl, teamId);
-          if (active) {
-            setInviteTrackingAvailable(availability.inviteTracking);
-            setImageHostingAvailable(availability.imageHosting);
-          }
-          if (availability.inviteTracking) {
+      if (!active) return;
+      setLibraryItems((current) => {
+        const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
+        const remoteItems = current.filter((item) => item.isRemote && !localRemoteIds.has(item.providerImageId));
+        return [...remoteItems, ...library];
+      });
+      setProjectImages(assets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
+    };
+    void loadLocalMedia().catch(() => {});
+    if (serverUrl && teamId) {
+      void syncServiceAvailability(serverUrl, teamId).then(async (availability) => {
+        if (!active) return;
+        setInviteTrackingAvailable(availability.inviteTracking);
+        setImageHostingAvailable(availability.imageHosting);
+        if (availability.inviteTracking) {
+          try {
             const campaigns = await syncListInviteCampaigns(serverUrl, teamId);
             if (active) setInviteCampaigns(campaigns);
-          }
-        } catch { /* This service is optional. */ }
-        try {
-          const shared = await syncImageLibrary(serverUrl, teamId);
-          const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
+          } catch { /* Manual invite URLs remain available. */ }
+        }
+      }).catch(() => { /* Optional services do not gate local editing. */ });
+      void syncImageLibrary(serverUrl, teamId).then((shared) => {
+        if (!active) return;
+        setLibraryItems((current) => {
+          const localItems = current.filter((item) => !item.isRemote);
+          const localRemoteIds = new Set(localItems.map((item) => item.providerImageId).filter(Boolean));
           const remoteItems: MediaLibraryItem[] = shared.images
             .filter((image) => !localRemoteIds.has(image.id))
             .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, folder: "", tags: [], overlayVersionGroup: null, overlayVersion: null, overlayTarget: null, ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? teamId : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
-          combined = [...remoteItems, ...library];
-        } catch { /* The local library stays available without the server. */ }
-      }
-      if (!active) return;
-      setLibraryItems(combined);
-      setProjectImages(assets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
-    };
-    void load().catch(() => {});
+          return [...remoteItems, ...localItems];
+        });
+      }).catch(() => { /* The local library stays available without the server. */ });
+    }
     return () => { active = false; };
   }, []);
   useEffect(() => {
