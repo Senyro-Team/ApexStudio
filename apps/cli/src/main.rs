@@ -2692,6 +2692,8 @@ struct TuiState {
     post_removal_error: Option<String>,
     post_livery_error: Option<String>,
     upload_queue: Option<QueueSnapshot>,
+    roblox_worker_active: bool,
+    roblox_worker_status: String,
     selected_batch: usize,
     queue_batches_focused: bool,
     cancel_batch: Option<String>,
@@ -2737,6 +2739,8 @@ impl TuiState {
             post_removal_error: None,
             post_livery_error: None,
             upload_queue: None,
+            roblox_worker_active: false,
+            roblox_worker_status: "Stopped".into(),
             selected_batch: 0,
             queue_batches_focused: true,
             cancel_batch: None,
@@ -2824,18 +2828,153 @@ impl TuiState {
     }
 }
 
+enum TuiWorkerEvent {
+    Snapshot(QueueSnapshot, usize),
+    Finished(Result<QueueSnapshot, String>),
+}
+
+fn start_tui_roblox_worker(
+    app: ApplicationServices,
+    events: std::sync::mpsc::Sender<TuiWorkerEvent>,
+) -> Result<
+    (
+        std::thread::JoinHandle<()>,
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ),
+    Error,
+> {
+    let snapshot = app.upload_queue()?;
+    let running = snapshot
+        .batches
+        .iter()
+        .filter(|batch| batch.state == "running")
+        .collect::<Vec<_>>();
+    if running.is_empty() {
+        return Err(Error::InvalidContent(
+            "There are no running Roblox batches. Resume a batch or create a new one first.".into(),
+        ));
+    }
+    let credentials = apex_application::load_roblox_credentials()?.ok_or_else(|| {
+        Error::InvalidContent(
+            "Configure and validate Roblox credentials before starting uploads.".into(),
+        )
+    })?;
+    if let Some(batch) = running
+        .iter()
+        .find(|batch| batch.account_id != credentials.account_id)
+    {
+        return Err(Error::InvalidContent(format!(
+            "Batch {} is pinned to another Roblox account. Change the account or pause that batch first.",
+            batch.id
+        )));
+    }
+    drop(credentials);
+
+    let stopping = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let worker_stopping = stopping.clone();
+    let worker = std::thread::Builder::new()
+        .name("apex-roblox-cli-worker".into())
+        .spawn(move || {
+            let progress_events = events.clone();
+            let result = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())
+                .and_then(|runtime| {
+                    runtime
+                        .block_on(app.run_roblox_upload_queue(
+                            worker_stopping,
+                            move |snapshot, active| {
+                                let _ = progress_events
+                                    .send(TuiWorkerEvent::Snapshot(snapshot.clone(), active));
+                            },
+                        ))
+                        .map_err(|error| error.to_string())
+                });
+            let _ = events.send(TuiWorkerEvent::Finished(result));
+        })
+        .map_err(|error| Error::Storage(format!("Could not start the Roblox worker: {error}")))?;
+    Ok((worker, stopping))
+}
+
 fn run_tui(app: ApplicationServices) -> io::Result<()> {
     let projects = app.projects().map_err(io::Error::other)?;
     let mut state = TuiState::new(projects);
-    ratatui::run(|terminal| loop {
+    let (worker_events_tx, worker_events_rx) = std::sync::mpsc::channel();
+    let mut worker: Option<std::thread::JoinHandle<()>> = None;
+    let mut worker_stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>> = None;
+    let mut quitting = false;
+    ratatui::run(|terminal| 'tui: loop {
+        while let Ok(event) = worker_events_rx.try_recv() {
+            match event {
+                TuiWorkerEvent::Snapshot(snapshot, active) => {
+                    state.upload_queue = Some(snapshot);
+                    state.roblox_worker_status = if worker_stop
+                        .as_ref()
+                        .is_some_and(|stopping| stopping.load(std::sync::atomic::Ordering::Relaxed))
+                    {
+                        "Stopping · finishing active requests".into()
+                    } else {
+                        format!("Running · {active} active requests")
+                    };
+                }
+                TuiWorkerEvent::Finished(result) => {
+                    let was_stopped = worker_stop.as_ref().is_some_and(|stopping| {
+                        stopping.load(std::sync::atomic::Ordering::Relaxed)
+                    });
+                    state.roblox_worker_active = false;
+                    worker_stop = None;
+                    if let Some(handle) = worker.take() {
+                        let _ = handle.join();
+                    }
+                    match result {
+                        Ok(snapshot) => {
+                            state.upload_queue = Some(snapshot);
+                            state.roblox_worker_status = if quitting || was_stopped {
+                                "Stopped · pending batches paused".into()
+                            } else {
+                                "Finished".into()
+                            };
+                        }
+                        Err(error) => {
+                            state.roblox_worker_status = format!("Worker error · {error}")
+                        }
+                    }
+                    if quitting {
+                        break 'tui Ok(());
+                    }
+                }
+            }
+        }
         terminal.draw(|frame| draw(frame, &state))?;
+        if !event::poll(std::time::Duration::from_millis(200))? {
+            continue;
+        }
         match event::read()? {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
                 if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
-                    break Ok(());
+                    if let Some(stopping) = &worker_stop {
+                        quitting = true;
+                        state.roblox_worker_status = "Stopping · finishing active requests".into();
+                        stopping.store(true, std::sync::atomic::Ordering::Relaxed);
+                    } else {
+                        break Ok(());
+                    }
+                    continue;
+                }
+                if quitting {
+                    continue;
                 }
                 match state.screen {
                     Screen::Home => match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc if worker_stop.is_some() => {
+                            quitting = true;
+                            state.roblox_worker_status =
+                                "Stopping · finishing active requests".into();
+                            if let Some(stopping) = &worker_stop {
+                                stopping.store(true, std::sync::atomic::Ordering::Relaxed);
+                            }
+                        }
                         KeyCode::Char('q') | KeyCode::Esc => break Ok(()),
                         KeyCode::Up | KeyCode::Char('k') => {
                             state.selected = state.selected.saturating_sub(1)
@@ -2997,8 +3136,52 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         open_roblox_livery_selection(&mut state, &app, false)
                             .map_err(io::Error::other)?;
                     }
+                    Screen::RobloxQueue if !state.searching && key.code == KeyCode::Char('g') => {
+                        if state.roblox_worker_active {
+                            state.roblox_worker_status = "Worker is already running".into();
+                        } else {
+                            match start_tui_roblox_worker(app.clone(), worker_events_tx.clone()) {
+                                Ok((handle, stopping)) => {
+                                    worker = Some(handle);
+                                    worker_stop = Some(stopping);
+                                    state.roblox_worker_active = true;
+                                    state.roblox_worker_status = "Starting".into();
+                                }
+                                Err(error) => {
+                                    state.roblox_worker_status =
+                                        format!("Could not start · {error}");
+                                }
+                            }
+                        }
+                    }
+                    Screen::RobloxQueue if !state.searching && key.code == KeyCode::Char('x') => {
+                        if let Some(stopping) = &worker_stop {
+                            state.roblox_worker_status =
+                                "Stopping · finishing active requests".into();
+                            stopping.store(true, std::sync::atomic::Ordering::Relaxed);
+                        } else {
+                            state.roblox_worker_status = "Worker is not running".into();
+                        }
+                    }
                     Screen::RobloxQueue => {
-                        handle_queue_key(&mut state, key.code, &app).map_err(io::Error::other)?
+                        let resume = key.code == KeyCode::Char('p')
+                            && selected_upload_batch(&state)
+                                .is_some_and(|(_, batch_state)| batch_state == "paused");
+                        handle_queue_key(&mut state, key.code, &app).map_err(io::Error::other)?;
+                        if resume && !state.roblox_worker_active {
+                            match start_tui_roblox_worker(app.clone(), worker_events_tx.clone()) {
+                                Ok((handle, stopping)) => {
+                                    worker = Some(handle);
+                                    worker_stop = Some(stopping);
+                                    state.roblox_worker_active = true;
+                                    state.roblox_worker_status = "Starting".into();
+                                }
+                                Err(error) => {
+                                    state.roblox_worker_status =
+                                        format!("Could not start · {error}");
+                                }
+                            }
+                        }
                     }
                     Screen::RobloxCancelReview => {
                         handle_roblox_cancel_review_key(&mut state, key.code, &app)
@@ -3014,6 +3197,14 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                     }
                     Screen::Detail => match key.code {
                         KeyCode::Esc | KeyCode::Backspace => state.screen = Screen::Projects,
+                        KeyCode::Char('q') if worker_stop.is_some() => {
+                            quitting = true;
+                            state.roblox_worker_status =
+                                "Stopping · finishing active requests".into();
+                            if let Some(stopping) = &worker_stop {
+                                stopping.store(true, std::sync::atomic::Ordering::Relaxed);
+                            }
+                        }
                         KeyCode::Char('q') => break Ok(()),
                         _ => {}
                     },
@@ -4819,13 +5010,13 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::PostRemoveReview => " y Remove from draft   n/Esc Keep ",
         Screen::RobloxQueue if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::RobloxQueue if regions[2].width < 64 => {
-            "Tab Focus · ↑↓ Select · p Pause\nt Retry · c Cancel · u Upload\n/ Search · r Refresh · Esc Back"
+            "Tab Focus · ↑↓ Select · g Run · x Stop\np Pause · t Retry · c Cancel · u Upload\n/ Search · r Refresh · Esc Back"
         }
         Screen::RobloxQueue if regions[2].width < 96 => {
-            "Tab Lists · ↑↓ Select · p Pause · t Retry · c Cancel · u Upload\nr Refresh · / Search · Esc Back"
+            "Tab Lists · ↑↓ Select · g Run · x Stop · p Pause\nt Retry · c Cancel · u Upload · r Refresh · / Search"
         }
         Screen::RobloxQueue => {
-            " Tab Focus list   ↑/↓ Select   p Pause/Resume batch   t Retry failed   c Cancel batch   u New   / Search   r Refresh "
+            " Tab Focus list   g Run worker   x Stop worker   p Pause/Resume batch   t Retry   c Cancel   u New   / Search   r Refresh "
         }
         Screen::RobloxCancelReview if regions[2].width < 64 => {
             "y Confirm cancel · n/Esc Keep"
@@ -6272,7 +6463,10 @@ fn draw_roblox_queue(
         List::new(batches)
             .block(
                 Block::default()
-                    .title("Upload batches · Tab to focus")
+                    .title(format!(
+                        "Upload batches · worker {} · Tab to focus",
+                        state.roblox_worker_status
+                    ))
                     .borders(Borders::ALL)
                     .border_style(if state.queue_batches_focused {
                         Style::default().fg(accent)
@@ -6611,9 +6805,11 @@ fn draw_roblox_batch_review(
             "Press Esc to return and choose Re-upload if you intend to upload them again.",
         ));
     } else {
-        lines.push(Line::raw("Press Y to create this durable batch. Uploads start when the desktop worker processes it."));
         lines.push(Line::raw(
-            "The Roblox worker requires the desktop app to be running.",
+            "Press Y to create the batch, then press g in the queue to run it.",
+        ));
+        lines.push(Line::raw(
+            "Apex Studio can also process this queue from its tray worker.",
         ));
     }
     frame.render_widget(
@@ -6690,6 +6886,16 @@ mod tests {
             assert_eq!(terminal.backend().buffer().area.width, width);
             assert_eq!(terminal.backend().buffer().area.height, height);
         }
+    }
+
+    #[test]
+    fn tui_queue_worker_refuses_to_start_when_no_batch_is_running() {
+        let directory = tempfile::tempdir().expect("temporary workspace");
+        let app = ApplicationServices::open(directory.path()).expect("dummy workspace");
+        let (events, received) = std::sync::mpsc::channel();
+        let error = start_tui_roblox_worker(app, events).expect_err("empty queue should not run");
+        assert!(error.to_string().contains("no running Roblox batches"));
+        assert!(received.try_recv().is_err());
     }
 
     #[test]
