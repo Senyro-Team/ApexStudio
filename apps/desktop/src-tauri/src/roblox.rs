@@ -1,14 +1,15 @@
 use super::{projects::work, CommandError};
 use apex_core::Error;
-use apex_storage::{DecalUpload, LiveryUploads, Workspace};
-use reqwest::{
-    header::{HeaderMap, HeaderValue},
-    Client, Response,
-};
+use apex_storage::{LiveryUploads, Workspace};
+use reqwest::{header::HeaderMap, Client};
 use serde::Serialize;
-use serde_json::{json, Value};
-use std::time::Duration;
+#[cfg(test)]
+use serde_json::Value;
 use tauri_plugin_dialog::DialogExt;
+
+pub(super) use apex_application::roblox_upload::{
+    apply_operation, body, create_decal, operation_path,
+};
 
 #[tauri::command]
 pub async fn save_livery_codes_markdown(
@@ -59,51 +60,11 @@ pub(super) fn load() -> Result<Option<Credentials>, Error> {
 pub(super) fn required() -> Result<Credentials, Error> {
     load()?.ok_or_else(|| bad("Configure Roblox in Settings before uploading."))
 }
-pub(super) fn numeric(s: &str) -> bool {
-    !s.is_empty() && s.len() <= 20 && !s.starts_with('0') && s.bytes().all(|b| b.is_ascii_digit())
-}
 pub(super) fn client() -> Result<Client, Error> {
-    Client::builder()
-        .https_only(true)
-        .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(15))
-        .timeout(Duration::from_secs(180))
-        .build()
-        .map_err(|_| bad("Could not start the Roblox connection."))
+    apex_application::roblox_upload::client()
 }
 pub(super) fn headers(c: &Credentials) -> Result<HeaderMap, Error> {
-    let mut value = HeaderValue::from_str(&c.api_key)
-        .map_err(|_| bad("The API key contains invalid characters."))?;
-    value.set_sensitive(true);
-    let mut h = HeaderMap::new();
-    h.insert("x-api-key", value);
-    Ok(h)
-}
-fn http_error(status: u16) -> Error {
-    bad(match status {401|403=>"Roblox rejected the key or its permissions. Check Settings, account access and IP restrictions.",429=>"Roblox rate limit reached. Wait before retrying.",400=>"Roblox rejected the upload. Check the texture and account upload requirements.",_=>"Roblox could not complete the request. Check your connection and try again."})
-}
-fn scalar(v: &Value) -> Option<String> {
-    v.as_str()
-        .map(str::to_owned)
-        .or_else(|| v.as_u64().map(|n| n.to_string()))
-}
-pub(super) async fn body(mut r: Response) -> Result<Value, Error> {
-    if !r.status().is_success() {
-        return Err(http_error(r.status().as_u16()));
-    }
-    let mut data = Vec::new();
-    while let Some(chunk) = r
-        .chunk()
-        .await
-        .map_err(|_| bad("Roblox response was interrupted. Check status before retrying."))?
-    {
-        if data.len() + chunk.len() > 256 * 1024 {
-            return Err(bad("Roblox returned an oversized response."));
-        }
-        data.extend_from_slice(&chunk);
-    }
-    serde_json::from_slice(&data)
-        .map_err(|_| bad("Roblox returned an unreadable response. Check status before retrying."))
+    apex_application::roblox_upload::headers(c)
 }
 #[tauri::command]
 pub async fn roblox_settings(
@@ -181,94 +142,13 @@ pub async fn roblox_livery(
     })
     .await
 }
-pub(super) fn apply_operation(upload: &mut DecalUpload, v: &Value) -> Result<(), Error> {
-    if v.get("error").is_some_and(|e| !e.is_null()) {
-        upload.state = "failed".into();
-        upload.operation = None;
-        upload.message =
-            "Roblox could not process this texture. Check it in Creator Dashboard.".into();
-        return Ok(());
-    }
-    if v["done"] != true {
-        upload.state = "processing".into();
-        return Ok(());
-    }
-    let asset = &v["response"];
-    if !["Decal", "ASSET_TYPE_DECAL"].contains(&asset["assetType"].as_str().unwrap_or("")) {
-        return Err(bad(
-            "Roblox did not return a Decal asset. No image ID was accepted.",
-        ));
-    }
-    let id = scalar(&asset["assetId"])
-        .filter(|s| numeric(s))
-        .ok_or_else(|| bad("Roblox did not return a decal asset ID."))?;
-    if scalar(&asset["creationContext"]["creator"]["userId"]).as_deref() != Some(&upload.account_id)
-    {
-        return Err(bad(
-            "Roblox returned a different asset owner. Check account settings.",
-        ));
-    }
-    upload.asset_id = Some(id);
-    upload.state = "uploaded".into();
-    upload.moderation = match asset["moderationResult"]["moderationState"]
-        .as_str()
-        .unwrap_or("")
-    {
-        "Approved" | "MODERATION_STATE_APPROVED" => "approved",
-        "Reviewing" | "MODERATION_STATE_REVIEWING" => "reviewing",
-        "Rejected" | "MODERATION_STATE_REJECTED" => "rejected",
-        _ => "unknown",
-    }
-    .into();
-    upload.message.clear();
-    Ok(())
-}
-pub(super) fn operation_path(v: &Value) -> Result<String, Error> {
-    let path = v["path"].as_str().unwrap_or("");
-    let id = path
-        .strip_prefix("operations/")
-        .ok_or_else(|| bad("Roblox did not return an upload operation."))?;
-    if id.is_empty()
-        || id.len() > 150
-        || !id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-    {
-        return Err(bad("Roblox returned an invalid operation reference."));
-    }
-    Ok(path.into())
-}
-pub(super) async fn create_decal(
-    http: &Client,
-    url: &str,
-    c: &Credentials,
-    display_name: &str,
-    bytes: Vec<u8>,
-) -> Result<Response, Error> {
-    let request = json!({"assetType":"Decal","displayName":display_name,"description":"","creationContext":{"creator":{"userId":c.account_id},"expectedPrice":0}});
-    let form = reqwest::multipart::Form::new()
-        .text("request", request.to_string())
-        .part(
-            "fileContent",
-            reqwest::multipart::Part::bytes(bytes)
-                .file_name("texture.png")
-                .mime_str("image/png")
-                .map_err(|_| bad("Invalid PNG upload."))?,
-        );
-    http.post(url)
-        .headers(headers(c)?)
-        .multipart(form)
-        .send()
-        .await
-        .map_err(|_| {
-            bad("Upload response was lost. Check Creator Dashboard before creating another decal.")
-        })
-}
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use apex_storage::DecalUpload;
+    use serde_json::json;
+    use std::time::Duration;
     #[test]
     fn multipart_upload_sends_decal_type_and_owner_then_reads_operation() {
         use std::io::{Read, Write};

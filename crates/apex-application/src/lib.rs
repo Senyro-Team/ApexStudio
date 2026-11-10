@@ -10,6 +10,7 @@ use apex_storage::Workspace;
 use std::path::{Path, PathBuf};
 
 mod roblox_credentials;
+pub mod roblox_upload;
 pub use roblox_credentials::{
     clear_roblox_credentials, load_roblox_credentials, prepare_roblox_credentials,
     save_roblox_credentials, store_roblox_credentials, validate_roblox_credentials,
