@@ -2274,6 +2274,11 @@ enum Screen {
     PostDetail,
     PostEditor,
     PostMedia,
+    PostLiveries,
+    PostLiveryEditor,
+    PostCodes,
+    PostCodeEditor,
+    PostRemoveReview,
     RobloxQueue,
     RobloxCancelReview,
     RobloxLiveries,
@@ -2309,6 +2314,38 @@ struct PostMediaState {
     path_input: Option<String>,
     confirm_remove: bool,
     error: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct PostLiveryEditorState {
+    livery_index: usize,
+    vehicle: String,
+    primary_color: String,
+    secondary_color: String,
+    opacity: String,
+    active_field: usize,
+    cursor: usize,
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct PostCodeEditorState {
+    livery_index: usize,
+    side_index: Option<usize>,
+    side: String,
+    decal_id: String,
+    active_field: usize,
+    cursor: usize,
+    error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum PostRemovalTarget {
+    Livery(usize),
+    Code {
+        livery_index: usize,
+        side_index: usize,
+    },
 }
 
 impl PostEditorState {
@@ -2353,6 +2390,14 @@ struct TuiState {
     post_detail: Option<PublishingDraft>,
     post_editor: Option<PostEditorState>,
     post_media: Option<PostMediaState>,
+    post_livery_editor: Option<PostLiveryEditorState>,
+    post_code_editor: Option<PostCodeEditorState>,
+    selected_post_livery: usize,
+    selected_post_code: usize,
+    post_codes_livery: Option<usize>,
+    pending_post_removal: Option<PostRemovalTarget>,
+    post_removal_error: Option<String>,
+    post_livery_error: Option<String>,
     upload_queue: Option<QueueSnapshot>,
     selected_batch: usize,
     queue_batches_focused: bool,
@@ -2387,6 +2432,14 @@ impl TuiState {
             post_detail: None,
             post_editor: None,
             post_media: None,
+            post_livery_editor: None,
+            post_code_editor: None,
+            selected_post_livery: 0,
+            selected_post_code: 0,
+            post_codes_livery: None,
+            pending_post_removal: None,
+            post_removal_error: None,
+            post_livery_error: None,
             upload_queue: None,
             selected_batch: 0,
             queue_batches_focused: true,
@@ -2568,12 +2621,46 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                     Screen::PostEditor => handle_post_editor_key(&mut state, key.code),
                     Screen::PostMedia => handle_post_media_key(&mut state, key.code, &app)
                         .map_err(io::Error::other)?,
+                    Screen::PostLiveries => handle_post_liveries_key(&mut state, key.code, &app)
+                        .map_err(io::Error::other)?,
+                    Screen::PostLiveryEditor
+                        if key.code == KeyCode::Char('s')
+                            && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        if let Err(error) = save_post_livery_editor(&mut state, &app) {
+                            if let Some(editor) = &mut state.post_livery_editor {
+                                editor.error = Some(error.to_string());
+                            }
+                        }
+                    }
+                    Screen::PostLiveryEditor => handle_post_livery_editor_key(&mut state, key.code),
+                    Screen::PostCodes => handle_post_codes_key(&mut state, key.code, &app)
+                        .map_err(io::Error::other)?,
+                    Screen::PostCodeEditor
+                        if key.code == KeyCode::Char('s')
+                            && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        if let Err(error) = save_post_code_editor(&mut state, &app) {
+                            if let Some(editor) = &mut state.post_code_editor {
+                                editor.error = Some(error.to_string());
+                            }
+                        }
+                    }
+                    Screen::PostCodeEditor => handle_post_code_editor_key(&mut state, key.code),
+                    Screen::PostRemoveReview => {
+                        handle_post_remove_review_key(&mut state, key.code, &app)
+                            .map_err(io::Error::other)?
+                    }
                     Screen::PostDetail => match key.code {
                         KeyCode::Esc | KeyCode::Backspace => state.screen = Screen::Posts,
                         KeyCode::Char('q') => state.screen = Screen::Home,
                         KeyCode::Char('m') => {
                             state.post_media = Some(PostMediaState::default());
                             state.screen = Screen::PostMedia;
+                        }
+                        KeyCode::Char('v') => {
+                            state.selected_post_livery = 0;
+                            state.screen = Screen::PostLiveries;
                         }
                         KeyCode::Char('l') => {
                             open_roblox_livery_selection(&mut state, &app, true)
@@ -3402,6 +3489,442 @@ fn handle_post_media_key(
     Ok(())
 }
 
+fn save_post_snapshot_data(
+    state: &mut TuiState,
+    app: &ApplicationServices,
+    data: PublishingInput,
+) -> Result<(), Error> {
+    data.validate(false)?;
+    let id = state
+        .selected_post
+        .as_deref()
+        .ok_or_else(|| Error::InvalidContent("Open an ERLCX draft first.".into()))?;
+    let revision = state
+        .post_detail
+        .as_ref()
+        .ok_or_else(|| Error::InvalidContent("Open an ERLCX draft first.".into()))?
+        .revision;
+    let saved = app.save_post(id, revision, data)?;
+    let _ = app.release_post_image_pins(id);
+    state.post_detail = Some(saved);
+    refresh_posts(state, app)?;
+    Ok(())
+}
+
+fn handle_post_liveries_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    let count = state
+        .post_detail
+        .as_ref()
+        .map_or(0, |draft| draft.data.liveries.len());
+    match key {
+        KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
+            state.screen = Screen::PostDetail;
+            state.post_livery_error = None;
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.selected_post_livery = state.selected_post_livery.saturating_sub(1);
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.selected_post_livery =
+                (state.selected_post_livery + 1).min(count.saturating_sub(1));
+        }
+        KeyCode::Enter | KeyCode::Char('c') if count > 0 => {
+            state.post_codes_livery = Some(state.selected_post_livery);
+            state.selected_post_code = 0;
+            state.post_livery_error = None;
+            state.screen = Screen::PostCodes;
+        }
+        KeyCode::Char('e') if count > 0 => {
+            if let Some(livery) = state
+                .post_detail
+                .as_ref()
+                .and_then(|draft| draft.data.liveries.get(state.selected_post_livery))
+            {
+                state.post_livery_editor = Some(PostLiveryEditorState {
+                    livery_index: state.selected_post_livery,
+                    vehicle: livery.vehicle.clone(),
+                    primary_color: livery.primary_color.clone(),
+                    secondary_color: livery.secondary_color.clone().unwrap_or_default(),
+                    opacity: livery.opacity.to_string(),
+                    active_field: 0,
+                    cursor: livery.vehicle.len(),
+                    error: None,
+                });
+                state.screen = Screen::PostLiveryEditor;
+            }
+        }
+        KeyCode::Char('d') if count > 0 => {
+            state.pending_post_removal =
+                Some(PostRemovalTarget::Livery(state.selected_post_livery));
+            state.post_removal_error = None;
+            state.screen = Screen::PostRemoveReview;
+        }
+        KeyCode::Char('[') | KeyCode::Char(']') if count > 1 => {
+            let selected = state.selected_post_livery;
+            let target = if key == KeyCode::Char('[') {
+                selected.checked_sub(1)
+            } else if selected + 1 < count {
+                Some(selected + 1)
+            } else {
+                None
+            };
+            if let (Some(target), Some(mut draft)) = (target, state.post_detail.clone()) {
+                draft.data.liveries.swap(selected, target);
+                match save_post_snapshot_data(state, app, draft.data) {
+                    Ok(()) => {
+                        state.selected_post_livery = target;
+                        state.post_livery_error = None;
+                    }
+                    Err(error) => state.post_livery_error = Some(error.to_string()),
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn handle_post_codes_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    let livery_index = state.post_codes_livery.unwrap_or_default();
+    let sides = state
+        .post_detail
+        .as_ref()
+        .and_then(|draft| draft.data.liveries.get(livery_index))
+        .map_or(0, |livery| livery.sides.len());
+    match key {
+        KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
+            state.screen = Screen::PostLiveries;
+            state.post_livery_error = None;
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            state.selected_post_code = state.selected_post_code.saturating_sub(1);
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.selected_post_code = (state.selected_post_code + 1).min(sides.saturating_sub(1));
+        }
+        KeyCode::Char('a') => {
+            state.post_code_editor = Some(PostCodeEditorState {
+                livery_index,
+                side_index: None,
+                side: String::new(),
+                decal_id: String::new(),
+                active_field: 0,
+                cursor: 0,
+                error: None,
+            });
+            state.screen = Screen::PostCodeEditor;
+        }
+        KeyCode::Char('e') if sides > 0 => {
+            if let Some(side) = state
+                .post_detail
+                .as_ref()
+                .and_then(|draft| draft.data.liveries.get(livery_index))
+                .and_then(|livery| livery.sides.get(state.selected_post_code))
+            {
+                state.post_code_editor = Some(PostCodeEditorState {
+                    livery_index,
+                    side_index: Some(state.selected_post_code),
+                    side: side.side.clone(),
+                    decal_id: side.decal_id.clone(),
+                    active_field: 0,
+                    cursor: side.side.len(),
+                    error: None,
+                });
+                state.screen = Screen::PostCodeEditor;
+            }
+        }
+        KeyCode::Char('d') if sides > 0 => {
+            state.pending_post_removal = Some(PostRemovalTarget::Code {
+                livery_index,
+                side_index: state.selected_post_code,
+            });
+            state.post_removal_error = None;
+            state.screen = Screen::PostRemoveReview;
+        }
+        KeyCode::Char('[') | KeyCode::Char(']') if sides > 1 => {
+            let selected = state.selected_post_code;
+            let target = if key == KeyCode::Char('[') {
+                selected.checked_sub(1)
+            } else if selected + 1 < sides {
+                Some(selected + 1)
+            } else {
+                None
+            };
+            if let (Some(target), Some(mut draft)) = (target, state.post_detail.clone()) {
+                let livery = &mut draft.data.liveries[livery_index];
+                livery.sides.swap(selected, target);
+                if let Some(source) = &mut livery.source {
+                    if selected < source.hashes.len() && target < source.hashes.len() {
+                        source.hashes.swap(selected, target);
+                    }
+                }
+                match save_post_snapshot_data(state, app, draft.data) {
+                    Ok(()) => {
+                        state.selected_post_code = target;
+                        state.post_livery_error = None;
+                    }
+                    Err(error) => state.post_livery_error = Some(error.to_string()),
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn post_code_editor_value(editor: &PostCodeEditorState) -> &str {
+    if editor.active_field == 0 {
+        &editor.side
+    } else {
+        &editor.decal_id
+    }
+}
+
+fn post_livery_editor_value(editor: &PostLiveryEditorState) -> &str {
+    match editor.active_field {
+        0 => &editor.vehicle,
+        1 => &editor.primary_color,
+        2 => &editor.secondary_color,
+        _ => &editor.opacity,
+    }
+}
+
+fn edit_text_at_cursor(value: &mut String, cursor: &mut usize, key: KeyCode) -> bool {
+    match key {
+        KeyCode::Left => {
+            *cursor = value[..*cursor]
+                .char_indices()
+                .next_back()
+                .map_or(0, |(index, _)| index);
+            true
+        }
+        KeyCode::Right => {
+            if let Some(character) = value[*cursor..].chars().next() {
+                *cursor += character.len_utf8();
+            }
+            true
+        }
+        KeyCode::Home => {
+            *cursor = 0;
+            true
+        }
+        KeyCode::End => {
+            *cursor = value.len();
+            true
+        }
+        KeyCode::Backspace if *cursor > 0 => {
+            let start = value[..*cursor]
+                .char_indices()
+                .next_back()
+                .map_or(0, |(index, _)| index);
+            value.replace_range(start..*cursor, "");
+            *cursor = start;
+            true
+        }
+        KeyCode::Char(character) if !character.is_control() => {
+            value.insert(*cursor, character);
+            *cursor += character.len_utf8();
+            true
+        }
+        _ => false,
+    }
+}
+
+fn handle_post_code_editor_key(state: &mut TuiState, key: KeyCode) {
+    let Some(editor) = &mut state.post_code_editor else {
+        state.screen = Screen::PostCodes;
+        return;
+    };
+    match key {
+        KeyCode::Esc => {
+            state.post_code_editor = None;
+            state.screen = Screen::PostCodes;
+        }
+        KeyCode::Tab | KeyCode::Enter => {
+            editor.active_field = (editor.active_field + 1) % 2;
+            editor.cursor = post_code_editor_value(editor).len();
+            editor.error = None;
+        }
+        _ => {
+            let cursor = &mut editor.cursor;
+            let value = if editor.active_field == 0 {
+                &mut editor.side
+            } else {
+                &mut editor.decal_id
+            };
+            if edit_text_at_cursor(value, cursor, key) {
+                editor.error = None;
+            }
+        }
+    }
+}
+
+fn save_post_code_editor(state: &mut TuiState, app: &ApplicationServices) -> Result<(), Error> {
+    let editor = state
+        .post_code_editor
+        .clone()
+        .ok_or_else(|| Error::InvalidContent("No side code is open for editing.".into()))?;
+    let mut draft = state
+        .post_detail
+        .clone()
+        .ok_or_else(|| Error::InvalidContent("Open an ERLCX draft first.".into()))?;
+    let livery = draft
+        .data
+        .liveries
+        .get_mut(editor.livery_index)
+        .ok_or(Error::NotFound)?;
+    let side = PublishingSide {
+        side: editor.side,
+        decal_id: editor.decal_id,
+    };
+    let selected = if let Some(index) = editor.side_index {
+        let target = livery.sides.get_mut(index).ok_or(Error::NotFound)?;
+        *target = side;
+        index
+    } else {
+        livery.sides.push(side);
+        livery.sides.len() - 1
+    };
+    save_post_snapshot_data(state, app, draft.data)?;
+    state.selected_post_code = selected;
+    state.post_code_editor = None;
+    state.screen = Screen::PostCodes;
+    state.post_livery_error = None;
+    Ok(())
+}
+
+fn handle_post_livery_editor_key(state: &mut TuiState, key: KeyCode) {
+    let Some(editor) = &mut state.post_livery_editor else {
+        state.screen = Screen::PostLiveries;
+        return;
+    };
+    match key {
+        KeyCode::Esc => {
+            state.post_livery_editor = None;
+            state.screen = Screen::PostLiveries;
+        }
+        KeyCode::Tab | KeyCode::Enter => {
+            editor.active_field = (editor.active_field + 1) % 4;
+            editor.cursor = post_livery_editor_value(editor).len();
+            editor.error = None;
+        }
+        _ => {
+            let cursor = &mut editor.cursor;
+            let value = match editor.active_field {
+                0 => &mut editor.vehicle,
+                1 => &mut editor.primary_color,
+                2 => &mut editor.secondary_color,
+                _ => &mut editor.opacity,
+            };
+            if edit_text_at_cursor(value, cursor, key) {
+                editor.error = None;
+            }
+        }
+    }
+}
+
+fn save_post_livery_editor(state: &mut TuiState, app: &ApplicationServices) -> Result<(), Error> {
+    let editor = state
+        .post_livery_editor
+        .clone()
+        .ok_or_else(|| Error::InvalidContent("No livery is open for editing.".into()))?;
+    let mut draft = state
+        .post_detail
+        .clone()
+        .ok_or_else(|| Error::InvalidContent("Open an ERLCX draft first.".into()))?;
+    let livery = draft
+        .data
+        .liveries
+        .get_mut(editor.livery_index)
+        .ok_or(Error::NotFound)?;
+    livery.vehicle = editor.vehicle;
+    livery.primary_color = editor.primary_color;
+    livery.secondary_color = (!editor.secondary_color.trim().is_empty())
+        .then(|| editor.secondary_color.trim().to_owned());
+    livery.opacity = editor
+        .opacity
+        .parse::<u8>()
+        .map_err(|_| Error::InvalidContent("Opacity must be a number from 0 to 100.".into()))?;
+    save_post_snapshot_data(state, app, draft.data)?;
+    state.post_livery_editor = None;
+    state.screen = Screen::PostLiveries;
+    state.post_livery_error = None;
+    Ok(())
+}
+
+fn handle_post_remove_review_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    match key {
+        KeyCode::Esc | KeyCode::Char('n') => {
+            let target = state.pending_post_removal.take();
+            state.post_removal_error = None;
+            state.screen = match target {
+                Some(PostRemovalTarget::Code { .. }) => Screen::PostCodes,
+                Some(PostRemovalTarget::Livery(_)) => Screen::PostLiveries,
+                None => Screen::PostDetail,
+            };
+        }
+        KeyCode::Char('y') => {
+            let Some(target) = state.pending_post_removal else {
+                state.screen = Screen::PostDetail;
+                return Ok(());
+            };
+            let mut draft = state
+                .post_detail
+                .clone()
+                .ok_or_else(|| Error::InvalidContent("Open an ERLCX draft first.".into()))?;
+            let destination = match target {
+                PostRemovalTarget::Livery(index) => {
+                    if index >= draft.data.liveries.len() {
+                        return Err(Error::NotFound);
+                    }
+                    draft.data.liveries.remove(index);
+                    state.selected_post_livery =
+                        index.min(draft.data.liveries.len().saturating_sub(1));
+                    Screen::PostLiveries
+                }
+                PostRemovalTarget::Code {
+                    livery_index,
+                    side_index,
+                } => {
+                    let livery = draft
+                        .data
+                        .liveries
+                        .get_mut(livery_index)
+                        .ok_or(Error::NotFound)?;
+                    if side_index >= livery.sides.len() {
+                        return Err(Error::NotFound);
+                    }
+                    livery.sides.remove(side_index);
+                    state.selected_post_code = side_index.min(livery.sides.len().saturating_sub(1));
+                    Screen::PostCodes
+                }
+            };
+            match save_post_snapshot_data(state, app, draft.data) {
+                Ok(()) => {
+                    state.pending_post_removal = None;
+                    state.post_removal_error = None;
+                    state.screen = destination;
+                }
+                Err(error) => state.post_removal_error = Some(error.to_string()),
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn handle_queue_key(
     state: &mut TuiState,
     key: KeyCode,
@@ -3788,7 +4311,11 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
                 if area.width < 64
                     && matches!(
                         state.screen,
-                        Screen::RobloxQueue | Screen::RobloxLiveries | Screen::PostMedia
+                        Screen::RobloxQueue
+                            | Screen::RobloxLiveries
+                            | Screen::PostMedia
+                            | Screen::PostLiveries
+                            | Screen::PostCodes
                     )
                 {
                     3
@@ -3833,6 +4360,13 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::PostDetail => draw_post_detail(frame, state, regions[1], accent, muted),
         Screen::PostEditor => draw_post_editor(frame, state, regions[1], accent, muted),
         Screen::PostMedia => draw_post_media(frame, state, regions[1], accent, muted),
+        Screen::PostLiveries => draw_post_liveries(frame, state, regions[1], accent, muted),
+        Screen::PostLiveryEditor => {
+            draw_post_livery_editor(frame, state, regions[1], accent, muted)
+        }
+        Screen::PostCodes => draw_post_codes(frame, state, regions[1], accent, muted),
+        Screen::PostCodeEditor => draw_post_code_editor(frame, state, regions[1], accent, muted),
+        Screen::PostRemoveReview => draw_post_remove_review(frame, state, regions[1], muted),
         Screen::RobloxQueue => draw_roblox_queue(frame, state, regions[1], accent, muted),
         Screen::RobloxCancelReview => {
             draw_roblox_cancel_review(frame, state, regions[1], accent, muted)
@@ -3860,7 +4394,7 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Trash => " ↑/↓ Select   / Search   r Refresh   Esc Back ",
         Screen::Posts if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::Posts => " ↑/↓ Select   Enter Open   n New draft   / Search   r Refresh   Esc Back ",
-        Screen::PostDetail => " e Edit metadata   m Preview images   l Add project livery   Esc Back   q Home ",
+        Screen::PostDetail => " e Metadata   m Images   v Liveries/codes   l Add project livery   Esc Back ",
         Screen::PostEditor => " Tab Next field   ←/→ Edit   Enter Next/new line   Ctrl+S Save   Esc Discard ",
         Screen::PostMedia if state.post_media.as_ref().is_some_and(|media| media.path_input.is_some()) => {
             "Type/paste path   Enter Import PNG   Esc Cancel path"
@@ -3874,6 +4408,25 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::PostMedia => {
             " ↑/↓ Select   a Import PNG   d Remove (confirm)   [ / ] Reorder   r Refresh   Esc Back "
         }
+        Screen::PostLiveries if regions[2].width < 64 => {
+            "↑↓ Select · e Edit · c Codes\n[ ] Reorder · d Remove · Esc Back"
+        }
+        Screen::PostLiveries => {
+            " ↑/↓ Select   e Edit vehicle/colors   c Codes   [ / ] Reorder   d Remove   Esc Back "
+        }
+        Screen::PostLiveryEditor => {
+            " Tab/Enter Next field   ←/→ Edit   Ctrl+S Save   Esc Discard "
+        }
+        Screen::PostCodes if regions[2].width < 64 => {
+            "↑↓ Select · a Add · e Edit · d Remove\n[ ] Reorder · Esc Back"
+        }
+        Screen::PostCodes => {
+            " ↑/↓ Select   a Add code   e Edit   [ / ] Reorder   d Remove   Esc Back "
+        }
+        Screen::PostCodeEditor => {
+            " Tab/Enter Next field   ←/→ Edit   Ctrl+S Save   Esc Discard "
+        }
+        Screen::PostRemoveReview => " y Remove from draft   n/Esc Keep ",
         Screen::RobloxQueue if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::RobloxQueue if regions[2].width < 64 => {
             "Tab Focus · ↑↓ Select · p Pause\nt Retry · c Cancel · u Upload\n/ Search · r Refresh · Esc Back"
@@ -4821,6 +5374,434 @@ fn draw_post_media(
     );
 }
 
+fn draw_post_liveries(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let liveries = state
+        .post_detail
+        .as_ref()
+        .map_or(&[][..], |draft| draft.data.liveries.as_slice());
+    let (list_area, detail_area) = if area.width < 88 {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .split(area);
+        (split[0], split[1])
+    } else {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+            .split(area);
+        (split[0], split[1])
+    };
+    let rows = liveries
+        .iter()
+        .map(|livery| {
+            let missing = livery
+                .sides
+                .iter()
+                .filter(|side| side.decal_id.is_empty())
+                .count();
+            ListItem::new(format!(
+                "{} · {} codes · {} missing",
+                livery.vehicle,
+                livery.sides.len(),
+                missing
+            ))
+        })
+        .collect::<Vec<_>>();
+    let mut list_state = ListState::default()
+        .with_selected((!rows.is_empty()).then(|| state.selected_post_livery.min(rows.len() - 1)));
+    frame.render_stateful_widget(
+        List::new(rows)
+            .block(
+                Block::default()
+                    .title(format!("Post liveries · {}", liveries.len()))
+                    .borders(Borders::ALL),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        list_area,
+        &mut list_state,
+    );
+    let details = if let Some(livery) = liveries.get(state.selected_post_livery) {
+        let missing = livery
+            .sides
+            .iter()
+            .filter(|side| side.decal_id.is_empty())
+            .count();
+        vec![
+            Line::styled(
+                livery.vehicle.as_str(),
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Line::raw(format!("Primary color: {}", livery.primary_color)),
+            Line::raw(format!(
+                "Secondary color: {}",
+                livery.secondary_color.as_deref().unwrap_or("—")
+            )),
+            Line::raw(format!("Opacity: {}%", livery.opacity)),
+            Line::raw(format!(
+                "{} side code(s) · {missing} missing",
+                livery.sides.len()
+            )),
+            Line::raw(if livery.source.is_some() {
+                "Source linked to a project livery"
+            } else {
+                "Manual livery snapshot"
+            }),
+            Line::raw(""),
+            Line::raw("Enter/C opens side codes. Edit changes vehicle and colors."),
+        ]
+    } else {
+        vec![Line::raw("This post has no livery entries.")]
+    };
+    let mut details = details;
+    if let Some(error) = &state.post_livery_error {
+        details.push(Line::raw(""));
+        details.push(Line::styled(
+            error,
+            Style::default().fg(if state.no_color {
+                Color::Reset
+            } else {
+                Color::Red
+            }),
+        ));
+    }
+    frame.render_widget(
+        Paragraph::new(details)
+            .block(
+                Block::default()
+                    .title("Livery details")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        detail_area,
+    );
+}
+
+fn draw_post_livery_editor(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let Some(editor) = &state.post_livery_editor else {
+        frame.render_widget(Paragraph::new("No livery is open for editing."), area);
+        return;
+    };
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(3),
+        ])
+        .split(area);
+    let values = [
+        editor.vehicle.as_str(),
+        editor.primary_color.as_str(),
+        editor.secondary_color.as_str(),
+        editor.opacity.as_str(),
+    ];
+    let labels = [
+        "Vehicle",
+        "Primary color (#RRGGBB)",
+        "Secondary color (optional)",
+        "Opacity (0–100)",
+    ];
+    for index in 0..4 {
+        let shown = if editor.active_field == index {
+            let cursor = editor.cursor.min(values[index].len());
+            format!("{}▏{}", &values[index][..cursor], &values[index][cursor..])
+        } else if values[index].is_empty() {
+            "(none)".to_owned()
+        } else {
+            values[index].to_owned()
+        };
+        frame.render_widget(
+            Paragraph::new(shown)
+                .block(
+                    Block::default()
+                        .title(if editor.active_field == index {
+                            format!("▶ {}", labels[index])
+                        } else {
+                            labels[index].to_owned()
+                        })
+                        .borders(Borders::ALL)
+                        .border_style(if editor.active_field == index {
+                            Style::default().fg(accent)
+                        } else {
+                            Style::default().fg(muted)
+                        }),
+                )
+                .wrap(Wrap { trim: true }),
+            sections[index],
+        );
+    }
+    let notice = editor
+        .error
+        .as_deref()
+        .unwrap_or("Ctrl+S saves this livery snapshot.");
+    frame.render_widget(
+        Paragraph::new(notice)
+            .block(Block::default().title("Validation").borders(Borders::ALL))
+            .style(
+                Style::default().fg(if editor.error.is_some() && !state.no_color {
+                    Color::Red
+                } else {
+                    muted
+                }),
+            )
+            .wrap(Wrap { trim: true }),
+        sections[4],
+    );
+}
+
+fn draw_post_codes(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let livery = state
+        .post_codes_livery
+        .and_then(|index| state.post_detail.as_ref()?.data.liveries.get(index));
+    let Some(livery) = livery else {
+        frame.render_widget(
+            Paragraph::new("The selected livery is no longer available."),
+            area,
+        );
+        return;
+    };
+    let (list_area, detail_area) = if area.width < 88 {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .split(area);
+        (split[0], split[1])
+    } else {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+            .split(area);
+        (split[0], split[1])
+    };
+    let rows = livery
+        .sides
+        .iter()
+        .map(|side| {
+            ListItem::new(format!(
+                "{} · {}",
+                if side.side.is_empty() {
+                    "(unnamed side)"
+                } else {
+                    &side.side
+                },
+                if side.decal_id.is_empty() {
+                    "Not uploaded"
+                } else {
+                    &side.decal_id
+                }
+            ))
+        })
+        .collect::<Vec<_>>();
+    let mut list_state = ListState::default()
+        .with_selected((!rows.is_empty()).then(|| state.selected_post_code.min(rows.len() - 1)));
+    frame.render_stateful_widget(
+        List::new(rows)
+            .block(
+                Block::default()
+                    .title(format!("{} · side codes", livery.vehicle))
+                    .borders(Borders::ALL),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        list_area,
+        &mut list_state,
+    );
+    let mut details = if let Some(side) = livery.sides.get(state.selected_post_code) {
+        vec![
+            Line::styled(
+                if side.side.is_empty() {
+                    "Unnamed side"
+                } else {
+                    &side.side
+                },
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Line::raw(format!(
+                "Decal asset ID: {}",
+                if side.decal_id.is_empty() {
+                    "Not uploaded"
+                } else {
+                    &side.decal_id
+                }
+            )),
+            Line::raw(""),
+            Line::raw("Edit this row or add another side. Empty codes remain incomplete."),
+        ]
+    } else {
+        vec![Line::raw("No side codes yet. Press A to add one.")]
+    };
+    if let Some(error) = &state.post_livery_error {
+        details.push(Line::raw(""));
+        details.push(Line::styled(
+            error,
+            Style::default().fg(if state.no_color {
+                Color::Reset
+            } else {
+                Color::Red
+            }),
+        ));
+    }
+    frame.render_widget(
+        Paragraph::new(details)
+            .block(Block::default().title("Code details").borders(Borders::ALL))
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        detail_area,
+    );
+}
+
+fn draw_post_code_editor(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let Some(editor) = &state.post_code_editor else {
+        frame.render_widget(Paragraph::new("No side code is open for editing."), area);
+        return;
+    };
+    let fields = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(3),
+        ])
+        .split(area);
+    let values = [editor.side.as_str(), editor.decal_id.as_str()];
+    let labels = ["Side", "Decal asset ID"];
+    for index in 0..2 {
+        let shown = if editor.active_field == index {
+            let cursor = editor.cursor.min(values[index].len());
+            format!("{}▏{}", &values[index][..cursor], &values[index][cursor..])
+        } else if values[index].is_empty() {
+            "(empty)".to_owned()
+        } else {
+            values[index].to_owned()
+        };
+        frame.render_widget(
+            Paragraph::new(shown)
+                .block(
+                    Block::default()
+                        .title(if editor.active_field == index {
+                            format!("▶ {}", labels[index])
+                        } else {
+                            labels[index].to_owned()
+                        })
+                        .borders(Borders::ALL)
+                        .border_style(if editor.active_field == index {
+                            Style::default().fg(accent)
+                        } else {
+                            Style::default().fg(muted)
+                        }),
+                )
+                .wrap(Wrap { trim: true }),
+            fields[index],
+        );
+    }
+    let notice = editor
+        .error
+        .as_deref()
+        .unwrap_or("Ctrl+S saves this code row.");
+    frame.render_widget(
+        Paragraph::new(notice)
+            .block(Block::default().title("Validation").borders(Borders::ALL))
+            .style(
+                Style::default().fg(if editor.error.is_some() && !state.no_color {
+                    Color::Red
+                } else {
+                    muted
+                }),
+            )
+            .wrap(Wrap { trim: true }),
+        fields[2],
+    );
+}
+
+fn draw_post_remove_review(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    muted: Color,
+) {
+    let target = state.pending_post_removal;
+    let label = match (target, state.post_detail.as_ref()) {
+        (Some(PostRemovalTarget::Livery(index)), Some(draft)) => draft
+            .data
+            .liveries
+            .get(index)
+            .map(|livery| format!("livery {}", livery.vehicle))
+            .unwrap_or_else(|| "selected livery".into()),
+        (
+            Some(PostRemovalTarget::Code {
+                livery_index,
+                side_index,
+            }),
+            Some(draft),
+        ) => draft
+            .data
+            .liveries
+            .get(livery_index)
+            .and_then(|livery| livery.sides.get(side_index))
+            .map(|side| {
+                format!(
+                    "{} code for {}",
+                    side.side, draft.data.liveries[livery_index].vehicle
+                )
+            })
+            .unwrap_or_else(|| "selected code row".into()),
+        _ => "selected post item".into(),
+    };
+    let mut lines = vec![
+        Line::styled(
+            format!("Remove {label} from this post?"),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Line::raw("This edits the saved snapshot; linked project assets are not deleted."),
+        Line::raw(""),
+        Line::raw("Press Y to confirm, or Esc/N to keep it."),
+    ];
+    if let Some(error) = &state.post_removal_error {
+        lines.push(Line::raw(""));
+        lines.push(Line::raw(error));
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title("Confirm removal")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
 fn draw_roblox_queue(
     frame: &mut Frame<'_>,
     state: &TuiState,
@@ -5697,6 +6678,148 @@ mod tests {
     }
 
     #[test]
+    fn post_livery_manager_edits_vehicle_and_codes_and_confirms_removal() {
+        let directory = tempfile::tempdir().expect("temporary workspace directory");
+        let app = ApplicationServices::open(directory.path()).expect("open dummy workspace");
+        let post_id = app.create_post().expect("create dummy post");
+        let empty = app.post(&post_id).expect("read new post");
+        let initial = app
+            .save_post(
+                &post_id,
+                empty.revision,
+                PublishingInput {
+                    liveries: vec![apex_core::PublishingLivery {
+                        source: Some(PublishingSource {
+                            folder_id: "source-folder".into(),
+                            account_id: "123456789".into(),
+                            hashes: vec!["a".repeat(64), "b".repeat(64)],
+                        }),
+                        vehicle: "Falcon Interceptor".into(),
+                        primary_color: "#FFFFFF".into(),
+                        secondary_color: None,
+                        opacity: 100,
+                        sides: vec![
+                            apex_core::PublishingSide {
+                                side: "Left 1".into(),
+                                decal_id: "111".into(),
+                            },
+                            apex_core::PublishingSide {
+                                side: "Right 1".into(),
+                                decal_id: "444".into(),
+                            },
+                        ],
+                    }],
+                    ..Default::default()
+                },
+            )
+            .expect("save source livery");
+        let mut state = TuiState::new(Vec::new());
+        state.screen = Screen::PostLiveries;
+        state.selected_post = Some(post_id.clone());
+        state.post_detail = Some(initial);
+
+        handle_post_liveries_key(&mut state, KeyCode::Char('e'), &app).expect("open livery editor");
+        for character in " 2024".chars() {
+            handle_post_livery_editor_key(&mut state, KeyCode::Char(character));
+        }
+        handle_post_livery_editor_key(&mut state, KeyCode::Tab);
+        for _ in 0..6 {
+            handle_post_livery_editor_key(&mut state, KeyCode::Backspace);
+        }
+        for character in "112233".chars() {
+            handle_post_livery_editor_key(&mut state, KeyCode::Char(character));
+        }
+        save_post_livery_editor(&mut state, &app).expect("save livery properties");
+        let saved = app.post(&post_id).expect("read edited livery");
+        assert_eq!(saved.data.liveries[0].vehicle, "Falcon Interceptor 2024");
+        assert_eq!(saved.data.liveries[0].primary_color, "#112233");
+
+        handle_post_liveries_key(&mut state, KeyCode::Char('c'), &app).expect("open code list");
+        handle_post_codes_key(&mut state, KeyCode::Char('e'), &app).expect("open code editor");
+        handle_post_code_editor_key(&mut state, KeyCode::Tab);
+        for _ in 0..3 {
+            handle_post_code_editor_key(&mut state, KeyCode::Backspace);
+        }
+        for character in "222".chars() {
+            handle_post_code_editor_key(&mut state, KeyCode::Char(character));
+        }
+        save_post_code_editor(&mut state, &app).expect("save edited decal ID");
+        assert_eq!(
+            app.post(&post_id).expect("read edited code").data.liveries[0].sides[0].decal_id,
+            "222"
+        );
+
+        handle_post_codes_key(&mut state, KeyCode::Char(']'), &app)
+            .expect("reorder linked side codes");
+        let reordered = app.post(&post_id).expect("read reordered side codes");
+        assert_eq!(reordered.data.liveries[0].sides[0].side, "Right 1");
+        assert_eq!(
+            reordered.data.liveries[0]
+                .source
+                .as_ref()
+                .expect("source link remains")
+                .hashes[0],
+            "b".repeat(64)
+        );
+
+        handle_post_codes_key(&mut state, KeyCode::Char('a'), &app).expect("add side code");
+        for character in "Back 1".chars() {
+            handle_post_code_editor_key(&mut state, KeyCode::Char(character));
+        }
+        handle_post_code_editor_key(&mut state, KeyCode::Tab);
+        for character in "333".chars() {
+            handle_post_code_editor_key(&mut state, KeyCode::Char(character));
+        }
+        save_post_code_editor(&mut state, &app).expect("save new side code");
+        assert_eq!(
+            app.post(&post_id).expect("read added code").data.liveries[0]
+                .sides
+                .len(),
+            3
+        );
+
+        handle_post_codes_key(&mut state, KeyCode::Char('d'), &app)
+            .expect("request side-code removal");
+        handle_post_remove_review_key(&mut state, KeyCode::Char('n'), &app)
+            .expect("cancel removal");
+        assert_eq!(state.screen, Screen::PostCodes);
+        assert_eq!(
+            app.post(&post_id)
+                .expect("check cancelled removal")
+                .data
+                .liveries[0]
+                .sides
+                .len(),
+            3
+        );
+        handle_post_codes_key(&mut state, KeyCode::Char('d'), &app)
+            .expect("request side-code removal again");
+        handle_post_remove_review_key(&mut state, KeyCode::Char('y'), &app)
+            .expect("confirm side-code removal");
+        let final_post = app.post(&post_id).expect("read final post");
+        assert_eq!(final_post.data.liveries[0].sides.len(), 2);
+        assert_eq!(final_post.data.liveries[0].sides[0].side, "Right 1");
+        assert_eq!(final_post.data.liveries[0].sides[1].side, "Left 1");
+
+        handle_post_codes_key(&mut state, KeyCode::Esc, &app).expect("return to livery list");
+        handle_post_liveries_key(&mut state, KeyCode::Char('d'), &app)
+            .expect("request livery removal");
+        handle_post_remove_review_key(&mut state, KeyCode::Char('n'), &app)
+            .expect("cancel livery removal");
+        assert_eq!(state.screen, Screen::PostLiveries);
+        handle_post_liveries_key(&mut state, KeyCode::Char('d'), &app)
+            .expect("request livery removal again");
+        handle_post_remove_review_key(&mut state, KeyCode::Char('y'), &app)
+            .expect("confirm livery removal");
+        assert!(app
+            .post(&post_id)
+            .expect("read post after livery removal")
+            .data
+            .liveries
+            .is_empty());
+    }
+
+    #[test]
     fn roblox_api_key_is_not_an_accepted_command_line_argument() {
         let error = Args::try_parse_from([
             "apex-studio-cli",
@@ -5749,6 +6872,11 @@ mod tests {
                 Screen::PostDetail,
                 Screen::PostEditor,
                 Screen::PostMedia,
+                Screen::PostLiveries,
+                Screen::PostLiveryEditor,
+                Screen::PostCodes,
+                Screen::PostCodeEditor,
+                Screen::PostRemoveReview,
                 Screen::RobloxQueue,
                 Screen::RobloxCancelReview,
                 Screen::RobloxLiveries,
@@ -5799,6 +6927,30 @@ mod tests {
                     true,
                 ));
                 state.post_media = Some(PostMediaState::default());
+                state.post_livery_editor = Some(PostLiveryEditorState {
+                    livery_index: 0,
+                    vehicle: "Fixture vehicle".into(),
+                    primary_color: "#FFFFFF".into(),
+                    secondary_color: String::new(),
+                    opacity: "100".into(),
+                    active_field: 0,
+                    cursor: 0,
+                    error: None,
+                });
+                state.post_code_editor = Some(PostCodeEditorState {
+                    livery_index: 0,
+                    side_index: Some(0),
+                    side: "Left 1".into(),
+                    decal_id: "123456".into(),
+                    active_field: 0,
+                    cursor: 0,
+                    error: None,
+                });
+                state.post_codes_livery = Some(0);
+                state.pending_post_removal = Some(PostRemovalTarget::Code {
+                    livery_index: 0,
+                    side_index: 0,
+                });
                 state.upload_queue = Some(QueueSnapshot::default());
                 state.roblox_account_id = Some("123456789".into());
                 state.roblox_liveries = vec![RobloxLiverySummary {
