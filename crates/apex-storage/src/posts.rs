@@ -535,7 +535,12 @@ impl Workspace {
                     .map_err(storage)?;
                 file.write_all(&image.bytes).map_err(storage)?;
                 file.sync_all().map_err(storage)?;
-                super::validate_texture(&temporary)?;
+                let dimensions = super::validate_png_dimensions(&temporary)?;
+                if dimensions != (image.width, image.height) {
+                    return Err(Error::InvalidContent(
+                        "Overlay preview dimensions do not match the selected platform.".into(),
+                    ));
+                }
                 self.import_file(&temporary)
             })();
             let _ = fs::remove_file(&temporary);
@@ -654,6 +659,100 @@ impl Workspace {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    fn generated_overlay(color: u8, composition: &str) -> GeneratedPreview {
+        let image = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            1920,
+            1080,
+            image::Rgb([color, 20, 30]),
+        ));
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+        GeneratedPreview {
+            name: "Preview.png".into(),
+            bytes: bytes.into_inner(),
+            source_hash: "a".repeat(64),
+            width: 1920,
+            height: 1080,
+            composition_json: serde_json::json!({"text": composition}).to_string(),
+        }
+    }
+
+    #[test]
+    fn generated_overlays_reuse_identical_pixels_version_changes_and_preserve_post_snapshots() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path().join("ws")).unwrap();
+        let first = generated_overlay(10, "Original");
+        let first_hash = ws
+            .add_generated_previews(None, std::slice::from_ref(&first))
+            .unwrap()[0]
+            .hash
+            .clone();
+
+        let post_id = ws.create_post().unwrap();
+        let mut draft = ws.post(&post_id).unwrap();
+        draft.data.title = "Overlay snapshot".into();
+        draft.data.media.push(PublishingImage {
+            hash: first_hash.clone(),
+            name: "Preview.png".into(),
+        });
+        ws.save_post(&post_id, draft.revision, draft.data).unwrap();
+
+        let repeated_hash = ws
+            .add_generated_previews(None, std::slice::from_ref(&first))
+            .unwrap()[0]
+            .hash
+            .clone();
+        assert_eq!(repeated_hash, first_hash);
+
+        let changed = generated_overlay(11, "Updated");
+        let changed_hash = ws.add_generated_previews(None, &[changed]).unwrap()[0]
+            .hash
+            .clone();
+        assert_ne!(changed_hash, first_hash);
+
+        let versions: Vec<(i64, String)> = ws
+            .connection()
+            .unwrap()
+            .prepare("SELECT version,hash FROM overlay_render_versions ORDER BY version")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(versions, vec![(1, first_hash.clone()), (2, changed_hash)]);
+        assert_eq!(ws.post(&post_id).unwrap().data.media[0].hash, first_hash);
+        assert_eq!(ws.media_library().unwrap().len(), 2);
+
+        let backup = dir.path().join("overlay-backup.apexbackup");
+        ws.backup(&backup).unwrap();
+        let restored = Workspace::open(dir.path().join("restored")).unwrap();
+        restored.restore_backup(&backup).unwrap();
+        assert_eq!(restored.media_library().unwrap().len(), 2);
+        assert_eq!(
+            restored.post(&post_id).unwrap().data.media[0].hash,
+            first_hash
+        );
+        let version_count: i64 = restored
+            .connection()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM overlay_render_versions", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version_count, 2);
+    }
+
+    #[test]
+    fn generated_overlay_metadata_must_match_actual_png_dimensions() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path().join("ws")).unwrap();
+        let mut mismatched = generated_overlay(10, "Wrong target");
+        mismatched.height = 1200;
+        assert!(ws.add_generated_previews(None, &[mismatched]).is_err());
+        assert!(ws.media_library().unwrap().is_empty());
+    }
+
     #[test]
     fn deleted_sources_keep_post_media_and_require_explicit_snapshot_review() {
         let dir = tempfile::tempdir().unwrap();

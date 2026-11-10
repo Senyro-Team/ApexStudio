@@ -14,7 +14,7 @@ mod assets;
 mod markdown_presets;
 mod media_library;
 mod overlays;
-pub use assets::validate_png as validate_texture;
+pub use assets::{validate_png as validate_texture, validate_png_dimensions};
 pub use markdown_presets::MarkdownPreset;
 pub use media_library::{GeneratedPreview, MediaLibraryItem};
 pub use overlays::OverlayTemplate;

@@ -1,5 +1,6 @@
 use super::{storage, Workspace};
 use apex_core::{AssetBoard, AssetFolder, AssetVersion, Error, ImportReport, Placement};
+use image::GenericImageView;
 use rusqlite::{params, OptionalExtension};
 use std::{
     collections::HashSet,
@@ -626,7 +627,7 @@ fn valid_slot(slot: &str) -> bool {
             .parse::<u8>()
             .is_ok_and(|n| (1..=100).contains(&n) && n.to_string() == number)
 }
-pub fn validate_png(path: &Path) -> Result<(), Error> {
+pub fn validate_png_dimensions(path: &Path) -> Result<(u32, u32), Error> {
     if fs::metadata(path).map_err(storage)?.len() > 20 * 1024 * 1024 {
         return Err(bad("Choose PNG textures smaller than 20 MB."));
     }
@@ -639,9 +640,13 @@ pub fn validate_png(path: &Path) -> Result<(), Error> {
     limits.max_image_height = Some(8000);
     limits.max_alloc = Some(256 * 1024 * 1024);
     r.limits(limits);
-    r.decode()
+    let image = r
+        .decode()
         .map_err(|_| bad("Choose a valid PNG texture up to 8000 × 8000 pixels."))?;
-    Ok(())
+    Ok(image.dimensions())
+}
+pub fn validate_png(path: &Path) -> Result<(), Error> {
+    validate_png_dimensions(path).map(|_| ())
 }
 
 #[cfg(test)]
