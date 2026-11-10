@@ -54,6 +54,43 @@ import {
   type OverlayPreviewOutput,
 } from "./bridge";
 const steps = ["Liveries", "Details", "Previews", "Markdown", "Review"] as const;
+const PENDING_INVITE_REQUESTS_KEY = "apex-studio.pending-invite-requests.v1";
+
+type PendingInviteRequest = { id: string; scope: string; payloadHash: string };
+
+function readPendingInviteRequests(): PendingInviteRequest[] {
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(PENDING_INVITE_REQUESTS_KEY) ?? "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter((entry): entry is PendingInviteRequest =>
+      !!entry && typeof entry === "object"
+      && typeof entry.id === "string"
+      && typeof entry.scope === "string"
+      && typeof entry.payloadHash === "string",
+    );
+  } catch { return []; }
+}
+
+async function hashInvitePayload(payload: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function ensurePendingInviteRequest(scope: string, payload: string): Promise<PendingInviteRequest> {
+  const payloadHash = await hashInvitePayload(payload);
+  const requests = readPendingInviteRequests();
+  const existing = requests.find((request) => request.scope === scope && request.payloadHash === payloadHash);
+  if (existing) return existing;
+  const request = { id: crypto.randomUUID(), scope, payloadHash };
+  requests.push(request);
+  window.localStorage.setItem(PENDING_INVITE_REQUESTS_KEY, JSON.stringify(requests));
+  return request;
+}
+
+function clearPendingInviteRequest(id: string) {
+  const requests = readPendingInviteRequests().filter((request) => request.id !== id);
+  window.localStorage.setItem(PENDING_INVITE_REQUESTS_KEY, JSON.stringify(requests));
+}
 
 function safeHttpsUrl(value: string): string | null {
   try {
@@ -196,7 +233,7 @@ export default function Publishing({
   const [imageHostingAvailable, setImageHostingAvailable] = useState(false);
   const [inviteTrackingAvailable, setInviteTrackingAvailable] = useState(false);
   const [inviteCampaignBusy, setInviteCampaignBusy] = useState(false);
-  const inviteRequestId = useRef<{ id: string; payload: string } | null>(null);
+  const inviteRequestId = useRef<{ id: string; payload: string; scope: string } | null>(null);
   const [inviteTitle, setInviteTitle] = useState("");
   const [inviteCategory, setInviteCategory] = useState<InviteCampaign["category"]>("livery");
   const [inviteChannelId, setInviteChannelId] = useState("");
@@ -383,15 +420,22 @@ export default function Publishing({
         channelId: inviteChannelId.trim(), maxAgeDays: inviteMaxAge, maxUses: inviteMaxUses,
       };
       const payload = JSON.stringify(input);
-      if (inviteRequestId.current?.payload !== payload) {
-        inviteRequestId.current = { id: crypto.randomUUID(), payload };
+      const scope = JSON.stringify([serverUrl, teamId, draftId ?? project?.id ?? "global"]);
+      const persisted = await ensurePendingInviteRequest(scope, payload);
+      if (inviteRequestId.current?.payload !== payload || inviteRequestId.current.scope !== scope) {
+        inviteRequestId.current = { ...persisted, payload };
       }
       const campaign = await syncCreateInviteCampaign(serverUrl, teamId, inviteRequestId.current.id, input);
       inviteRequestId.current = null;
       setInviteCampaigns((current) => [campaign, ...current.filter((item) => item.id !== campaign.id)]);
       if (campaign.inviteUrl) addInviteUrl(campaign.title, campaign.inviteUrl);
       setInviteTitle(""); setInviteNotes("");
-      setNotice("Tracked invite created and added to the post.");
+      try {
+        clearPendingInviteRequest(persisted.id);
+        setNotice("Tracked invite created and added to the post.");
+      } catch {
+        setNotice("Tracked invite created and added. Its retry key remains saved locally.");
+      }
     } catch (cause) { setError(errorMessage(cause)); }
     finally { setInviteCampaignBusy(false); }
   }

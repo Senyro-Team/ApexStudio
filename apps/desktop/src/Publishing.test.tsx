@@ -11,10 +11,12 @@ import {
   listAssets,
   mediaLibrary,
   syncImageLibrary,
+  syncCreateInviteCampaign,
   syncListInviteCampaigns,
   syncServiceAvailability,
   type MediaLibraryItem,
   type SyncServiceAvailability,
+  type InviteCampaign,
   type PublishingData,
   type Project,
   type Catalogue,
@@ -31,6 +33,7 @@ vi.mock("./bridge", () => ({
   listAssets: vi.fn(),
   mediaLibrary: vi.fn(),
   syncImageLibrary: vi.fn(),
+  syncCreateInviteCampaign: vi.fn(),
   syncListInviteCampaigns: vi.fn(),
   syncServiceAvailability: vi.fn(),
   listMarkdownPresets: vi.fn().mockResolvedValue([]),
@@ -99,8 +102,27 @@ beforeEach(() => {
   });
   vi.mocked(syncListInviteCampaigns).mockResolvedValue([]);
   vi.mocked(syncImageLibrary).mockResolvedValue({ images: [], errors: [] });
+  vi.mocked(syncCreateInviteCampaign).mockResolvedValue({
+    id: "campaign-1",
+    title: "Campaign",
+    category: "livery",
+    notes: "",
+    channelId: "12345678901234567",
+    code: "abc123",
+    inviteUrl: "https://discord.gg/abc123",
+    createdAt: "2026-11-10T00:00:00Z",
+    expiresAt: null,
+    maxUses: 0,
+    totalUses: 0,
+    isActive: true,
+    trackedJoins: 0,
+  });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+  vi.restoreAllMocks();
+});
 it("uses an app menu for vehicle suggestions", async () => {
   const user = userEvent.setup();
   render(<Publishing project={project} catalogue={catalogue} onEditingChange={() => {}} />);
@@ -417,4 +439,60 @@ it("keeps a fast team-library response when the local media query finishes later
   const availableImages = Array.from((librarySelect as HTMLSelectElement).options).map((option) => option.textContent);
   expect(availableImages).toContain("Local banner");
   expect(availableImages).toContain("Shared banner");
+});
+
+it("reuses the same invite idempotency key after an ambiguous failure and remount", async () => {
+  const user = userEvent.setup();
+  const campaign: InviteCampaign = {
+    id: "campaign-2",
+    title: "Emergency campaign",
+    category: "livery",
+    notes: "",
+    channelId: "12345678901234567",
+    code: "invite2",
+    inviteUrl: "https://discord.gg/invite2",
+    createdAt: "2026-11-10T00:00:00Z",
+    expiresAt: null,
+    maxUses: 0,
+    totalUses: 0,
+    isActive: true,
+    trackedJoins: 0,
+  };
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  window.localStorage.setItem("apex-studio.team-sync.server-url", "https://team.example");
+  window.localStorage.setItem("apex-studio.team-sync.active-team", "team-1");
+  vi.mocked(syncServiceAvailability).mockResolvedValue({
+    projectSync: true,
+    imageHosting: false,
+    inviteTracking: true,
+  });
+  vi.mocked(syncCreateInviteCampaign)
+    .mockRejectedValueOnce(new Error("Network timeout"))
+    .mockResolvedValueOnce(campaign);
+
+  const renderComposer = () => render(
+    <Publishing project={project} catalogue={null} onEditingChange={() => {}} />,
+  );
+  const fillInviteForm = async () => {
+    await user.click(await screen.findByRole("button", { name: "Markdown" }));
+    await user.type(await screen.findByLabelText("Campaign title"), "Emergency campaign");
+    await user.type(screen.getByLabelText("Discord channel ID"), "12345678901234567");
+    await user.click(screen.getByRole("button", { name: "Create invite and add link" }));
+  };
+
+  const first = renderComposer();
+  await fillInviteForm();
+  await screen.findByText("Network timeout");
+  const firstRequestId = vi.mocked(syncCreateInviteCampaign).mock.calls[0][2];
+  const storedRequests = window.localStorage.getItem("apex-studio.pending-invite-requests.v1") ?? "";
+  expect(storedRequests).toContain(firstRequestId);
+  expect(storedRequests).not.toContain("Emergency campaign");
+  first.unmount();
+
+  renderComposer();
+  await fillInviteForm();
+  await screen.findByText("Tracked invite created and added to the post.");
+  expect(syncCreateInviteCampaign).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(syncCreateInviteCampaign).mock.calls[1][2]).toBe(firstRequestId);
+  expect(window.localStorage.getItem("apex-studio.pending-invite-requests.v1")).toBe("[]");
 });
