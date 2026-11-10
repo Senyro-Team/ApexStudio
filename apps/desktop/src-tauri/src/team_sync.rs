@@ -73,7 +73,14 @@ pub async fn sync_upload_library_images(
     state: State<'_, TeamSyncState>,
     workspace: State<'_, apex_storage::Workspace>,
 ) -> Result<SyncHostedImages, String> {
-    if item_ids.is_empty() || item_ids.len() > 10 || !["personal", "team"].contains(&scope.as_str())
+    if item_ids.is_empty()
+        || item_ids.len() > 10
+        || item_ids
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            != item_ids.len()
+        || !["personal", "team"].contains(&scope.as_str())
     {
         return Err("Choose up to ten images and a valid upload scope.".into());
     }
@@ -91,42 +98,39 @@ pub async fn sync_upload_library_images(
     })
     .await
     .map_err(|error| error.message)?;
+    let mut local_refs = Vec::with_capacity(local_images.len());
+    let mut upload_items = Vec::with_capacity(local_images.len());
+    for (id, name, bytes, hash) in local_images {
+        upload_items.push(apex_application::team_sync::HostedImageUpload {
+            client_id: id.clone(),
+            name: name.clone(),
+            bytes,
+        });
+        local_refs.push((id, name, hash));
+    }
     let uploaded = apex_application::team_sync::upload_hosted_images(
         &server_url,
         &team_id,
         &scope,
-        local_images
-            .iter()
-            .map(
-                |(id, name, bytes, _)| apex_application::team_sync::HostedImageUpload {
-                    client_id: id.clone(),
-                    name: name.clone(),
-                    bytes: bytes.clone(),
-                },
-            )
-            .collect(),
+        upload_items,
     )
     .await
     .map_err(|error| error.to_string())?;
 
     let ws = workspace.inner().clone();
     let uploaded_images = uploaded.images.clone();
-    let local_hashes = local_images
-        .into_iter()
-        .map(|(id, name, _, hash)| (id, name, hash))
-        .collect::<Vec<_>>();
     let selected_team_id = team_id.clone();
     super::projects::work(move || {
         for image in uploaded_images {
             let correlated = image
                 .client_id
                 .as_deref()
-                .filter(|client_id| local_hashes.iter().any(|(id, _, _)| id == client_id));
-            for (id, name, hash) in &local_hashes {
+                .filter(|client_id| local_refs.iter().any(|(id, _, _)| id == client_id));
+            for (id, name, hash) in &local_refs {
                 let matches = correlated.map_or_else(
                     || {
                         (hash.as_deref() == Some(image.hash.as_str()) || name == &image.name)
-                            && local_hashes
+                            && local_refs
                                 .iter()
                                 .filter(|(_, candidate_name, candidate_hash)| {
                                     candidate_name == name

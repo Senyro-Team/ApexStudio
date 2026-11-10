@@ -555,6 +555,14 @@ pub async fn upload_hosted_images(
             "Choose a personal or team scope and up to ten images.",
         ));
     }
+    let mut client_ids = std::collections::HashSet::with_capacity(images.len());
+    if images.iter().any(|image| {
+        uuid::Uuid::parse_str(&image.client_id).is_err() || !client_ids.insert(&image.client_id)
+    }) {
+        return Err(invalid(
+            "An image upload batch contains an invalid or repeated image reference.",
+        ));
+    }
     let total_bytes = images.iter().fold(0usize, |total, image| {
         total.saturating_add(image.bytes.len())
     });
@@ -567,13 +575,9 @@ pub async fn upload_hosted_images(
         team_service_endpoint(server_url, team_id, "image-library").await?;
     let mut form = reqwest::multipart::Form::new();
     for image in images {
-        if image.client_id.is_empty()
-            || image.client_id.len() > 128
-            || image.bytes.is_empty()
-            || image.bytes.len() > 40 * 1024 * 1024
-        {
+        if image.bytes.is_empty() || image.bytes.len() > 40 * 1024 * 1024 {
             return Err(invalid(
-                "Each hosted image must have a valid local reference and be between 1 byte and 40 MB.",
+                "Each hosted image must be between 1 byte and 40 MB.",
             ));
         }
         form = form.text("clientId", image.client_id);
