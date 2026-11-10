@@ -5253,6 +5253,9 @@ select {
 .media-library-project-add { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
 .media-library-project-add label { color: var(--muted); }
 .media-library-search { max-width: 420px; }
+.media-library-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
+.media-library-filters label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
+.media-library-filters select { min-width: 180px; }
 .media-library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px; }
 .media-library-card { overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
 .media-library-preview { height: 150px; display: grid; place-items: center; background: var(--surface-raised); overflow: hidden; }
@@ -5261,6 +5264,8 @@ select {
 .media-library-card-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .media-library-card-title strong { overflow: hidden; text-overflow: ellipsis; }
 .media-library-card-title span, .media-library-card-body small { color: var(--muted); font-size: 12px; }
+.media-library-card-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.media-library-card-meta span { padding: 3px 7px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: 11px; }
 .media-library-card-body a { display: inline-flex; align-items: center; gap: 6px; width: fit-content; }
 .media-library-card-actions { display: flex; gap: 14px; margin-top: 4px; }
 .media-library-form { display: grid; gap: 14px; max-width: 720px; padding: 18px; border: 1px solid var(--border); border-radius: 14px; }

@@ -51,11 +51,20 @@ pub async fn add_media_library_url(
     alt_text: String,
     image_url: String,
     default_link_url: Option<String>,
+    folder: String,
+    tags: Vec<String>,
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<MediaLibraryItem, CommandError> {
     let ws = workspace.inner().clone();
     work(move || {
-        ws.add_media_library_url(&name, &alt_text, &image_url, default_link_url.as_deref())
+        ws.add_media_library_url(
+            &name,
+            &alt_text,
+            &image_url,
+            default_link_url.as_deref(),
+            &folder,
+            &tags,
+        )
     })
     .await
 }
@@ -67,6 +76,8 @@ pub async fn update_media_library_item(
     alt_text: String,
     image_url: String,
     default_link_url: Option<String>,
+    folder: String,
+    tags: Vec<String>,
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<MediaLibraryItem, CommandError> {
     let ws = workspace.inner().clone();
@@ -77,6 +88,8 @@ pub async fn update_media_library_item(
             &alt_text,
             &image_url,
             default_link_url.as_deref(),
+            &folder,
+            &tags,
         )
     })
     .await

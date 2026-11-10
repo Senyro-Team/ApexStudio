@@ -15,6 +15,8 @@ pub struct MediaLibraryItem {
     pub alt_text: String,
     pub image_url: String,
     pub default_link_url: Option<String>,
+    pub folder: String,
+    pub tags: Vec<String>,
     pub owner_scope: String,
     pub team_id: Option<String>,
     pub provider_image_id: Option<String>,
@@ -49,6 +51,39 @@ fn validate_text(value: &str, max: usize, label: &str) -> Result<(), Error> {
     Ok(())
 }
 
+fn validate_folder_tags(folder: &str, tags: &[String]) -> Result<(String, Vec<String>), Error> {
+    let folder = folder.trim();
+    if folder.chars().count() > 80
+        || folder
+            .chars()
+            .any(|c| c.is_control() || c == '/' || c == '\\')
+    {
+        return Err(invalid(
+            "Folder names must be 80 characters or fewer and cannot contain slashes.",
+        ));
+    }
+    if tags.len() > 24 {
+        return Err(invalid("Use 24 tags or fewer per image."));
+    }
+    let mut normalized_tags = Vec::new();
+    for tag in tags {
+        let tag = tag.trim();
+        if tag.is_empty() {
+            continue;
+        }
+        if tag.chars().count() > 32 || tag.chars().any(char::is_control) {
+            return Err(invalid("Each tag must be 32 characters or fewer."));
+        }
+        if !normalized_tags
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(tag))
+        {
+            normalized_tags.push(tag.to_owned());
+        }
+    }
+    Ok((folder.to_owned(), normalized_tags))
+}
+
 fn validate_url(value: &str, required: bool) -> Result<Option<String>, Error> {
     let value = value.trim();
     if value.is_empty() {
@@ -77,7 +112,7 @@ impl Workspace {
         let row = self
             .connection()?
             .query_row(
-                "SELECT id,hash,name,alt_text,image_url,default_link_url,owner_scope,team_id,provider_image_id,created_at,updated_at FROM media_library WHERE id=?1",
+                "SELECT id,hash,name,alt_text,image_url,default_link_url,folder,tags_json,owner_scope,team_id,provider_image_id,created_at,updated_at FROM media_library WHERE id=?1",
                 [id],
                 |row| {
                     Ok((
@@ -88,10 +123,12 @@ impl Workspace {
                         row.get::<_, String>(4)?,
                         row.get::<_, Option<String>>(5)?,
                         row.get::<_, String>(6)?,
-                        row.get::<_, Option<String>>(7)?,
-                        row.get::<_, Option<String>>(8)?,
-                        row.get::<_, String>(9)?,
-                        row.get::<_, String>(10)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, String>(8)?,
+                        row.get::<_, Option<String>>(9)?,
+                        row.get::<_, Option<String>>(10)?,
+                        row.get::<_, String>(11)?,
+                        row.get::<_, String>(12)?,
                     ))
                 },
             )
@@ -113,11 +150,13 @@ impl Workspace {
             alt_text: row.3,
             image_url: row.4,
             default_link_url: row.5,
-            owner_scope: row.6,
-            team_id: row.7,
-            provider_image_id: row.8,
-            created_at: row.9,
-            updated_at: row.10,
+            folder: row.6,
+            tags: serde_json::from_str(&row.7).map_err(storage)?,
+            owner_scope: row.8,
+            team_id: row.9,
+            provider_image_id: row.10,
+            created_at: row.11,
+            updated_at: row.12,
             preview,
         })
     }
@@ -151,16 +190,19 @@ impl Workspace {
         alt_text: &str,
         image_url: &str,
         default_link_url: Option<&str>,
+        folder: &str,
+        tags: &[String],
     ) -> Result<MediaLibraryItem, Error> {
         validate_name(name)?;
         validate_text(alt_text, 500, "Alt text must be 500 characters or fewer.")?;
         let image_url = validate_url(image_url, hash.is_none())?.unwrap_or_default();
         let default_link_url = validate_url(default_link_url.unwrap_or_default(), false)?;
+        let (folder, tags) = validate_folder_tags(folder, tags)?;
         let id = uuid::Uuid::now_v7().to_string();
         self.connection()?
             .execute(
-                "INSERT INTO media_library(id,hash,name,alt_text,image_url,default_link_url) VALUES(?1,?2,?3,?4,?5,?6)",
-                params![id, hash, name.trim(), alt_text.trim(), image_url, default_link_url],
+                "INSERT INTO media_library(id,hash,name,alt_text,image_url,default_link_url,folder,tags_json) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+                params![id, hash, name.trim(), alt_text.trim(), image_url, default_link_url, folder, serde_json::to_string(&tags).map_err(storage)?],
             )
             .map_err(storage)?;
         self.media_library_item(&id)
@@ -190,7 +232,7 @@ impl Workspace {
             .file_stem()
             .map(|s| s.to_string_lossy().replace(['_', '-'], " "))
             .unwrap_or_else(|| "Image".into());
-        self.insert_media_item(Some(&hash), &name, &alt, "", None)
+        self.insert_media_item(Some(&hash), &name, &alt, "", None, "", &[])
     }
 
     pub fn add_media_library_asset(
@@ -217,7 +259,7 @@ impl Workspace {
             .file_stem()
             .map(|s| s.to_string_lossy().replace(['_', '-'], " "))
             .unwrap_or_else(|| name.clone());
-        self.insert_media_item(Some(&hash), &name, &alt, "", None)
+        self.insert_media_item(Some(&hash), &name, &alt, "", None, "", &[])
     }
 
     pub fn add_media_library_url(
@@ -226,8 +268,18 @@ impl Workspace {
         alt_text: &str,
         image_url: &str,
         default_link_url: Option<&str>,
+        folder: &str,
+        tags: &[String],
     ) -> Result<MediaLibraryItem, Error> {
-        self.insert_media_item(None, name, alt_text, image_url, default_link_url)
+        self.insert_media_item(
+            None,
+            name,
+            alt_text,
+            image_url,
+            default_link_url,
+            folder,
+            tags,
+        )
     }
 
     pub fn update_media_library_item(
@@ -237,9 +289,12 @@ impl Workspace {
         alt_text: &str,
         image_url: &str,
         default_link_url: Option<&str>,
+        folder: &str,
+        tags: &[String],
     ) -> Result<MediaLibraryItem, Error> {
         validate_name(name)?;
         validate_text(alt_text, 500, "Alt text must be 500 characters or fewer.")?;
+        let (folder, normalized_tags) = validate_folder_tags(folder, tags)?;
         let current_hash: Option<String> = self
             .connection()?
             .query_row("SELECT hash FROM media_library WHERE id=?1", [id], |row| {
@@ -252,8 +307,8 @@ impl Workspace {
         let default_link_url = validate_url(default_link_url.unwrap_or_default(), false)?;
         self.connection()?
             .execute(
-                "UPDATE media_library SET name=?2,alt_text=?3,image_url=?4,default_link_url=?5,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1",
-                params![id, name.trim(), alt_text.trim(), image_url, default_link_url],
+                "UPDATE media_library SET name=?2,alt_text=?3,image_url=?4,default_link_url=?5,folder=?6,tags_json=?7,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1",
+                params![id, name.trim(), alt_text.trim(), image_url, default_link_url, folder, serde_json::to_string(&normalized_tags).map_err(storage)?],
             )
             .map_err(storage)?;
         self.media_library_item(id)

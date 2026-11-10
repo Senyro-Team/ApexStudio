@@ -21,13 +21,17 @@ type FormValues = {
   altText: string;
   imageUrl: string;
   defaultLinkUrl: string;
+  folder: string;
+  tags: string;
 };
-const blank: FormValues = { name: "", altText: "", imageUrl: "", defaultLinkUrl: "" };
+const blank: FormValues = { name: "", altText: "", imageUrl: "", defaultLinkUrl: "", folder: "", tags: "" };
 
 export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => void }) {
   const [items, setItems] = useState<MediaLibraryItem[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [query, setQuery] = useState("");
+  const [folderFilter, setFolderFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
   const [form, setForm] = useState<FormValues | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [assetId, setAssetId] = useState("");
@@ -51,7 +55,7 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
         const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
         const remoteItems: MediaLibraryItem[] = shared.images
           .filter((image) => !localRemoteIds.has(image.id))
-          .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? savedTeam : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
+          .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, folder: "", tags: [], ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? savedTeam : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
         combined = [...remoteItems, ...library];
       } catch {
         setNotice("Team Image Hosting could not be reached. Local images and manual URLs are still available.");
@@ -68,10 +72,16 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
   }, []);
   useEffect(() => { onBusy(busy); return () => onBusy(false); }, [busy, onBusy]);
 
+  const folders = useMemo(() => [...new Set(items.map((item) => item.folder.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [items]);
+  const tags = useMemo(() => [...new Set(items.flatMap((item) => item.tags))].sort((a, b) => a.localeCompare(b)), [items]);
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
-    return items.filter((item) => !term || `${item.name} ${item.altText} ${item.imageUrl}`.toLowerCase().includes(term));
-  }, [items, query]);
+    return items.filter((item) =>
+      (!term || `${item.name} ${item.altText} ${item.imageUrl} ${item.folder} ${item.tags.join(" ")}`.toLowerCase().includes(term)) &&
+      (!folderFilter || (folderFilter === "__unfiled" ? !item.folder : item.folder === folderFilter)) &&
+      (!tagFilter || item.tags.some((tag) => tag.toLowerCase() === tagFilter.toLowerCase()))
+    );
+  }, [items, query, folderFilter, tagFilter]);
 
   async function run(action: () => Promise<void>, message = "") {
     setBusy(true);
@@ -151,9 +161,10 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
       if (editing) {
         const current = items.find((item) => item.id === editing);
         if (!current) throw Error("This library item is no longer available.");
-        await updateMediaLibraryItem({ ...current, ...form, defaultLinkUrl: form.defaultLinkUrl || null });
+        const normalizedTags = form.tags.split(",").map((tag) => tag.trim()).filter(Boolean);
+        await updateMediaLibraryItem({ ...current, ...form, folder: form.folder.trim(), tags: normalizedTags, defaultLinkUrl: form.defaultLinkUrl || null });
       } else {
-        await addMediaLibraryUrl(form.name, form.altText, form.imageUrl, form.defaultLinkUrl);
+        await addMediaLibraryUrl(form.name, form.altText, form.imageUrl, form.defaultLinkUrl, form.folder, form.tags.split(",").map((tag) => tag.trim()).filter(Boolean));
       }
       setForm(null);
       setEditing(null);
@@ -195,6 +206,11 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
         <FileImage size={17} aria-hidden="true" />
         <input aria-label="Search image library" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search images" />
       </label>
+      <div className="media-library-filters" aria-label="Filter library images">
+        <label>Folder<select value={folderFilter} disabled={busy} onChange={(event) => setFolderFilter(event.target.value)}><option value="">All folders</option><option value="__unfiled">Unfiled</option>{folders.map((folder) => <option key={folder} value={folder}>{folder}</option>)}</select></label>
+        <label>Tag<select value={tagFilter} disabled={busy} onChange={(event) => setTagFilter(event.target.value)}><option value="">All tags</option>{tags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}</select></label>
+        {(folderFilter || tagFilter) && <button className="text-button" type="button" disabled={busy} onClick={() => { setFolderFilter(""); setTagFilter(""); }}>Clear filters</button>}
+      </div>
       {form && (
         <form className="media-library-form" onSubmit={(event) => void saveForm(event)}>
           <div className="media-library-form-heading">
@@ -205,6 +221,8 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
           <label>Alt text<input maxLength={500} value={form.altText} onChange={(event) => setForm({ ...form, altText: event.target.value })} /></label>
           <label>Public image URL<input type="url" required={items.find((item) => item.id === editing)?.hash == null} value={form.imageUrl} onChange={(event) => setForm({ ...form, imageUrl: event.target.value })} placeholder="https://…" /></label>
           <label>Default link <span className="optional">(optional)</span><input type="url" value={form.defaultLinkUrl} onChange={(event) => setForm({ ...form, defaultLinkUrl: event.target.value })} placeholder="https://…" /></label>
+          <label>Folder <span className="optional">(optional)</span><input maxLength={80} value={form.folder} onChange={(event) => setForm({ ...form, folder: event.target.value })} placeholder="Banners" /></label>
+          <label>Tags <span className="optional">(comma separated)</span><input maxLength={800} value={form.tags} onChange={(event) => setForm({ ...form, tags: event.target.value })} placeholder="studio, support, reusable" /></label>
           <div className="media-library-form-actions">
             <button className="primary" disabled={busy}>{busy ? "Saving…" : "Save image"}</button>
             <button className="secondary" type="button" disabled={busy} onClick={() => { setForm(null); setEditing(null); }}>Cancel</button>
@@ -221,11 +239,12 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
               <div className="media-library-card-body">
                 <div className="media-library-card-title"><strong>{item.name}</strong><span>{item.isRemote ? "Shared with team" : item.ownerScope === "personal" ? "Personal" : "Team"}</span></div>
                 <small>{item.altText || "No alt text"}</small>
+                <div className="media-library-card-meta"><span>{item.folder || "Unfiled"}</span>{item.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div>
                 {item.imageUrl ? <a href={item.imageUrl} target="_blank" rel="noreferrer"><Link2 size={14} aria-hidden="true" /> Open image <ExternalLink size={13} aria-hidden="true" /></a> : <small>Local only · public URL not set</small>}
                 <div className="media-library-card-actions">
                   {item.hash && !item.providerImageId && <button className="text-button" type="button" disabled={busy} onClick={() => void uploadItem(item)}><Upload size={15} aria-hidden="true" /> Upload public</button>}
                   {item.providerImageId && !item.isRemote && <button className="text-button" type="button" disabled={busy} onClick={() => void changeSharing(item)}>{item.ownerScope === "team" ? "Make personal" : "Share with team"}</button>}
-                  <button className="text-button" type="button" disabled={busy || item.isRemote} onClick={() => { setEditing(item.id); setForm({ name: item.name, altText: item.altText, imageUrl: item.imageUrl, defaultLinkUrl: item.defaultLinkUrl ?? "" }); }}><PencilLine size={15} aria-hidden="true" /> Edit</button>
+                  <button className="text-button" type="button" disabled={busy || item.isRemote} onClick={() => { setEditing(item.id); setForm({ name: item.name, altText: item.altText, imageUrl: item.imageUrl, defaultLinkUrl: item.defaultLinkUrl ?? "", folder: item.folder, tags: item.tags.join(", ") }); }}><PencilLine size={15} aria-hidden="true" /> Edit</button>
                   <button className="text-button" type="button" onClick={() => {
                     if (!window.confirm(`Remove “${item.name}” from the Image Library?`)) return;
                     void run(async () => deleteMediaLibraryItem(item.id), "Image removed from the library.");

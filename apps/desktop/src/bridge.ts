@@ -296,6 +296,8 @@ export interface MediaLibraryItem {
   altText: string;
   imageUrl: string;
   defaultLinkUrl: string | null;
+  folder: string;
+  tags: string[];
   ownerScope: "personal" | "team";
   teamId: string | null;
   providerImageId: string | null;
@@ -314,8 +316,10 @@ export const addMediaLibraryUrl = (
   altText: string,
   imageUrl: string,
   defaultLinkUrl: string,
+  folder: string,
+  tags: string[],
 ) => invoke<MediaLibraryItem>("add_media_library_url", {
-  name, altText, imageUrl, defaultLinkUrl: defaultLinkUrl || null,
+  name, altText, imageUrl, defaultLinkUrl: defaultLinkUrl || null, folder, tags,
 });
 export const updateMediaLibraryItem = (item: MediaLibraryItem) =>
   invoke<MediaLibraryItem>("update_media_library_item", {
@@ -324,6 +328,8 @@ export const updateMediaLibraryItem = (item: MediaLibraryItem) =>
     altText: item.altText,
     imageUrl: item.imageUrl,
     defaultLinkUrl: item.defaultLinkUrl,
+    folder: item.folder,
+    tags: item.tags,
   });
 export const deleteMediaLibraryItem = (id: string) =>
   invoke<void>("delete_media_library_item", { id });
