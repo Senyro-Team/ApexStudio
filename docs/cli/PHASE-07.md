@@ -14,6 +14,7 @@ Status: In progress.
 - Verified Inno first install with and without the CLI component, component removal on upgrade, and uninstall; unrelated `PATH` entries remained byte-for-byte unchanged.
 - Verified the updated release CLI in a Windows PTY against a new disposable workspace and exited cleanly.
 - Rechecked the installed `apex-studio-cli` in a fresh Windows PTY: the boxed navigation renders all modules, the selection hints are visible, and `q` exits cleanly with terminal state restored.
+- Verified the optimized CLI build and ran `workspace --json` against a fresh disposable workspace (schema version 18, zero managed files). Frontend build/typecheck, all 99 frontend tests, and the ERLCX extension build passed. Vite reports the existing Notes chunk above its 500 kB advisory threshold.
 - Added an offline, machine-checked schema suite that validates all schema documents, representative serialized workspace/service results, and ad hoc CLI operation reports. The existing CI `cargo test --locked` runs this suite.
 - Added a report schema for command-specific JSON wrappers, including synchronization runs, revenue CSV imports, and status/configuration results; the contract tests validate these representative shapes.
 - Added direct-output contracts for the official vehicle catalogue search, asset versions, and nullable creator-sales snapshots.
