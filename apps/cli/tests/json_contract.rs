@@ -477,4 +477,32 @@ fn ad_hoc_cli_operation_reports_match_the_documented_schemas() {
     }
     let validator = jsonschema::validator_for(&schema).expect("compile CLI report definitions");
     assert!(validator.is_valid(&serde_json::json!({"ok":true})));
+
+    assert_schema_definition_valid(
+        "asset-board.schema.json",
+        "version",
+        &serde_json::json!({
+            "id":"version-1","assetId":"asset-1","hash":"d".repeat(64),
+            "name":"Left 1.png","createdAt":"2026-01-01T00:00:00Z"
+        }),
+    );
+    assert_valid(
+        &read_schema("vehicle-catalogue.schema.json"),
+        &serde_json::json!([{
+            "id":"vehicle-1","team":"Police","name":"Falcon","source":"official",
+            "liverySupport":"yes","bodyStatus":"available","windowStatus":null,
+            "notes":[],"slots":[{"key":"Left 1","status":"available","kind":"body"}]
+        }]),
+    );
+    assert_valid(
+        &read_schema("statistics-sales.schema.json"),
+        &serde_json::json!({
+            "collectedAt":"2026-01-01T00:00:00Z",
+            "data":{"sales":1,"allTimeSales":10,"netRobux":7,"grossRobux":10,"series":[{"date":"2026-01-01","sales":1,"netRobux":7}]}
+        }),
+    );
+    assert_valid(
+        &read_schema("statistics-sales.schema.json"),
+        &serde_json::Value::Null,
+    );
 }

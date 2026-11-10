@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/statistics-sales.schema.json",
+  "title": "Apex Studio Roblox creator sales snapshot v1",
+  "anyOf": [
+    { "type": "null" },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["collectedAt", "data"],
+      "properties": {
+        "collectedAt": { "type": "string" },
+        "data": {
+          "type": "object", "additionalProperties": false,
+          "required": ["sales", "allTimeSales", "netRobux", "grossRobux", "series"],
+          "properties": {
+            "sales": { "type": "integer", "minimum": 0 },
+            "allTimeSales": { "type": "integer", "minimum": 0 },
+            "netRobux": { "type": "integer", "minimum": 0 },
+            "grossRobux": { "type": "integer", "minimum": 0 },
+            "series": {
+              "type": "array", "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["date", "sales", "netRobux"],
+                "properties": {
+                  "date": { "type": "string" }, "sales": { "type": "integer", "minimum": 0 },
+                  "netRobux": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

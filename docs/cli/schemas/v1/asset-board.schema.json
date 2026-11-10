@@ -41,6 +41,15 @@
         "assetId": { "type": "string" }, "folderId": { "type": ["string", "null"] },
         "slot": { "type": ["string", "null"] }
       }
+    },
+    "version": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "assetId", "hash", "name", "createdAt"],
+      "properties": {
+        "id": { "type": "string" }, "assetId": { "type": "string" },
+        "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "name": { "type": "string" }, "createdAt": { "type": "string" }
+      }
     }
   }
 }

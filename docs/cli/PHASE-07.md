@@ -15,6 +15,7 @@ Status: In progress.
 - Verified the updated release CLI in a Windows PTY against a new disposable workspace and exited cleanly.
 - Added an offline, machine-checked schema suite that validates all schema documents, representative serialized workspace/service results, and ad hoc CLI operation reports. The existing CI `cargo test --locked` runs this suite.
 - Added a report schema for command-specific JSON wrappers, including synchronization runs, revenue CSV imports, and status/configuration results; the contract tests validate these representative shapes.
+- Added direct-output contracts for the official vehicle catalogue search, asset versions, and nullable creator-sales snapshots.
 - Latest verification: root `cargo test --locked` passed 139 tests (30 application, 29 CLI unit, 17 CLI smoke, 5 JSON-contract, 7 core, 51 storage); `cargo check -p apex-desktop --all-targets --locked`, `cargo fmt --all --check`, `git diff --check`, and targeted CLI Clippy passed. Clippy explicitly allows two pre-existing warnings in Group Revenue storage and the TUI worker enum; no new warning was reported.
 
 ## Remaining acceptance work

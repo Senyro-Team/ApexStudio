@@ -29,6 +29,9 @@ The envelope schema is in [`schemas/v1/error-envelope.schema.json`](schemas/v1/e
 - `posts list`: array of [`PostSummary`](schemas/v1/post-summary.schema.json); `posts show/save`: [`PublishingDraft`](schemas/v1/publishing-draft.schema.json). Create/import return an object with `id` and `draft`.
 - `roblox queue`: [`QueueSnapshot`](schemas/v1/roblox-queue.schema.json).
 - `statistics history`: array of [`StatisticsSnapshot`](schemas/v1/statistics-snapshot.schema.json); `statistics compare`: [`StatisticsComparison`](schemas/v1/statistics-comparison.schema.json).
+- `statistics sales`: nullable creator-sales snapshot described by [`statistics-sales.schema.json`](schemas/v1/statistics-sales.schema.json).
+- `vehicles list`: array of official catalogue matches described by [`vehicle-catalogue.schema.json`](schemas/v1/vehicle-catalogue.schema.json).
+- `assets versions`: array of `asset-board.schema.json#/$defs/version`; new folders and folder edits return `#/$defs/folder`.
 - `trash list`: array of records in [`trash.schema.json`](schemas/v1/trash.schema.json).
 - `revenue groups`: array described by `group-revenue.schema.json#/$defs/groupsSummary`; `revenue show`: `#/$defs/groupDetails`; `revenue configure`: one group record; CSV preview/import: `#/$defs/csvPreview` and `#/$defs/csvImport`; removal: `cli-reports.schema.json#/$defs/revenueRemove`.
 - `sync status`, `setup`, `sign-in`, and invitation acceptance: `team-sync.schema.json#/$defs/connectionStatus`; `sync check`: `#/$defs/serverInfo`; `sync invite`: `#/$defs/invitation`; `sync members`: array of `#/$defs/teamMember`; `sync projects`: `#/$defs/syncPreview`; `sync run`: `cli-reports.schema.json#/$defs/syncRun`; `sync bindings`: array of `#/$defs/projectSync`; `sync link/unlink`: a project sync record or `null`; `sync codes`: array of `#/$defs/sharedDecalCode`; conflict resolution returns `cli-reports.schema.json#/$defs/syncResolution`.
