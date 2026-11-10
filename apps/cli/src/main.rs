@@ -2,8 +2,8 @@ use apex_application::{
     ApplicationServices, PostSummary, QueueSnapshot, RobloxLiverySummary, TrashItem, UploadJob,
 };
 use apex_core::{
-    AssetBoard, Error, Note, Project, ProjectInput, PublishingDraft, PublishingInput,
-    PublishingLivery, PublishingSide, PublishingSource, Vehicle,
+    AssetBoard, Error, Note, Project, ProjectInput, PublishingDraft, PublishingImage,
+    PublishingInput, PublishingLivery, PublishingSide, PublishingSource, Vehicle,
 };
 use base64::Engine as _;
 use clap::{Parser, Subcommand};
@@ -2273,6 +2273,7 @@ enum Screen {
     Posts,
     PostDetail,
     PostEditor,
+    PostMedia,
     RobloxQueue,
     RobloxCancelReview,
     RobloxLiveries,
@@ -2299,6 +2300,14 @@ struct PostEditorState {
     active_field: usize,
     cursor: usize,
     return_to_detail: bool,
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct PostMediaState {
+    selected: usize,
+    path_input: Option<String>,
+    confirm_remove: bool,
     error: Option<String>,
 }
 
@@ -2343,6 +2352,7 @@ struct TuiState {
     selected_post: Option<String>,
     post_detail: Option<PublishingDraft>,
     post_editor: Option<PostEditorState>,
+    post_media: Option<PostMediaState>,
     upload_queue: Option<QueueSnapshot>,
     selected_batch: usize,
     queue_batches_focused: bool,
@@ -2376,6 +2386,7 @@ impl TuiState {
             selected_post: None,
             post_detail: None,
             post_editor: None,
+            post_media: None,
             upload_queue: None,
             selected_batch: 0,
             queue_batches_focused: true,
@@ -2555,9 +2566,15 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         }
                     }
                     Screen::PostEditor => handle_post_editor_key(&mut state, key.code),
+                    Screen::PostMedia => handle_post_media_key(&mut state, key.code, &app)
+                        .map_err(io::Error::other)?,
                     Screen::PostDetail => match key.code {
                         KeyCode::Esc | KeyCode::Backspace => state.screen = Screen::Posts,
                         KeyCode::Char('q') => state.screen = Screen::Home,
+                        KeyCode::Char('m') => {
+                            state.post_media = Some(PostMediaState::default());
+                            state.screen = Screen::PostMedia;
+                        }
                         KeyCode::Char('l') => {
                             open_roblox_livery_selection(&mut state, &app, true)
                                 .map_err(io::Error::other)?;
@@ -3143,6 +3160,248 @@ fn save_post_editor(state: &mut TuiState, app: &ApplicationServices) -> Result<(
     Ok(())
 }
 
+fn save_post_media_snapshot(
+    state: &mut TuiState,
+    app: &ApplicationServices,
+    data: PublishingInput,
+) -> Result<(), Error> {
+    data.validate(false)?;
+    let id = state
+        .selected_post
+        .as_deref()
+        .ok_or_else(|| Error::InvalidContent("Open an ERLCX draft first.".into()))?;
+    let revision = state
+        .post_detail
+        .as_ref()
+        .ok_or_else(|| Error::InvalidContent("Open an ERLCX draft first.".into()))?
+        .revision;
+    let saved = app.save_post(id, revision, data)?;
+    let _ = app.release_post_image_pins(id);
+    state.post_detail = Some(saved);
+    refresh_posts(state, app)?;
+    Ok(())
+}
+
+fn import_post_media(
+    state: &mut TuiState,
+    app: &ApplicationServices,
+    path: PathBuf,
+) -> Result<(), Error> {
+    let id = state
+        .selected_post
+        .clone()
+        .ok_or_else(|| Error::InvalidContent("Open an ERLCX draft first.".into()))?;
+    let draft = state
+        .post_detail
+        .clone()
+        .ok_or_else(|| Error::InvalidContent("Open an ERLCX draft first.".into()))?;
+    if draft.data.media.len() >= 10 {
+        return Err(Error::InvalidContent(
+            "This draft already has the maximum of ten preview images.".into(),
+        ));
+    }
+    let previews = app.add_post_images(&id, &[path])?;
+    let mut data = draft.data;
+    data.media
+        .extend(previews.into_iter().map(|preview| PublishingImage {
+            hash: preview.hash,
+            name: preview.name,
+        }));
+    if let Err(error) = save_post_media_snapshot(state, app, data) {
+        let _ = app.release_post_image_pins(&id);
+        return Err(error);
+    }
+    if let Some(media) = &mut state.post_media {
+        media.selected = state
+            .post_detail
+            .as_ref()
+            .map_or(0, |saved| saved.data.media.len().saturating_sub(1));
+        media.error = None;
+    }
+    Ok(())
+}
+
+fn handle_post_media_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    if state.post_media.is_none() {
+        state.post_media = Some(PostMediaState::default());
+    }
+    if state
+        .post_media
+        .as_ref()
+        .is_some_and(|media| media.path_input.is_some())
+    {
+        match key {
+            KeyCode::Esc => {
+                if let Some(media) = &mut state.post_media {
+                    media.path_input = None;
+                    media.error = None;
+                }
+            }
+            KeyCode::Enter => {
+                let path = state
+                    .post_media
+                    .as_mut()
+                    .and_then(|media| media.path_input.take())
+                    .unwrap_or_default();
+                let path = path.trim().trim_matches('"').trim().to_owned();
+                if path.is_empty() {
+                    if let Some(media) = &mut state.post_media {
+                        media.error = Some("Enter a PNG file path.".into());
+                    }
+                } else if let Err(error) = import_post_media(state, app, PathBuf::from(path)) {
+                    if let Some(media) = &mut state.post_media {
+                        media.error = Some(error.to_string());
+                    }
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(path) = state
+                    .post_media
+                    .as_mut()
+                    .and_then(|media| media.path_input.as_mut())
+                {
+                    path.pop();
+                }
+            }
+            KeyCode::Char(value) if !value.is_control() => {
+                if let Some(path) = state
+                    .post_media
+                    .as_mut()
+                    .and_then(|media| media.path_input.as_mut())
+                {
+                    path.push(value);
+                }
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
+    if state
+        .post_media
+        .as_ref()
+        .is_some_and(|media| media.confirm_remove)
+    {
+        match key {
+            KeyCode::Esc | KeyCode::Char('n') => {
+                if let Some(media) = &mut state.post_media {
+                    media.confirm_remove = false;
+                }
+            }
+            KeyCode::Char('y') => {
+                let selected = state.post_media.as_ref().map_or(0, |media| media.selected);
+                if let Some(mut draft) = state.post_detail.clone() {
+                    if selected < draft.data.media.len() {
+                        draft.data.media.remove(selected);
+                        match save_post_media_snapshot(state, app, draft.data) {
+                            Ok(()) => {
+                                let new_count = state
+                                    .post_detail
+                                    .as_ref()
+                                    .map_or(0, |saved| saved.data.media.len());
+                                if let Some(media) = &mut state.post_media {
+                                    media.selected = selected.min(new_count.saturating_sub(1));
+                                    media.confirm_remove = false;
+                                    media.error = None;
+                                }
+                            }
+                            Err(error) => {
+                                if let Some(media) = &mut state.post_media {
+                                    media.error = Some(error.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
+
+    let count = state
+        .post_detail
+        .as_ref()
+        .map_or(0, |draft| draft.data.media.len());
+    match key {
+        KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
+            state.post_media = None;
+            state.screen = Screen::PostDetail;
+        }
+        KeyCode::Char('a') => {
+            if let Some(media) = &mut state.post_media {
+                media.path_input = Some(String::new());
+                media.error = None;
+            }
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            if let Some(media) = &mut state.post_media {
+                media.selected = media.selected.saturating_sub(1);
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if let Some(media) = &mut state.post_media {
+                media.selected = (media.selected + 1).min(count.saturating_sub(1));
+            }
+        }
+        KeyCode::Char('d') if count > 0 => {
+            if let Some(media) = &mut state.post_media {
+                media.confirm_remove = true;
+            }
+        }
+        KeyCode::Char('[') | KeyCode::Char(']') if count > 1 => {
+            let selected = state.post_media.as_ref().map_or(0, |media| media.selected);
+            let target = if key == KeyCode::Char('[') {
+                selected.checked_sub(1)
+            } else if selected + 1 < count {
+                Some(selected + 1)
+            } else {
+                None
+            };
+            if let (Some(target), Some(mut draft)) = (target, state.post_detail.clone()) {
+                draft.data.media.swap(selected, target);
+                match save_post_media_snapshot(state, app, draft.data) {
+                    Ok(()) => {
+                        if let Some(media) = &mut state.post_media {
+                            media.selected = target;
+                            media.error = None;
+                        }
+                    }
+                    Err(error) => {
+                        if let Some(media) = &mut state.post_media {
+                            media.error = Some(error.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        KeyCode::Char('r') => {
+            if let Some(id) = state.selected_post.as_deref() {
+                match app.post(id) {
+                    Ok(draft) => {
+                        let count = draft.data.media.len();
+                        state.post_detail = Some(draft);
+                        if let Some(media) = &mut state.post_media {
+                            media.selected = media.selected.min(count.saturating_sub(1));
+                            media.error = None;
+                        }
+                    }
+                    Err(error) => {
+                        if let Some(media) = &mut state.post_media {
+                            media.error = Some(error.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn handle_queue_key(
     state: &mut TuiState,
     key: KeyCode,
@@ -3527,7 +3786,10 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
             Constraint::Min(5),
             Constraint::Length(
                 if area.width < 64
-                    && matches!(state.screen, Screen::RobloxQueue | Screen::RobloxLiveries)
+                    && matches!(
+                        state.screen,
+                        Screen::RobloxQueue | Screen::RobloxLiveries | Screen::PostMedia
+                    )
                 {
                     3
                 } else {
@@ -3570,6 +3832,7 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Posts => draw_posts(frame, state, regions[1], accent, muted),
         Screen::PostDetail => draw_post_detail(frame, state, regions[1], accent, muted),
         Screen::PostEditor => draw_post_editor(frame, state, regions[1], accent, muted),
+        Screen::PostMedia => draw_post_media(frame, state, regions[1], accent, muted),
         Screen::RobloxQueue => draw_roblox_queue(frame, state, regions[1], accent, muted),
         Screen::RobloxCancelReview => {
             draw_roblox_cancel_review(frame, state, regions[1], accent, muted)
@@ -3597,8 +3860,20 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Trash => " ↑/↓ Select   / Search   r Refresh   Esc Back ",
         Screen::Posts if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::Posts => " ↑/↓ Select   Enter Open   n New draft   / Search   r Refresh   Esc Back ",
-        Screen::PostDetail => " e Edit metadata   l Add project livery   Esc Back   q Home ",
+        Screen::PostDetail => " e Edit metadata   m Preview images   l Add project livery   Esc Back   q Home ",
         Screen::PostEditor => " Tab Next field   ←/→ Edit   Enter Next/new line   Ctrl+S Save   Esc Discard ",
+        Screen::PostMedia if state.post_media.as_ref().is_some_and(|media| media.path_input.is_some()) => {
+            "Type/paste path   Enter Import PNG   Esc Cancel path"
+        }
+        Screen::PostMedia if state.post_media.as_ref().is_some_and(|media| media.confirm_remove) => {
+            " y Remove from this draft   n/Esc Keep image "
+        }
+        Screen::PostMedia if regions[2].width < 64 => {
+            "↑↓ Select · a Import · d Remove\n[ ] Reorder · r Refresh · Esc Back"
+        }
+        Screen::PostMedia => {
+            " ↑/↓ Select   a Import PNG   d Remove (confirm)   [ / ] Reorder   r Refresh   Esc Back "
+        }
         Screen::RobloxQueue if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::RobloxQueue if regions[2].width < 64 => {
             "Tab Focus · ↑↓ Select · p Pause\nt Retry · c Cancel · u Upload\n/ Search · r Refresh · Esc Back"
@@ -4428,6 +4703,124 @@ fn draw_post_editor(
     );
 }
 
+fn draw_post_media(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let (list_area, detail_area) = if area.width < 88 {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+            .split(area);
+        (split[0], split[1])
+    } else {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(58), Constraint::Percentage(42)])
+            .split(area);
+        (split[0], split[1])
+    };
+    let draft = state.post_detail.as_ref();
+    let images = draft.map_or(&[][..], |draft| draft.data.media.as_slice());
+    let selected = state.post_media.as_ref().map_or(0, |media| media.selected);
+    let image_items = images
+        .iter()
+        .enumerate()
+        .map(|(index, image)| {
+            ListItem::new(format!(
+                "{} {} · {}",
+                if index == 0 { "[COVER]" } else { "        " },
+                image.name,
+                &image.hash[..image.hash.len().min(12)]
+            ))
+        })
+        .collect::<Vec<_>>();
+    let mut list_state = ListState::default()
+        .with_selected((!image_items.is_empty()).then(|| selected.min(image_items.len() - 1)));
+    frame.render_stateful_widget(
+        List::new(image_items)
+            .block(
+                Block::default()
+                    .title(format!("Preview images · {}/10", images.len()))
+                    .borders(Borders::ALL),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        list_area,
+        &mut list_state,
+    );
+
+    let mut details = if let Some(image) = images.get(selected.min(images.len().saturating_sub(1)))
+    {
+        vec![
+            Line::styled(
+                image.name.as_str(),
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Line::raw(if selected == 0 {
+                "This is the post cover image."
+            } else {
+                "Move this image to the first position to use it as cover."
+            }),
+            Line::raw(""),
+            Line::raw(format!("Content hash: {}", image.hash)),
+        ]
+    } else {
+        vec![Line::raw("No preview images in this draft.")]
+    };
+    if let Some(path) = state
+        .post_media
+        .as_ref()
+        .and_then(|media| media.path_input.as_deref())
+    {
+        details.push(Line::raw(""));
+        details.push(Line::styled(
+            "PNG path to import:",
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ));
+        details.push(Line::raw(format!("{path}▏")));
+    }
+    if let Some(media) = &state.post_media {
+        if media.confirm_remove {
+            details.push(Line::raw(""));
+            if let Some(image) = images.get(selected) {
+                details.push(Line::styled(
+                    format!("Remove {} from this draft?", image.name),
+                    Style::default().fg(accent).add_modifier(Modifier::BOLD),
+                ));
+                details.push(Line::raw(
+                    "The managed file stays in the workspace; only this post reference is removed.",
+                ));
+            }
+        }
+        if let Some(error) = &media.error {
+            details.push(Line::raw(""));
+            details.push(Line::styled(
+                error,
+                Style::default().fg(if state.no_color {
+                    Color::Reset
+                } else {
+                    Color::Red
+                }),
+            ));
+        }
+    }
+    frame.render_widget(
+        Paragraph::new(std::mem::take(&mut details))
+            .block(
+                Block::default()
+                    .title("Image details")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        detail_area,
+    );
+}
+
 fn draw_roblox_queue(
     frame: &mut Frame<'_>,
     state: &TuiState,
@@ -5231,6 +5624,79 @@ mod tests {
     }
 
     #[test]
+    fn post_media_manager_imports_reorders_and_confirms_removal_in_a_dummy_workspace() {
+        let directory = tempfile::tempdir().expect("temporary workspace directory");
+        let app = ApplicationServices::open(directory.path()).expect("open dummy workspace");
+        let post_id = app.create_post().expect("create dummy post");
+        let initial = app.post(&post_id).expect("read new draft");
+        let mut state = TuiState::new(Vec::new());
+        state.screen = Screen::PostMedia;
+        state.selected_post = Some(post_id.clone());
+        state.post_detail = Some(initial);
+        state.post_media = Some(PostMediaState::default());
+
+        let image_paths = [
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../design/Logo_Main.png"),
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../design/Banner_Small.png"),
+        ];
+        let originals = image_paths
+            .iter()
+            .map(|path| fs::read(path).expect("read preview fixture"))
+            .collect::<Vec<_>>();
+        for path in &image_paths {
+            handle_post_media_key(&mut state, KeyCode::Char('a'), &app)
+                .expect("start preview import");
+            for character in path.to_string_lossy().chars() {
+                handle_post_media_key(&mut state, KeyCode::Char(character), &app)
+                    .expect("type preview path");
+            }
+            handle_post_media_key(&mut state, KeyCode::Enter, &app)
+                .expect("import and save preview");
+        }
+
+        let saved = app.post(&post_id).expect("read imported previews");
+        assert_eq!(saved.data.media.len(), 2);
+        assert_eq!(saved.data.media[0].name, "Logo_Main.png");
+        assert_eq!(saved.data.media[1].name, "Banner_Small.png");
+        assert_eq!(
+            image_paths
+                .iter()
+                .map(|path| fs::read(path).expect("verify source unchanged"))
+                .collect::<Vec<_>>(),
+            originals
+        );
+
+        handle_post_media_key(&mut state, KeyCode::Char('['), &app)
+            .expect("move second image into cover position");
+        let reordered = app.post(&post_id).expect("read reordered previews");
+        assert_eq!(reordered.data.media[0].name, "Banner_Small.png");
+        assert_eq!(reordered.data.media[1].name, "Logo_Main.png");
+
+        handle_post_media_key(&mut state, KeyCode::Char('d'), &app)
+            .expect("open remove confirmation");
+        assert!(state
+            .post_media
+            .as_ref()
+            .is_some_and(|media| media.confirm_remove));
+        handle_post_media_key(&mut state, KeyCode::Char('n'), &app).expect("keep preview image");
+        assert_eq!(
+            app.post(&post_id)
+                .expect("read kept preview")
+                .data
+                .media
+                .len(),
+            2
+        );
+        handle_post_media_key(&mut state, KeyCode::Char('d'), &app)
+            .expect("reopen remove confirmation");
+        handle_post_media_key(&mut state, KeyCode::Char('y'), &app)
+            .expect("remove preview from draft");
+        let removed = app.post(&post_id).expect("read final post snapshot");
+        assert_eq!(removed.data.media.len(), 1);
+        assert_eq!(removed.data.media[0].name, "Logo_Main.png");
+    }
+
+    #[test]
     fn roblox_api_key_is_not_an_accepted_command_line_argument() {
         let error = Args::try_parse_from([
             "apex-studio-cli",
@@ -5282,6 +5748,7 @@ mod tests {
                 Screen::Posts,
                 Screen::PostDetail,
                 Screen::PostEditor,
+                Screen::PostMedia,
                 Screen::RobloxQueue,
                 Screen::RobloxCancelReview,
                 Screen::RobloxLiveries,
@@ -5331,6 +5798,7 @@ mod tests {
                     },
                     true,
                 ));
+                state.post_media = Some(PostMediaState::default());
                 state.upload_queue = Some(QueueSnapshot::default());
                 state.roblox_account_id = Some("123456789".into());
                 state.roblox_liveries = vec![RobloxLiverySummary {
