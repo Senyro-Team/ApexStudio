@@ -115,7 +115,7 @@ export default function ProjectSyncStatus({
   }
   async function reconnect() {
     if (!binding || !destination.serverUrl || !destination.teamId) {
-      setError("Sign in and choose your current team in Settings → Team sync first.");
+      setError("Sign in and choose your current team in Server → Team sync first.");
       return;
     }
     const sameTeam = binding.origin === destination.serverUrl && binding.teamId === destination.teamId;
@@ -198,7 +198,7 @@ export default function ProjectSyncStatus({
       )}
       {!binding && (
         <p className="field-hint">
-          Choose your server and team in Settings → Team sync.
+          Choose your server and team in Server → Team sync.
         </p>
       )}
       {binding?.enabled && (

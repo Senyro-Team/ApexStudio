@@ -275,7 +275,7 @@ export default function TeamSyncSettings({
   }
 
   return (
-    <section className="team-sync-settings" id="settings-team-sync">
+    <section className="team-sync-settings" id="server-team-sync">
       <h2>Team sync</h2>
       <p className="field-hint">
         Connect this workspace to a team server. The address is saved on this

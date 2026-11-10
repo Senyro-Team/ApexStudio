@@ -45,6 +45,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   HardDrive,
+  Server,
   ArrowUpRight,
   ChartNoAxesCombined,
   ImagePlus,
@@ -69,6 +70,7 @@ const sections = [
   { name: "Roblox", icon: Upload },
   { name: "ERLCX", icon: ArrowUpRight },
   { name: "Statistics", icon: ChartNoAxesCombined },
+  { name: "Server", icon: Server },
   { name: "Settings", icon: Settings },
 ] as const;
 type Section = (typeof sections)[number]["name"];
@@ -82,7 +84,6 @@ const settingsCategories = [
   ["roblox", "Roblox"],
   ["chrome", "Chrome"],
   ["statistics", "Statistics"],
-  ["team-sync", "Team sync"],
   ["backups", "Backups"],
   ["workspace", "Workspace"],
   ["storage", "Storage"],
@@ -692,6 +693,9 @@ function AppContent() {
               )}
             </>
           )}
+          {section === "Server" && (
+            <TeamSyncSettings onBusy={setTeamSyncLock} />
+          )}
           {section === "Settings" && (
             <div className="settings-content">
               <nav className="settings-nav" aria-label="Settings categories">
@@ -951,7 +955,6 @@ function AppContent() {
               <RobloxSettings onBusy={setRobloxLock} />
               <ChromeSettings onBusy={setChromeLock} />
               <StatisticsSettings stats={stats} />
-              <TeamSyncSettings onBusy={setTeamSyncLock} />
               <BackupTools
                 onBusy={setBackupLock}
                 onRestore={() => {
