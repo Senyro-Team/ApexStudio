@@ -2402,6 +2402,8 @@ struct TuiState {
     selected_asset: usize,
     trash: Vec<TrashItem>,
     posts: Vec<PostSummary>,
+    post_import_path: Option<String>,
+    post_import_error: Option<String>,
     selected_post: Option<String>,
     post_detail: Option<PublishingDraft>,
     post_editor: Option<PostEditorState>,
@@ -2444,6 +2446,8 @@ impl TuiState {
             selected_asset: 0,
             trash: Vec::new(),
             posts: Vec::new(),
+            post_import_path: None,
+            post_import_error: None,
             selected_post: None,
             post_detail: None,
             post_editor: None,
@@ -3094,6 +3098,44 @@ fn handle_posts_key(
     key: KeyCode,
     app: &ApplicationServices,
 ) -> Result<(), Error> {
+    if let Some(path) = &mut state.post_import_path {
+        match key {
+            KeyCode::Esc => {
+                state.post_import_path = None;
+                state.post_import_error = None;
+            }
+            KeyCode::Enter => {
+                let source = PathBuf::from(path.trim());
+                match app.import_post_bundle(&source) {
+                    Ok(id) => {
+                        state.post_import_path = None;
+                        state.post_import_error = None;
+                        state.selected_post = Some(id.clone());
+                        refresh_posts(state, app)?;
+                        state.selected = state
+                            .visible_posts()
+                            .iter()
+                            .position(|post| post.id == id)
+                            .unwrap_or(state.selected);
+                        state.post_detail = Some(app.post(&id)?);
+                        state.selected_post_livery = 0;
+                        state.screen = Screen::PostDetail;
+                    }
+                    Err(error) => state.post_import_error = Some(error.to_string()),
+                }
+            }
+            KeyCode::Backspace => {
+                path.pop();
+                state.post_import_error = None;
+            }
+            KeyCode::Char(value) if !value.is_control() => {
+                path.push(value);
+                state.post_import_error = None;
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
     if state.searching {
         match key {
             KeyCode::Esc | KeyCode::Enter => state.searching = false,
@@ -3124,6 +3166,10 @@ fn handle_posts_key(
                 false,
             ));
             state.screen = Screen::PostEditor;
+        }
+        KeyCode::Char('i') => {
+            state.post_import_path = Some(String::new());
+            state.post_import_error = None;
         }
         KeyCode::Up | KeyCode::Char('k') => state.selected = state.selected.saturating_sub(1),
         KeyCode::Down | KeyCode::Char('j') => {
@@ -4443,7 +4489,10 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::Trash if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::Trash => " ↑/↓ Select   / Search   r Refresh   Esc Back ",
         Screen::Posts if state.searching => " Type to filter   Enter/Esc Finish search ",
-        Screen::Posts => " ↑/↓ Select   Enter Open   n New draft   / Search   r Refresh   Esc Back ",
+        Screen::Posts if state.post_import_path.is_some() => {
+            "Type/paste .apexpublish path   Enter Import   Esc Cancel"
+        }
+        Screen::Posts => " ↑/↓ Select   Enter Open   n New draft   i Import bundle   / Search   r Refresh   Esc Back ",
         Screen::PostDetail => " e Metadata   m Images   v Liveries/codes   l Add project livery   Esc Back ",
         Screen::PostEditor => " Tab Next field   ←/→ Edit   Enter Next/new line   Ctrl+S Save   Esc Discard ",
         Screen::PostMedia if state.post_media.as_ref().is_some_and(|media| media.path_input.is_some()) => {
@@ -5111,7 +5160,30 @@ fn draw_posts(
         &mut list_state,
     );
     let detail = visible.get(state.selected.min(visible.len().saturating_sub(1)));
-    let lines = if let Some(post) = detail {
+    let lines = if let Some(path) = &state.post_import_path {
+        let mut lines = vec![
+            Line::styled(
+                "Import an ERLCX publishing bundle",
+                Style::default().fg(accent).add_modifier(Modifier::BOLD),
+            ),
+            Line::raw("Version 1 bundles only · source projects stay unchanged"),
+            Line::raw(""),
+            Line::raw("Bundle path:"),
+            Line::raw(format!("{path}▏")),
+        ];
+        if let Some(error) = &state.post_import_error {
+            lines.push(Line::raw(""));
+            lines.push(Line::styled(
+                error,
+                Style::default().fg(if state.no_color {
+                    Color::Reset
+                } else {
+                    Color::Red
+                }),
+            ));
+        }
+        lines
+    } else if let Some(post) = detail {
         vec![
             Line::styled(
                 &post.title,
@@ -6535,6 +6607,87 @@ mod tests {
         assert!(save_post_editor(&mut state, &app).is_err());
         assert_eq!(state.screen, Screen::PostEditor);
         assert!(app.posts().expect("list drafts").is_empty());
+    }
+
+    #[test]
+    fn posts_list_imports_a_bundle_into_the_interactive_draft_flow() {
+        let directory = tempfile::tempdir().expect("temporary workspace directory");
+        let app = ApplicationServices::open(directory.path()).expect("open dummy workspace");
+        let source_id = app.create_post().expect("create source post");
+        let image_paths = [
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../design/Logo_Main.png"),
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../design/Banner_Small.png"),
+        ];
+        let imported_images = app
+            .add_post_images(&source_id, &image_paths)
+            .expect("import dummy preview images");
+        let initial = app.post(&source_id).expect("read source post");
+        let saved = app
+            .save_post(
+                &source_id,
+                initial.revision,
+                PublishingInput {
+                    title: "TUI import test".into(),
+                    description: "A disposable publishing bundle fixture".into(),
+                    media: imported_images
+                        .into_iter()
+                        .map(|image| PublishingImage {
+                            hash: image.hash,
+                            name: image.name,
+                        })
+                        .collect(),
+                    liveries: vec![PublishingLivery {
+                        source: None,
+                        vehicle: "Falcon Interceptor".into(),
+                        primary_color: "#FFFFFF".into(),
+                        secondary_color: None,
+                        opacity: 100,
+                        sides: vec![PublishingSide {
+                            side: "Left 1".into(),
+                            decal_id: "123456".into(),
+                        }],
+                    }],
+                    ..Default::default()
+                },
+            )
+            .expect("save source snapshot");
+        let bundle = directory.path().join("tui-import.apexpublish");
+        app.export_post(&source_id, saved.revision, false, &bundle)
+            .expect("export source fixture");
+
+        let mut state = TuiState::new(Vec::new());
+        state.screen = Screen::Posts;
+        handle_posts_key(&mut state, KeyCode::Char('i'), &app).expect("open import prompt");
+        for character in directory
+            .path()
+            .join("missing.apexpublish")
+            .to_string_lossy()
+            .chars()
+        {
+            handle_posts_key(&mut state, KeyCode::Char(character), &app)
+                .expect("type invalid bundle path");
+        }
+        handle_posts_key(&mut state, KeyCode::Enter, &app).expect("show import error");
+        assert!(state.post_import_error.is_some());
+        assert_eq!(state.screen, Screen::Posts);
+        handle_posts_key(&mut state, KeyCode::Esc, &app).expect("cancel invalid import");
+
+        handle_posts_key(&mut state, KeyCode::Char('i'), &app).expect("reopen import prompt");
+        for character in bundle.to_string_lossy().chars() {
+            handle_posts_key(&mut state, KeyCode::Char(character), &app)
+                .expect("type valid bundle path");
+        }
+        handle_posts_key(&mut state, KeyCode::Enter, &app).expect("import valid bundle");
+        assert_eq!(state.screen, Screen::PostDetail);
+        let imported_id = state
+            .selected_post
+            .as_deref()
+            .expect("selected imported post");
+        assert_ne!(imported_id, source_id);
+        let imported = app.post(imported_id).expect("read imported snapshot");
+        assert_eq!(imported.data.title, "TUI import test");
+        assert_eq!(imported.data.media.len(), 2);
+        assert_eq!(imported.data.liveries[0].sides[0].decal_id, "123456");
     }
 
     #[test]
