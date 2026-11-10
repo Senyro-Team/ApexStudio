@@ -436,7 +436,7 @@ export default function TeamSyncSettings({
             <div className="server-service-grid">
               <article><Server size={18} aria-hidden="true" /><div><strong>Project sync</strong><span>{serviceAvailability?.projectSync ? "Available" : servicesBusy ? "Checking…" : "Unavailable"}</span><p>Team project synchronization remains active.</p></div></article>
               <article><ImagePlus size={18} aria-hidden="true" /><div><strong>Image Hosting</strong><span>{serviceAvailability?.imageHosting ? "Available" : servicesBusy ? "Checking…" : "Not configured"}</span><p>{serviceAvailability?.imageHosting ? "Upload selected images from Assets → Image Library. Uploaded URLs are public." : "Images stay local; you can still paste URLs from any image host."}</p></div></article>
-              <article><Link2 size={18} aria-hidden="true" /><div><strong>Invite Tracking</strong><span>{serviceAvailability?.inviteTracking ? "Available" : servicesBusy ? "Checking…" : "Not configured"}</span><p>Existing Discord invite URLs can be added manually to ERLCX Markdown.</p></div></article>
+              <article><Link2 size={18} aria-hidden="true" /><div><strong>Invite Tracking</strong><span>{serviceAvailability?.inviteTracking ? "Available" : servicesBusy ? "Checking…" : "Not configured"}</span><p>{serviceAvailability?.inviteTracking ? "Create tracked invite campaigns from the ERLCX post composer." : "Existing Discord invite URLs can be added manually to ERLCX Markdown."}</p></div></article>
             </div>
           </section>}
           {selectedTeam && <section className="project-sync-options" aria-label="Team project synchronization">

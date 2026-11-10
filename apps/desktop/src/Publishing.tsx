@@ -2,7 +2,7 @@ import PostLiveryPicker from "./PostLiveryPicker";
 import AppSelect from "./AppSelect";
 import OverlayStudio from "./OverlayStudio";
 import { readyForPublishing, publishingLivery } from "./RobloxUpload";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
 import SlotEditor from "./SlotEditor";
 import {
@@ -28,6 +28,9 @@ import {
   assetBoard,
   mediaLibrary,
   syncImageLibrary,
+  syncServiceAvailability,
+  syncListInviteCampaigns,
+  syncCreateInviteCampaign,
   listAssets,
   pickMediaLibraryImage,
   addMediaLibraryAsset,
@@ -42,6 +45,7 @@ import {
   type MarkdownBlock,
   type MediaLibraryItem,
   type Asset,
+  type InviteCampaign,
 } from "./bridge";
 const steps = ["Liveries", "Details", "Previews", "Markdown", "Review"] as const;
 export default function Publishing({
@@ -104,6 +108,16 @@ export default function Publishing({
   const [libraryChoice, setLibraryChoice] = useState("");
   const [projectImages, setProjectImages] = useState<Asset[]>([]);
   const [projectImageChoice, setProjectImageChoice] = useState("");
+  const [inviteCampaigns, setInviteCampaigns] = useState<InviteCampaign[]>([]);
+  const [inviteTrackingAvailable, setInviteTrackingAvailable] = useState(false);
+  const [inviteCampaignBusy, setInviteCampaignBusy] = useState(false);
+  const inviteRequestId = useRef<{ id: string; payload: string } | null>(null);
+  const [inviteTitle, setInviteTitle] = useState("");
+  const [inviteCategory, setInviteCategory] = useState<InviteCampaign["category"]>("livery");
+  const [inviteChannelId, setInviteChannelId] = useState("");
+  const [inviteNotes, setInviteNotes] = useState("");
+  const [inviteMaxAge, setInviteMaxAge] = useState(0);
+  const [inviteMaxUses, setInviteMaxUses] = useState(0);
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -112,6 +126,14 @@ export default function Publishing({
       const serverUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
       const teamId = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
       if (serverUrl && teamId) {
+        try {
+          const availability = await syncServiceAvailability(serverUrl, teamId);
+          if (active) setInviteTrackingAvailable(availability.inviteTracking);
+          if (availability.inviteTracking) {
+            const campaigns = await syncListInviteCampaigns(serverUrl, teamId);
+            if (active) setInviteCampaigns(campaigns);
+          }
+        } catch { /* This service is optional. */ }
         try {
           const shared = await syncImageLibrary(serverUrl, teamId);
           const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
@@ -221,6 +243,35 @@ export default function Publishing({
   function addMarkdown(kind: MarkdownBlock["kind"]) {
     const block: MarkdownBlock = { id: crypto.randomUUID(), kind, text: kind === "invite" ? "Join our Discord" : "", imageUrl: "", altText: "", linkUrl: "", inviteUrl: "", mediaHash: null };
     updateMarkdown([...markdownBlocks, block]);
+  }
+  function addInviteUrl(label: string, inviteUrl: string) {
+    if (!inviteUrl || markdownBlocks.length >= 100) return;
+    updateMarkdown([...markdownBlocks, { id: crypto.randomUUID(), kind: "invite", text: label, imageUrl: "", altText: "", linkUrl: "", inviteUrl, mediaHash: null }]);
+  }
+  async function createTrackedInvite() {
+    const serverUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
+    const teamId = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
+    if (!serverUrl || !teamId || !inviteTrackingAvailable) return;
+    if (!window.confirm("Create this tracked Discord invite for the selected team?")) return;
+    setInviteCampaignBusy(true);
+    setError("");
+    try {
+      const input = {
+        title: inviteTitle.trim(), category: inviteCategory, notes: inviteNotes.trim(),
+        channelId: inviteChannelId.trim(), maxAgeDays: inviteMaxAge, maxUses: inviteMaxUses,
+      };
+      const payload = JSON.stringify(input);
+      if (inviteRequestId.current?.payload !== payload) {
+        inviteRequestId.current = { id: crypto.randomUUID(), payload };
+      }
+      const campaign = await syncCreateInviteCampaign(serverUrl, teamId, inviteRequestId.current.id, input);
+      inviteRequestId.current = null;
+      setInviteCampaigns((current) => [campaign, ...current.filter((item) => item.id !== campaign.id)]);
+      if (campaign.inviteUrl) addInviteUrl(campaign.title, campaign.inviteUrl);
+      setInviteTitle(""); setInviteNotes("");
+      setNotice("Tracked invite created and added to the post.");
+    } catch (cause) { setError(errorMessage(cause)); }
+    finally { setInviteCampaignBusy(false); }
   }
   function moveMarkdown(index: number, delta: number) {
     const target = index + delta;
@@ -1005,6 +1056,22 @@ export default function Publishing({
             {projectImages.length > 0 && <><select aria-label="Choose a project image" value={projectImageChoice} disabled={locked} onChange={(event) => setProjectImageChoice(event.target.value)}><option value="">Choose project image</option>{projectImages.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !projectImageChoice || markdownBlocks.length >= 100} onClick={() => void addProjectLibraryImage()}>Add project image</button></>}
             {libraryItems.length > 0 && <><select aria-label="Choose an image from Image Library" value={libraryChoice} disabled={locked} onChange={(event) => setLibraryChoice(event.target.value)}><option value="">Choose library image</option>{libraryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !libraryChoice || markdownBlocks.length >= 100} onClick={addLibraryImage}>Add library image</button></>}
           </div>
+          {inviteTrackingAvailable && <section className="publishing-invite-tracker">
+            <div><h3>Tracked Discord invites</h3><p className="field-hint">Create an invite for a specific post or add an existing team invite link.</p></div>
+            <div className="publishing-invite-form">
+              <label>Campaign title<input value={inviteTitle} maxLength={80} disabled={locked || inviteCampaignBusy} onChange={(event) => setInviteTitle(event.target.value)} placeholder="ERLCX release post" /></label>
+              <label>Category<select value={inviteCategory} disabled={locked || inviteCampaignBusy} onChange={(event) => setInviteCategory(event.target.value as InviteCampaign["category"])}><option value="livery">Livery</option><option value="social">Social</option><option value="other">Other</option></select></label>
+              <label>Discord channel ID<input inputMode="numeric" value={inviteChannelId} disabled={locked || inviteCampaignBusy} onChange={(event) => setInviteChannelId(event.target.value)} placeholder="17–20 digit channel ID" /></label>
+              <label>Expiry<select value={inviteMaxAge} disabled={locked || inviteCampaignBusy} onChange={(event) => setInviteMaxAge(Number(event.target.value))}><option value={0}>Never</option><option value={1}>1 day</option><option value={7}>7 days</option><option value={30}>30 days</option><option value={90}>90 days</option><option value={365}>365 days</option></select></label>
+              <label>Maximum uses<input type="number" min={0} max={100000} value={inviteMaxUses} disabled={locked || inviteCampaignBusy} onChange={(event) => setInviteMaxUses(Number(event.target.value))} /></label>
+              <label>Notes <span className="optional">(optional)</span><input value={inviteNotes} maxLength={280} disabled={locked || inviteCampaignBusy} onChange={(event) => setInviteNotes(event.target.value)} placeholder="Internal context" /></label>
+            </div>
+            <button className="secondary" type="button" disabled={locked || inviteCampaignBusy || inviteTitle.trim().length < 2 || !/^\d{17,20}$/.test(inviteChannelId)} onClick={() => void createTrackedInvite()}>{inviteCampaignBusy ? "Creating…" : "Create invite and add link"}</button>
+            {inviteCampaigns.length > 0 && <div className="publishing-invite-list">{inviteCampaigns.map((campaign) => <article key={campaign.id}>
+              <div><strong>{campaign.title}</strong><span>{campaign.category} · {campaign.trackedJoins} tracked joins{campaign.maxUses > 0 ? ` · ${campaign.totalUses}/${campaign.maxUses} uses` : ` · ${campaign.totalUses} uses`}{!campaign.isActive ? " · inactive" : ""}</span></div>
+              <button type="button" className="secondary" disabled={locked || !campaign.inviteUrl || markdownBlocks.length >= 100} onClick={() => campaign.inviteUrl && addInviteUrl(campaign.title, campaign.inviteUrl)}>Add link</button>
+            </article>)}</div>}
+          </section>}
           {markdownBlocks.map((block, index) => {
             const patchBlock = (patch: Partial<MarkdownBlock>) => updateMarkdown(markdownBlocks.map((current, i) => i === index ? { ...current, ...patch } : current));
             return <article className="publishing-markdown-block" key={block.id}>

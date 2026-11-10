@@ -104,6 +104,41 @@ pub struct HostedImages {
     pub errors: Vec<serde_json::Value>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InviteCampaign {
+    pub id: String,
+    pub title: String,
+    pub category: String,
+    pub notes: String,
+    pub channel_id: Option<String>,
+    pub code: Option<String>,
+    pub invite_url: Option<String>,
+    pub created_at: String,
+    pub expires_at: Option<String>,
+    pub max_uses: u32,
+    pub total_uses: u32,
+    pub is_active: bool,
+    pub tracked_joins: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InviteCampaignList {
+    campaigns: Vec<InviteCampaign>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InviteCampaignInput {
+    pub title: String,
+    pub category: String,
+    pub notes: String,
+    pub channel_id: String,
+    pub max_age_days: u32,
+    pub max_uses: u32,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SessionResponse {
@@ -432,6 +467,57 @@ pub async fn list_hosted_images(server_url: &str, team_id: &str) -> Result<Hoste
         .send()
         .await
         .map_err(|_| Error::Storage("Could not reach the team image library.".into()))?;
+    response_json(response).await
+}
+
+pub async fn list_invite_campaigns(
+    server_url: &str,
+    team_id: &str,
+) -> Result<Vec<InviteCampaign>, Error> {
+    let (client, url, session) =
+        team_service_endpoint(server_url, team_id, "invite-campaigns").await?;
+    let response = client
+        .get(url)
+        .headers(auth_headers(&session.access_token)?)
+        .send()
+        .await
+        .map_err(|_| Error::Storage("Could not reach the team invite tracker.".into()))?;
+    Ok(response_json::<InviteCampaignList>(response)
+        .await?
+        .campaigns)
+}
+
+pub async fn create_invite_campaign(
+    server_url: &str,
+    team_id: &str,
+    request_id: &str,
+    input: &InviteCampaignInput,
+) -> Result<InviteCampaign, Error> {
+    let request_id = uuid::Uuid::parse_str(request_id)
+        .map_err(|_| invalid("The invite creation request is invalid. Try again."))?;
+    if input.title.trim().len() < 2
+        || input.title.trim().len() > 80
+        || !["livery", "social", "other"].contains(&input.category.as_str())
+        || input.notes.len() > 280
+        || !input.channel_id.chars().all(|ch| ch.is_ascii_digit())
+        || !(17..=20).contains(&input.channel_id.len())
+        || input.max_age_days > 365
+        || input.max_uses > 100_000
+    {
+        return Err(invalid("Check the invite title, channel ID, and limits."));
+    }
+    let (client, url, session) =
+        team_service_endpoint(server_url, team_id, "invite-campaigns").await?;
+    let response = client
+        .post(url)
+        .headers(auth_headers(&session.access_token)?)
+        .header("idempotency-key", request_id.to_string())
+        .json(input)
+        .send()
+        .await
+        .map_err(|_| {
+            Error::Storage("The invite tracker did not confirm the request. Retry safely.".into())
+        })?;
     response_json(response).await
 }
 

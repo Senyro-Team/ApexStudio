@@ -375,6 +375,8 @@ pub fn run() {
             team_sync::sync_check_server,
             team_sync::sync_service_availability,
             team_sync::sync_image_library,
+            team_sync::sync_list_invite_campaigns,
+            team_sync::sync_create_invite_campaign,
             team_sync::sync_upload_library_image,
             team_sync::sync_set_library_image_scope,
             team_sync::sync_connection_status,

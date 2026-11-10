@@ -3,7 +3,8 @@ use tokio::sync::Mutex;
 
 pub use apex_application::team_sync::{
     ConnectionStatus as SyncConnectionStatus, HostedImages as SyncHostedImages,
-    Invitation as SyncInvitation, ServerInfo as SyncServerInfo,
+    Invitation as SyncInvitation, InviteCampaign as SyncInviteCampaign,
+    InviteCampaignInput as SyncInviteCampaignInput, ServerInfo as SyncServerInfo,
     ServiceAvailability as SyncServiceAvailability, TeamMember as SyncTeamMember,
 };
 
@@ -33,6 +34,32 @@ pub async fn sync_image_library(
 ) -> Result<SyncHostedImages, String> {
     let _guard = state.0.lock().await;
     apex_application::team_sync::list_hosted_images(&server_url, &team_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn sync_list_invite_campaigns(
+    server_url: String,
+    team_id: String,
+    state: State<'_, TeamSyncState>,
+) -> Result<Vec<SyncInviteCampaign>, String> {
+    let _guard = state.0.lock().await;
+    apex_application::team_sync::list_invite_campaigns(&server_url, &team_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn sync_create_invite_campaign(
+    server_url: String,
+    team_id: String,
+    request_id: String,
+    input: SyncInviteCampaignInput,
+    state: State<'_, TeamSyncState>,
+) -> Result<SyncInviteCampaign, String> {
+    let _guard = state.0.lock().await;
+    apex_application::team_sync::create_invite_campaign(&server_url, &team_id, &request_id, &input)
         .await
         .map_err(|error| error.to_string())
 }

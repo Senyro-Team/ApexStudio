@@ -129,6 +129,29 @@ export interface HostedImages {
   images: HostedImage[];
   errors: unknown[];
 }
+export interface InviteCampaign {
+  id: string;
+  title: string;
+  category: "livery" | "social" | "other";
+  notes: string;
+  channelId: string | null;
+  code: string | null;
+  inviteUrl: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+  maxUses: number;
+  totalUses: number;
+  isActive: boolean;
+  trackedJoins: number;
+}
+export interface InviteCampaignInput {
+  title: string;
+  category: "livery" | "social" | "other";
+  notes: string;
+  channelId: string;
+  maxAgeDays: number;
+  maxUses: number;
+}
 export const syncCheckServer = (serverUrl: string) =>
   invoke<SyncServerInfo>("sync_check_server", { serverUrl });
 export const syncConnectionStatus = (serverUrl: string) =>
@@ -137,6 +160,11 @@ export const syncServiceAvailability = (serverUrl: string, teamId: string) =>
   invoke<SyncServiceAvailability>("sync_service_availability", { serverUrl, teamId });
 export const syncImageLibrary = (serverUrl: string, teamId: string) =>
   invoke<HostedImages>("sync_image_library", { serverUrl, teamId });
+export const syncListInviteCampaigns = (serverUrl: string, teamId: string) =>
+  invoke<InviteCampaign[]>("sync_list_invite_campaigns", { serverUrl, teamId });
+export const syncCreateInviteCampaign = (
+  serverUrl: string, teamId: string, requestId: string, input: InviteCampaignInput,
+) => invoke<InviteCampaign>("sync_create_invite_campaign", { serverUrl, teamId, requestId, input });
 export const syncUploadLibraryImage = (serverUrl: string, teamId: string, itemId: string, scope: "personal" | "team") =>
   invoke<MediaLibraryItem>("sync_upload_library_image", { serverUrl, teamId, itemId, scope });
 export const syncSetLibraryImageScope = (serverUrl: string, teamId: string, itemId: string, scope: "personal" | "team") =>

@@ -48,17 +48,17 @@ The supplied overlay-builder HTML is a behavior and format reference only. Build
 2. **Local media library and composer:** add reusable user-owned media, manual image/invite URLs, Markdown blocks, draft snapshots, and image-version references. Build and review a neutral customizable overlay editor with batch export and project asset import/export.
 3. **Shared authentication gateway:** add capability discovery and authorization to Sync Server. Require explicit feature enablement and role checks. Keep backing service stores separate.
 4. **Image hosting integration:** add scoped gateway upload/list/health operations, stable provider mappings, batch progress, retries with duplicate prevention, and explicit-public-upload review.
-5. **Invite tracking integration:** add scoped campaign create/list/status operations and post metadata. Show aggregate attribution limits and make ambiguous creates recoverable rather than retrying blindly.
+5. **Invite tracking integration:** scoped campaign create/list/status operations and post metadata are implemented in the desktop publishing Markdown step. Campaign creation asks before the remote action, uses a persistent idempotency key across ambiguous retries, and automatically inserts the returned invite link. Manual links remain available.
 6. **Team library sharing and release review:** add explicit personal/team visibility, permission checks, backup/restore, offline and unavailable-service behavior, then add ExecLab target support.
 
 ## Implementation checkpoints
 
-- The Server navigation entry now contains the existing Team Sync surface. Image Hosting and Invite Tracking are documented as future optional capabilities and are not presented as working integrations.
+- The Server navigation entry now contains the existing Team Sync surface and capability discovery. Image Hosting and Invite Tracking are independently optional gateway services.
 - The local Image Library stores personal records in the workspace and can reference a managed PNG, an existing project PNG, or a manually entered HTTPS URL. Adding an image does not upload it. Team sharing and provider mappings are supported; library folders/tags remain outstanding. Workspace backups include the SQLite database and managed files.
 - The Sync Server now has a team-authenticated Image Hosting gateway. It checks membership for reads, write-capable roles for uploads/sharing, proxies with a server-held key, and sends the asserted Apex user/team scope to the separately deployed Image Provider. Local library uploads require a separate confirmation, default to Personal, and can be explicitly team-shared. Identical normalized PNG bytes are reused within personal/team scope. The Image Provider owns its own service data and public image blobs.
 - ERLCX drafts support ordered text, image, and invite Markdown blocks. The draft snapshot retains references to local library image blobs, and the composer can copy the assembled Markdown. Local-only images remain non-copyable until given a public URL.
 - The first local Overlay Studio is integrated into the preview step. It supports saved workspace templates, text/image/shape layers, local and managed project/library source images, 16:9 ERLCX and 16:10 ExecLab canvases, and batched PNG output directly into a draft. Templates and generated images are workspace-local; public uploads still require the Image Library confirmation. Template import/export, canvas drag positioning, and visual QA remain outstanding.
-- Invite Tracking is still manual-link only. Its scoped server gateway and campaign controls remain outstanding.
+- Invite Tracking campaign creation and listing are available when configured on the Sync Server and Invite Tracker. Campaigns are team-scoped; aggregate tracked joins and lifetime invite uses are shown. The Discord channel ID is entered in the post composer. Existing manual links remain available while the service is disabled. The Tracker source at `D:\ChatGPT\Inviter Bot` is outside this repository and has no Git metadata, so its schema, route, deployment configuration, and migration must be deployed separately from this repository's commit.
 
 ## Acceptance criteria
 
@@ -67,6 +67,7 @@ The supplied overlay-builder HTML is a behavior and format reference only. Build
 - No image bytes or project data leave the device except through a visible, user-triggered action.
 - Public image uploads are explicit; identical bytes reuse a valid provider mapping; link-only edits do not re-upload; pixel/text changes create a new version without rewriting existing posts.
 - Invite creation is explicitly confirmed and duplicate-resistant. Manual invite links remain supported.
+- A team member can list only campaigns attached to their selected team, and read-only roles cannot create campaigns.
 - Team sharing is opt-in, team membership and role are checked on the server, and personal items stay personal by default.
 - Backups/restores preserve local media referenced by the library and drafts without including service secrets.
 - The overlay editor does not depend on Apex-branded artwork and exports the selected target dimensions in a batch.

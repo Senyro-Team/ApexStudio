@@ -30,6 +30,7 @@ pub struct ServiceEndpoint {
 #[derive(Clone, Default)]
 pub struct ServiceConfig {
     image_provider: Option<ServiceEndpoint>,
+    invite_tracker: Option<ServiceEndpoint>,
 }
 
 impl ServiceConfig {
@@ -38,6 +39,10 @@ impl ServiceConfig {
             image_provider: endpoint_from_env(
                 "APEX_IMAGE_PROVIDER_URL",
                 "APEX_IMAGE_PROVIDER_KEY",
+            )?,
+            invite_tracker: endpoint_from_env(
+                "APEX_INVITE_TRACKER_URL",
+                "APEX_INVITE_TRACKER_KEY",
             )?,
         })
     }
@@ -112,6 +117,10 @@ pub fn private_routes() -> Router<AppState> {
             "/api/v1/teams/{team_id}/image-library/{image_id}/sharing",
             patch(set_image_scope),
         )
+        .route(
+            "/api/v1/teams/{team_id}/invite-campaigns",
+            get(list_invite_campaigns).post(create_invite_campaign),
+        )
         .layer(DefaultBodyLimit::max(MAX_IMAGE_UPLOAD_BYTES))
 }
 
@@ -124,8 +133,69 @@ async fn service_availability(
     Ok(Json(ServiceAvailability {
         project_sync: true,
         image_hosting: state.services.image_provider.is_some(),
-        invite_tracking: false,
+        invite_tracking: state.services.invite_tracker.is_some(),
     }))
+}
+
+async fn list_invite_campaigns(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthUser>,
+    Path(team_id): Path<Uuid>,
+) -> Result<Response, ApiError> {
+    membership_role(&state, team_id, user.id).await?;
+    let service = invite_tracker(&state)?;
+    proxy_json(
+        provider_client()?
+            .get(service_url(service, "api/service/campaigns")?)
+            .header("x-apex-service-key", service.key.as_str())
+            .header("x-apex-user-id", user.id.to_string())
+            .header("x-apex-team-id", team_id.to_string())
+            .send()
+            .await,
+    )
+    .await
+}
+
+async fn create_invite_campaign(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthUser>,
+    Path(team_id): Path<Uuid>,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let role = membership_role(&state, team_id, user.id).await?;
+    if !role.can_write() {
+        return Err(ApiError::forbidden());
+    }
+    let request_id = request
+        .headers()
+        .get("idempotency-key")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .ok_or_else(|| ApiError::bad_request("valid_idempotency_key_required"))?;
+    let content_type = request
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| value.to_ascii_lowercase().starts_with("application/json"))
+        .map(str::to_owned)
+        .ok_or_else(|| ApiError::bad_request("json_body_required"))?;
+    let body = to_bytes(request.into_body(), 64 * 1024)
+        .await
+        .map_err(|_| ApiError::bad_request("campaign_request_too_large"))?;
+    let service = invite_tracker(&state)?;
+    proxy_json(
+        provider_client()?
+            .post(service_url(service, "api/service/campaigns")?)
+            .header("content-type", content_type)
+            .header("x-apex-service-key", service.key.as_str())
+            .header("x-apex-user-id", user.id.to_string())
+            .header("x-apex-team-id", team_id.to_string())
+            .header("idempotency-key", request_id.to_string())
+            .body(body)
+            .send()
+            .await,
+    )
+    .await
 }
 
 #[derive(Deserialize)]
@@ -243,6 +313,15 @@ fn image_provider(state: &AppState) -> Result<&ServiceEndpoint, ApiError> {
         ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             "image_hosting_not_configured",
+        )
+    })
+}
+
+fn invite_tracker(state: &AppState) -> Result<&ServiceEndpoint, ApiError> {
+    state.services.invite_tracker.as_ref().ok_or_else(|| {
+        ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "invite_tracking_not_configured",
         )
     })
 }
