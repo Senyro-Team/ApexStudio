@@ -79,6 +79,10 @@ pub struct ServiceAvailability {
     pub project_sync: bool,
     pub image_hosting: bool,
     pub invite_tracking: bool,
+    #[serde(default)]
+    pub image_hosting_reachable: Option<bool>,
+    #[serde(default)]
+    pub invite_tracking_reachable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

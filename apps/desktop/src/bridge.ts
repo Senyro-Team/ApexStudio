@@ -113,6 +113,8 @@ export interface SyncServiceAvailability {
   projectSync: boolean;
   imageHosting: boolean;
   inviteTracking: boolean;
+  imageHostingReachable?: boolean | null;
+  inviteTrackingReachable?: boolean | null;
 }
 export interface HostedImage {
   id: string;

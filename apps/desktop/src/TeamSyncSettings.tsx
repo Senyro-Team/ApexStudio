@@ -187,11 +187,17 @@ export default function TeamSyncSettings({
   const connectedUser = connection?.user;
   const selectedTeam = connectedUser?.teams.find((team) => team.id === activeTeam);
   const canInvite = selectedTeam?.role === "owner" || selectedTeam?.role === "admin";
-  const serviceState = (enabled: boolean | undefined, unavailable: string) => {
+  const serviceState = (
+    configured: boolean | undefined,
+    reachable: boolean | null | undefined,
+    unconfigured: string,
+  ) => {
     if (servicesBusy) return "Checking…";
     if (servicesError) return "Status unavailable";
-    if (enabled === undefined) return "Not checked";
-    return enabled ? "Available" : unavailable;
+    if (configured === undefined) return "Not checked";
+    if (!configured) return unconfigured;
+    if (reachable === false) return "Unreachable";
+    return reachable === true ? "Online" : "Configured";
   };
 
   useEffect(() => {
@@ -440,9 +446,9 @@ export default function TeamSyncSettings({
             <div className="server-services-heading"><div><h3 id="server-services-title">Optional services</h3><p className="field-hint">Each service can be enabled independently by this team’s server.</p></div><button className="icon-button" aria-label="Refresh service availability" type="button" disabled={servicesBusy} onClick={() => { setServicesError(""); setServicesBusy(true); void syncServiceAvailability(serverUrl, selectedTeam.id).then(setServiceAvailability).catch((reason) => setServicesError(errorText(reason))).finally(() => setServicesBusy(false)); }}><RefreshCw size={16} className={servicesBusy ? "team-sync-spinning" : undefined} /></button></div>
             {servicesError && <p className="team-sync-message team-sync-error" role="alert">{servicesError}</p>}
             <div className="server-service-grid">
-              <article><Server size={18} aria-hidden="true" /><div><strong>Project sync</strong><span>{serviceState(serviceAvailability?.projectSync, "Unavailable")}</span><p>Team project synchronization remains active.</p></div></article>
-              <article><ImagePlus size={18} aria-hidden="true" /><div><strong>Image Hosting</strong><span>{serviceState(serviceAvailability?.imageHosting, "Not configured")}</span><p>{serviceAvailability?.imageHosting && !servicesError ? "Upload selected images from Assets → Image Library. Uploaded URLs are public." : "Images stay local; you can still paste URLs from any image host."}</p></div></article>
-              <article><Link2 size={18} aria-hidden="true" /><div><strong>Invite Tracking</strong><span>{serviceState(serviceAvailability?.inviteTracking, "Not configured")}</span><p>{serviceAvailability?.inviteTracking && !servicesError ? "Create tracked invite campaigns from the ERLCX post composer." : "Existing Discord invite URLs can be added manually to ERLCX Markdown."}</p></div></article>
+              <article><Server size={18} aria-hidden="true" /><div><strong>Project sync</strong><span>{serviceState(serviceAvailability?.projectSync, true, "Unavailable")}</span><p>Team project synchronization remains active.</p></div></article>
+              <article><ImagePlus size={18} aria-hidden="true" /><div><strong>Image Hosting</strong><span>{serviceState(serviceAvailability?.imageHosting, serviceAvailability?.imageHostingReachable, "Not configured")}</span><p>{serviceAvailability?.imageHosting && serviceAvailability.imageHostingReachable !== false && !servicesError ? "Upload selected images from Assets → Image Library. Uploaded URLs are public." : "Images stay local; you can still paste URLs from any image host."}</p></div></article>
+              <article><Link2 size={18} aria-hidden="true" /><div><strong>Invite Tracking</strong><span>{serviceState(serviceAvailability?.inviteTracking, serviceAvailability?.inviteTrackingReachable, "Not configured")}</span><p>{serviceAvailability?.inviteTracking && serviceAvailability.inviteTrackingReachable !== false && !servicesError ? "Create tracked invite campaigns from the ERLCX post composer." : "Existing Discord invite URLs can be added manually to ERLCX Markdown."}</p></div></article>
             </div>
           </section>}
           {selectedTeam && <section className="project-sync-options" aria-label="Team project synchronization">

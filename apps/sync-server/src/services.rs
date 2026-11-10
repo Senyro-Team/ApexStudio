@@ -96,6 +96,8 @@ struct ServiceAvailability {
     project_sync: bool,
     image_hosting: bool,
     invite_tracking: bool,
+    image_hosting_reachable: Option<bool>,
+    invite_tracking_reachable: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -130,11 +132,35 @@ async fn service_availability(
     Path(team_id): Path<Uuid>,
 ) -> Result<Json<ServiceAvailability>, ApiError> {
     membership_role(&state, team_id, user.id).await?;
+    let (image_hosting_reachable, invite_tracking_reachable) = tokio::join!(
+        endpoint_health(state.services.image_provider.as_ref(), "health"),
+        endpoint_health(state.services.invite_tracker.as_ref(), "api/health"),
+    );
     Ok(Json(ServiceAvailability {
         project_sync: true,
         image_hosting: state.services.image_provider.is_some(),
         invite_tracking: state.services.invite_tracker.is_some(),
+        image_hosting_reachable,
+        invite_tracking_reachable,
     }))
+}
+
+async fn endpoint_health(service: Option<&ServiceEndpoint>, path: &str) -> Option<bool> {
+    let service = service?;
+    let url = service_url(service, path).ok()?;
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(2))
+        .timeout(Duration::from_secs(3))
+        .build()
+        .ok()?;
+    Some(
+        client
+            .get(url)
+            .send()
+            .await
+            .is_ok_and(|response| response.status().is_success()),
+    )
 }
 
 async fn list_invite_campaigns(
