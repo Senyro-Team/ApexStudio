@@ -25,6 +25,7 @@ import {
   exportPublishing,
   assetBoard,
   mediaLibrary,
+  syncImageLibrary,
   listAssets,
   pickMediaLibraryImage,
   addMediaLibraryAsset,
@@ -102,12 +103,28 @@ export default function Publishing({
   const [projectImages, setProjectImages] = useState<Asset[]>([]);
   const [projectImageChoice, setProjectImageChoice] = useState("");
   useEffect(() => {
-    void Promise.all([mediaLibrary(), listAssets(null)])
-      .then(([library, assets]) => {
-        setLibraryItems(library);
-        setProjectImages(assets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
-      })
-      .catch(() => {});
+    let active = true;
+    const load = async () => {
+      const [library, assets] = await Promise.all([mediaLibrary(), listAssets(null)]);
+      let combined = library;
+      const serverUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
+      const teamId = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
+      if (serverUrl && teamId) {
+        try {
+          const shared = await syncImageLibrary(serverUrl, teamId);
+          const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
+          const remoteItems: MediaLibraryItem[] = shared.images
+            .filter((image) => !localRemoteIds.has(image.id))
+            .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? teamId : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
+          combined = [...remoteItems, ...library];
+        } catch { /* The local library stays available without the server. */ }
+      }
+      if (!active) return;
+      setLibraryItems(combined);
+      setProjectImages(assets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
+    };
+    void load().catch(() => {});
+    return () => { active = false; };
   }, []);
   useEffect(() => {
     let active = true;

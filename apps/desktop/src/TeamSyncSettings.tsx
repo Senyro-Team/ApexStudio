@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { autoSyncEnabled, setAutoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
-import { Check, CircleAlert, Copy, LogOut, RefreshCw, Server, Trash2, UserPlus, Users } from "lucide-react";
+import { Check, CircleAlert, Copy, ImagePlus, Link2, LogOut, RefreshCw, Server, Trash2, UserPlus, Users } from "lucide-react";
 import AppSelect from "./AppSelect";
 import { readTeamSyncLog, recordTeamSyncError, recordTeamSyncReport, syncSummary } from "./teamSyncLog";
 import {
@@ -15,10 +15,12 @@ import {
   syncProjects,
   syncListMembers,
   syncRemoveMember,
+  syncServiceAvailability,
   type SyncConnectionStatus,
   type SyncInvitation,
   type SyncInvitationRole,
   type SyncTeamMember,
+  type SyncServiceAvailability,
 } from "./bridge";
 
 const SERVER_URL_KEY = "apex-studio.team-sync.server-url";
@@ -58,6 +60,9 @@ export default function TeamSyncSettings({
   const [membersError, setMembersError] = useState("");
   const [removingMember, setRemovingMember] = useState("");
   const [membersRefresh, setMembersRefresh] = useState(0);
+  const [serviceAvailability, setServiceAvailability] = useState<SyncServiceAvailability | null>(null);
+  const [servicesBusy, setServicesBusy] = useState(false);
+  const [servicesError, setServicesError] = useState("");
   const [syncLog, setSyncLog] = useState(() => readTeamSyncLog(initialUrl.current, ""));
   const automaticSync = useSyncExternalStore(subscribeAutoSync, autoSyncEnabled, () => true);
   useEffect(() => {
@@ -182,6 +187,22 @@ export default function TeamSyncSettings({
   const connectedUser = connection?.user;
   const selectedTeam = connectedUser?.teams.find((team) => team.id === activeTeam);
   const canInvite = selectedTeam?.role === "owner" || selectedTeam?.role === "admin";
+
+  useEffect(() => {
+    if (!connectedUser || !selectedTeam) {
+      setServiceAvailability(null);
+      setServicesError("");
+      return;
+    }
+    let active = true;
+    setServicesBusy(true);
+    setServicesError("");
+    void syncServiceAvailability(serverUrl, selectedTeam.id)
+      .then((availability) => { if (active) setServiceAvailability(availability); })
+      .catch((reason) => { if (active) setServicesError(errorText(reason)); })
+      .finally(() => { if (active) setServicesBusy(false); });
+    return () => { active = false; };
+  }, [connectedUser?.id, selectedTeam?.id, serverUrl]);
 
   function canRemoveMember(member: SyncTeamMember) {
     if (!selectedTeam || member.role === "owner" || member.id === connectedUser?.id) return false;
@@ -409,6 +430,15 @@ export default function TeamSyncSettings({
               This account is not a member of a team on this server.
             </p>
           )}
+          {selectedTeam && <section className="server-services" aria-labelledby="server-services-title">
+            <div className="server-services-heading"><div><h3 id="server-services-title">Optional services</h3><p className="field-hint">Each service can be enabled independently by this team’s server.</p></div><button className="icon-button" aria-label="Refresh service availability" type="button" disabled={servicesBusy} onClick={() => { setServicesError(""); setServicesBusy(true); void syncServiceAvailability(serverUrl, selectedTeam.id).then(setServiceAvailability).catch((reason) => setServicesError(errorText(reason))).finally(() => setServicesBusy(false)); }}><RefreshCw size={16} className={servicesBusy ? "team-sync-spinning" : undefined} /></button></div>
+            {servicesError && <p className="team-sync-message team-sync-error" role="alert">{servicesError}</p>}
+            <div className="server-service-grid">
+              <article><Server size={18} aria-hidden="true" /><div><strong>Project sync</strong><span>{serviceAvailability?.projectSync ? "Available" : servicesBusy ? "Checking…" : "Unavailable"}</span><p>Team project synchronization remains active.</p></div></article>
+              <article><ImagePlus size={18} aria-hidden="true" /><div><strong>Image Hosting</strong><span>{serviceAvailability?.imageHosting ? "Available" : servicesBusy ? "Checking…" : "Not configured"}</span><p>{serviceAvailability?.imageHosting ? "Upload selected images from Assets → Image Library. Uploaded URLs are public." : "Images stay local; you can still paste URLs from any image host."}</p></div></article>
+              <article><Link2 size={18} aria-hidden="true" /><div><strong>Invite Tracking</strong><span>{serviceAvailability?.inviteTracking ? "Available" : servicesBusy ? "Checking…" : "Not configured"}</span><p>Existing Discord invite URLs can be added manually to ERLCX Markdown.</p></div></article>
+            </div>
+          </section>}
           {selectedTeam && <section className="project-sync-options" aria-label="Team project synchronization">
             <h3>Project synchronization</h3>
             <label className="check-label">

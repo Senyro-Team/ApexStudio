@@ -5274,6 +5274,15 @@ select {
 .publishing-markdown-block > header strong { text-transform: capitalize; }
 .publishing-markdown-block pre, .publishing-markdown-preview pre { overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 14px; border-radius: 9px; background: var(--surface-raised); }
 .publishing-markdown-preview h3 { margin: 0; }
+.server-services { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.server-services-heading { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.server-services-heading h3, .server-services-heading p { margin: 0; }
+.server-service-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.server-service-grid article { display: flex; align-items: flex-start; gap: 12px; min-height: 120px; padding: 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-raised); }
+.server-service-grid article > svg { flex: 0 0 auto; color: var(--accent); }
+.server-service-grid article div { display: grid; gap: 5px; }
+.server-service-grid article span { color: var(--muted); font-size: 12px; }
+.server-service-grid article p { margin: 2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 @media (max-width: 720px) {
   .media-library-heading, .publishing-markdown-heading { align-items: flex-start; flex-direction: column; }
   .media-library-project-add { align-items: stretch; }

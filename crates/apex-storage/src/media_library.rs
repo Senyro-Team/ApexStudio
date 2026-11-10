@@ -3,6 +3,7 @@ use apex_core::Error;
 use base64::Engine;
 use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
+use sha2::Digest;
 use std::path::Path;
 
 #[derive(Clone, Serialize)]
@@ -15,6 +16,8 @@ pub struct MediaLibraryItem {
     pub image_url: String,
     pub default_link_url: Option<String>,
     pub owner_scope: String,
+    pub team_id: Option<String>,
+    pub provider_image_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub preview: Option<String>,
@@ -74,7 +77,7 @@ impl Workspace {
         let row = self
             .connection()?
             .query_row(
-                "SELECT id,hash,name,alt_text,image_url,default_link_url,owner_scope,created_at,updated_at FROM media_library WHERE id=?1",
+                "SELECT id,hash,name,alt_text,image_url,default_link_url,owner_scope,team_id,provider_image_id,created_at,updated_at FROM media_library WHERE id=?1",
                 [id],
                 |row| {
                     Ok((
@@ -85,8 +88,10 @@ impl Workspace {
                         row.get::<_, String>(4)?,
                         row.get::<_, Option<String>>(5)?,
                         row.get::<_, String>(6)?,
-                        row.get::<_, String>(7)?,
-                        row.get::<_, String>(8)?,
+                        row.get::<_, Option<String>>(7)?,
+                        row.get::<_, Option<String>>(8)?,
+                        row.get::<_, String>(9)?,
+                        row.get::<_, String>(10)?,
                     ))
                 },
             )
@@ -109,8 +114,10 @@ impl Workspace {
             image_url: row.4,
             default_link_url: row.5,
             owner_scope: row.6,
-            created_at: row.7,
-            updated_at: row.8,
+            team_id: row.7,
+            provider_image_id: row.8,
+            created_at: row.9,
+            updated_at: row.10,
             preview,
         })
     }
@@ -131,6 +138,10 @@ impl Workspace {
             rows
         };
         ids.iter().map(|id| self.media_library_item(id)).collect()
+    }
+
+    pub fn media_library_item_by_id(&self, id: &str) -> Result<MediaLibraryItem, Error> {
+        self.media_library_item(id)
     }
 
     fn insert_media_item(
@@ -264,5 +275,51 @@ impl Workspace {
             self.collect_content(std::slice::from_ref(&hash))?;
         }
         Ok(())
+    }
+
+    pub fn media_library_upload_bytes(&self, id: &str) -> Result<(String, Vec<u8>), Error> {
+        let (hash, name): (String, String) = self
+            .connection()?
+            .query_row(
+                "SELECT hash,name FROM media_library WHERE id=?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(storage)?
+            .ok_or(Error::NotFound)?;
+        let path = self.root.join("files").join(&hash);
+        super::validate_texture(&path)?;
+        let bytes = std::fs::read(path).map_err(storage)?;
+        if bytes.len() > 40 * 1024 * 1024 || format!("{:x}", sha2::Sha256::digest(&bytes)) != hash {
+            return Err(invalid(
+                "The library image failed its integrity check or exceeds 40 MB.",
+            ));
+        }
+        Ok((name, bytes))
+    }
+
+    pub fn set_media_library_remote(
+        &self,
+        id: &str,
+        provider_image_id: &str,
+        image_url: &str,
+        owner_scope: &str,
+        team_id: Option<&str>,
+    ) -> Result<MediaLibraryItem, Error> {
+        let image_url = validate_url(image_url, true)?.ok_or(Error::NotFound)?;
+        if uuid::Uuid::parse_str(provider_image_id).is_err()
+            || !["personal", "team"].contains(&owner_scope)
+            || (owner_scope == "team") != team_id.is_some()
+        {
+            return Err(invalid(
+                "The image host returned invalid sharing information.",
+            ));
+        }
+        self.connection()?.execute(
+            "UPDATE media_library SET provider_image_id=?2,image_url=?3,owner_scope=?4,team_id=?5,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1",
+            params![id, provider_image_id, image_url, owner_scope, team_id],
+        ).map_err(storage)?;
+        self.media_library_item(id)
     }
 }

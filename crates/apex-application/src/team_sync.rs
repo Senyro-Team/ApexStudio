@@ -17,7 +17,7 @@ pub mod project;
 const CREDENTIAL_SERVICE: &str = "studio.apexdesigns.apexstudio";
 #[cfg(all(windows, not(test)))]
 const CREDENTIAL_ACCOUNT: &str = "team-sync-session";
-const MAX_RESPONSE_BYTES: usize = 256 * 1024;
+const MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,6 +71,37 @@ pub struct Invitation {
     pub invitation_token: String,
     pub role: String,
     pub expires_in_seconds: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceAvailability {
+    pub project_sync: bool,
+    pub image_hosting: bool,
+    pub invite_tracking: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostedImage {
+    pub id: String,
+    pub name: String,
+    pub image_url: String,
+    pub hash: String,
+    pub alt_text: String,
+    pub default_link_url: Option<String>,
+    pub owner_scope: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub reused: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostedImages {
+    pub images: Vec<HostedImage>,
+    #[serde(default)]
+    pub errors: Vec<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -361,6 +392,126 @@ async fn authenticated_session(server: &ServerInfo) -> Result<SavedSession, Erro
         ));
     }
     Ok(saved)
+}
+
+async fn team_service_endpoint(
+    server_url: &str,
+    team_id: &str,
+    suffix: &str,
+) -> Result<(Client, Url, SavedSession), Error> {
+    let team_id = uuid::Uuid::parse_str(team_id)
+        .map_err(|_| invalid("Select a valid team before using its server services."))?;
+    let base = parse_origin(server_url)?;
+    let server = server_info(&base).await?;
+    let session = authenticated_session(&server).await?;
+    let path = format!("api/v1/teams/{team_id}/{suffix}");
+    Ok((client()?, endpoint(&base, &path)?, session))
+}
+
+pub async fn service_availability(
+    server_url: &str,
+    team_id: &str,
+) -> Result<ServiceAvailability, Error> {
+    let (client, url, session) = team_service_endpoint(server_url, team_id, "services").await?;
+    let response = client
+        .get(url)
+        .headers(auth_headers(&session.access_token)?)
+        .send()
+        .await
+        .map_err(|_| Error::Storage("Could not reach the team server.".into()))?;
+    response_json(response).await
+}
+
+pub async fn list_hosted_images(server_url: &str, team_id: &str) -> Result<HostedImages, Error> {
+    let (client, mut url, session) =
+        team_service_endpoint(server_url, team_id, "image-library").await?;
+    url.query_pairs_mut().append_pair("scope", "available");
+    let response = client
+        .get(url)
+        .headers(auth_headers(&session.access_token)?)
+        .send()
+        .await
+        .map_err(|_| Error::Storage("Could not reach the team image library.".into()))?;
+    response_json(response).await
+}
+
+pub async fn upload_hosted_images(
+    server_url: &str,
+    team_id: &str,
+    scope: &str,
+    images: Vec<(String, Vec<u8>)>,
+) -> Result<HostedImages, Error> {
+    if !["personal", "team"].contains(&scope) || images.is_empty() || images.len() > 10 {
+        return Err(invalid(
+            "Choose a personal or team scope and up to ten images.",
+        ));
+    }
+    let (client, url, session) =
+        team_service_endpoint(server_url, team_id, "image-library").await?;
+    let mut form = reqwest::multipart::Form::new();
+    for (name, bytes) in images {
+        if bytes.is_empty() || bytes.len() > 40 * 1024 * 1024 {
+            return Err(invalid(
+                "Each hosted image must be between 1 byte and 40 MB.",
+            ));
+        }
+        let safe_name = name
+            .chars()
+            .filter(|c| !c.is_control() && *c != '/' && *c != '\\')
+            .take(200)
+            .collect::<String>();
+        let part = reqwest::multipart::Part::bytes(bytes)
+            .file_name(if safe_name.is_empty() {
+                "image.png".to_owned()
+            } else {
+                safe_name
+            })
+            .mime_str("image/png")
+            .map_err(|_| invalid("Could not prepare the image upload."))?;
+        form = form.part("images", part);
+    }
+    let mut url = url;
+    url.query_pairs_mut().append_pair("scope", scope);
+    let response = client
+        .post(url)
+        .headers(auth_headers(&session.access_token)?)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|_| Error::Storage("Could not reach the team image library.".into()))?;
+    response_json(response).await
+}
+
+pub async fn set_hosted_image_scope(
+    server_url: &str,
+    team_id: &str,
+    image_id: &str,
+    scope: &str,
+) -> Result<(), Error> {
+    let image_id = uuid::Uuid::parse_str(image_id)
+        .map_err(|_| invalid("Select a valid image to change its sharing."))?;
+    if !["personal", "team"].contains(&scope) {
+        return Err(invalid("Select personal or team sharing."));
+    }
+    let team_id = uuid::Uuid::parse_str(team_id)
+        .map_err(|_| invalid("Select a valid team before using its server services."))?;
+    let base = parse_origin(server_url)?;
+    let server = server_info(&base).await?;
+    let session = authenticated_session(&server).await?;
+    let client = client()?;
+    let url = endpoint(
+        &base,
+        &format!("api/v1/teams/{team_id}/image-library/{image_id}/sharing"),
+    )?;
+    let response = client
+        .patch(url)
+        .headers(auth_headers(&session.access_token)?)
+        .json(&json!({"scope": scope}))
+        .send()
+        .await
+        .map_err(|_| Error::Storage("Could not update image sharing.".into()))?;
+    let _: serde_json::Value = response_json(response).await?;
+    Ok(())
 }
 
 /// Validate a server address and return its API identity.

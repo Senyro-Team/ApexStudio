@@ -9,6 +9,9 @@ import {
   mediaLibrary,
   pickMediaLibraryImage,
   updateMediaLibraryItem,
+  syncImageLibrary,
+  syncUploadLibraryImage,
+  syncSetLibraryImageScope,
   type Asset,
   type MediaLibraryItem,
 } from "./bridge";
@@ -31,20 +34,35 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [serverUrl, setServerUrl] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [uploadScope, setUploadScope] = useState<"personal" | "team">("personal");
 
   async function refresh() {
+    const savedUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
+    const savedTeam = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
+    setServerUrl(savedUrl);
+    setTeamId(savedTeam);
     const [library, projectAssets] = await Promise.all([mediaLibrary(), listAssets(null)]);
-    setItems(library);
+    let combined = library;
+    if (savedUrl && savedTeam) {
+      try {
+        const shared = await syncImageLibrary(savedUrl, savedTeam);
+        const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
+        const remoteItems: MediaLibraryItem[] = shared.images
+          .filter((image) => !localRemoteIds.has(image.id))
+          .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? savedTeam : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
+        combined = [...remoteItems, ...library];
+      } catch {
+        setNotice("Team Image Hosting could not be reached. Local images and manual URLs are still available.");
+      }
+    }
+    setItems(combined);
     setAssets(projectAssets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
   }
   useEffect(() => {
     let active = true;
-    void Promise.all([mediaLibrary(), listAssets(null)])
-      .then(([library, projectAssets]) => {
-        if (!active) return;
-        setItems(library);
-        setAssets(projectAssets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
-      })
+    void refresh().then(() => { if (active) setError(""); })
       .catch((reason: unknown) => { if (active) setError(errorMessage(reason)); });
     return () => { active = false; };
   }, []);
@@ -84,6 +102,36 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
     } finally {
       setBusy(false);
     }
+  }
+
+  async function uploadItem(item: MediaLibraryItem, scope = uploadScope) {
+    if (!serverUrl || !teamId) { setError("Connect to a team server and select a team before using Image Hosting."); return; }
+    if (!item.hash || item.isRemote) return;
+    const scopeText = scope === "team" ? "share this image with the selected team" : "upload this image as a public personal image";
+    if (!window.confirm(`This sends the image to your configured Image Provider. Its URL will be public. Continue and ${scopeText}?`)) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await syncUploadLibraryImage(serverUrl, teamId, item.id, scope);
+      await refresh();
+      setNotice("Image uploaded. Its public URL is ready to reuse.");
+    } catch (reason) { setError(errorMessage(reason)); }
+    finally { setBusy(false); }
+  }
+
+  async function changeSharing(item: MediaLibraryItem) {
+    if (!serverUrl || !teamId || !item.providerImageId || item.isRemote) return;
+    const next = item.ownerScope === "team" ? "personal" : "team";
+    if (!window.confirm(next === "team" ? "Share this image and its public URL with your selected team?" : "Stop sharing this image with your selected team?")) return;
+    setBusy(true);
+    setError("");
+    try {
+      await syncSetLibraryImageScope(serverUrl, teamId, item.id, next);
+      await refresh();
+      setNotice(next === "team" ? "Image shared with the selected team." : "Image is personal again.");
+    } catch (reason) { setError(errorMessage(reason)); }
+    finally { setBusy(false); }
   }
 
   async function addProjectAsset() {
@@ -126,9 +174,11 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
           <button className="primary" type="button" disabled={busy} onClick={() => { setEditing(null); setForm(blank); }}>
             <Plus size={16} aria-hidden="true" /> Add image URL
           </button>
+          <button className="secondary" type="button" disabled={busy} onClick={() => void refresh()}>Refresh library</button>
         </div>
       </header>
       <p className="field-hint">Adding an image here does not upload it to a server. Add the public URL manually after uploading it wherever you choose.</p>
+      {serverUrl && teamId && <div className="media-library-project-add"><label htmlFor="image-upload-scope">For uploads</label><select id="image-upload-scope" value={uploadScope} disabled={busy} onChange={(event) => setUploadScope(event.target.value as "personal" | "team")}><option value="personal">Personal</option><option value="team">Selected team</option></select><span className="field-hint">Uploads are public and require confirmation each time.</span></div>}
       {error && <p role="alert" className="error">{error}</p>}
       {notice && <p role="status" className="field-hint">{notice}</p>}
       {assets.length > 0 && (
@@ -169,15 +219,17 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
                 {item.preview ? <img src={item.preview} alt="" /> : item.imageUrl ? <img src={item.imageUrl} alt="" /> : <FileImage size={30} aria-hidden="true" />}
               </div>
               <div className="media-library-card-body">
-                <div className="media-library-card-title"><strong>{item.name}</strong><span>{item.ownerScope === "personal" ? "Personal" : "Team"}</span></div>
+                <div className="media-library-card-title"><strong>{item.name}</strong><span>{item.isRemote ? "Shared with team" : item.ownerScope === "personal" ? "Personal" : "Team"}</span></div>
                 <small>{item.altText || "No alt text"}</small>
                 {item.imageUrl ? <a href={item.imageUrl} target="_blank" rel="noreferrer"><Link2 size={14} aria-hidden="true" /> Open image <ExternalLink size={13} aria-hidden="true" /></a> : <small>Local only · public URL not set</small>}
                 <div className="media-library-card-actions">
-                  <button className="text-button" type="button" disabled={busy} onClick={() => { setEditing(item.id); setForm({ name: item.name, altText: item.altText, imageUrl: item.imageUrl, defaultLinkUrl: item.defaultLinkUrl ?? "" }); }}><PencilLine size={15} aria-hidden="true" /> Edit</button>
-                  <button className="text-button" type="button" disabled={busy} onClick={() => {
+                  {item.hash && !item.providerImageId && <button className="text-button" type="button" disabled={busy} onClick={() => void uploadItem(item)}><Upload size={15} aria-hidden="true" /> Upload public</button>}
+                  {item.providerImageId && !item.isRemote && <button className="text-button" type="button" disabled={busy} onClick={() => void changeSharing(item)}>{item.ownerScope === "team" ? "Make personal" : "Share with team"}</button>}
+                  <button className="text-button" type="button" disabled={busy || item.isRemote} onClick={() => { setEditing(item.id); setForm({ name: item.name, altText: item.altText, imageUrl: item.imageUrl, defaultLinkUrl: item.defaultLinkUrl ?? "" }); }}><PencilLine size={15} aria-hidden="true" /> Edit</button>
+                  <button className="text-button" type="button" onClick={() => {
                     if (!window.confirm(`Remove “${item.name}” from the Image Library?`)) return;
                     void run(async () => deleteMediaLibraryItem(item.id), "Image removed from the library.");
-                  }}><Trash2 size={15} aria-hidden="true" /> Remove</button>
+                  }} disabled={busy || item.isRemote}><Trash2 size={15} aria-hidden="true" /> Remove</button>
                 </div>
               </div>
             </article>

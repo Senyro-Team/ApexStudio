@@ -4,6 +4,12 @@ This Docker deployment runs the Apex Sync Server API for team access and project
 
 The original server source code is licensed under [Apache-2.0](../../LICENSE). The licence does not grant use of Apex Studio branding; see the [brand policy](../../BRANDING.md). Keep deployment secrets in `.env` and out of source control.
 
+## Optional service gateway
+
+Project synchronization remains independent of optional services. To enable Image Hosting, set `APEX_IMAGE_PROVIDER_URL` and `APEX_IMAGE_PROVIDER_KEY` on the Sync Server and the matching `APEX_SERVICE_KEY` on Image Provider. Use a random key of at least 32 characters, keep it only in server environments, and never place it in Apex Studio or logs. The gateway verifies the signed-in Apex account's team membership and write role before proxying a user-selected upload. Image Provider retains its own database and image volume. Leave both values blank to disable the integration. Invite Tracking remains unconfigured until its gateway routes are implemented.
+
+Image Provider source and deployment instructions are maintained separately in the Image Provider project. The gateway expects its `GET/POST /api/service/images` and `PATCH /api/service/images/{id}/sharing` contract; the browser and desktop app must call only the authenticated Sync Server routes. The authenticated routes are `GET/POST /api/v1/teams/{team_id}/image-library`, `PATCH /api/v1/teams/{team_id}/image-library/{image_id}/sharing`, and `GET /api/v1/teams/{team_id}/services`. Personal uploads are scoped to the requesting Apex account; team uploads and sharing require a write-capable team role.
+
 ## Requirements
 
 For a temporary Windows PC deployment without incoming ports, use the

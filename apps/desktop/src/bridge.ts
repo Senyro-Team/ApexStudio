@@ -109,10 +109,38 @@ export interface SyncInvitation {
   role: SyncInvitationRole;
   expiresInSeconds: number;
 }
+export interface SyncServiceAvailability {
+  projectSync: boolean;
+  imageHosting: boolean;
+  inviteTracking: boolean;
+}
+export interface HostedImage {
+  id: string;
+  name: string;
+  imageUrl: string;
+  hash: string;
+  altText: string;
+  defaultLinkUrl: string | null;
+  ownerScope: "personal" | "team";
+  createdAt: string;
+  reused: boolean;
+}
+export interface HostedImages {
+  images: HostedImage[];
+  errors: unknown[];
+}
 export const syncCheckServer = (serverUrl: string) =>
   invoke<SyncServerInfo>("sync_check_server", { serverUrl });
 export const syncConnectionStatus = (serverUrl: string) =>
   invoke<SyncConnectionStatus>("sync_connection_status", { serverUrl });
+export const syncServiceAvailability = (serverUrl: string, teamId: string) =>
+  invoke<SyncServiceAvailability>("sync_service_availability", { serverUrl, teamId });
+export const syncImageLibrary = (serverUrl: string, teamId: string) =>
+  invoke<HostedImages>("sync_image_library", { serverUrl, teamId });
+export const syncUploadLibraryImage = (serverUrl: string, teamId: string, itemId: string, scope: "personal" | "team") =>
+  invoke<MediaLibraryItem>("sync_upload_library_image", { serverUrl, teamId, itemId, scope });
+export const syncSetLibraryImageScope = (serverUrl: string, teamId: string, itemId: string, scope: "personal" | "team") =>
+  invoke<MediaLibraryItem>("sync_set_library_image_scope", { serverUrl, teamId, itemId, scope });
 export const syncSignIn = (serverUrl: string, email: string, password: string) =>
   invoke<SyncConnectionStatus>("sync_sign_in", { serverUrl, email, password });
 export const syncAcceptInvitation = (
@@ -241,6 +269,9 @@ export interface MediaLibraryItem {
   imageUrl: string;
   defaultLinkUrl: string | null;
   ownerScope: "personal" | "team";
+  teamId: string | null;
+  providerImageId: string | null;
+  isRemote?: boolean;
   createdAt: string;
   updatedAt: string;
   preview: string | null;
