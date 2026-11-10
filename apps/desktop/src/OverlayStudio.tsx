@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { ArrowDownToLine, ImagePlus, Layers3, Save, Shapes, Trash2, Type, Upload } from "lucide-react";
 import {
   deleteOverlayTemplate,
@@ -117,7 +117,7 @@ function numericValue(raw: string, minimum: number, maximum: number): number | n
   return Number.isFinite(value) ? Math.max(minimum, Math.min(maximum, value)) : null;
 }
 
-async function paintCanvas(canvas: HTMLCanvasElement, width: number, height: number, background: string | null, layers: OverlayLayer[]) {
+async function paintCanvas(canvas: HTMLCanvasElement, width: number, height: number, background: string | null, layers: OverlayLayer[], selectedLayerId = "") {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas rendering is unavailable.");
   canvas.width = width;
@@ -138,6 +138,17 @@ async function paintCanvas(canvas: HTMLCanvasElement, width: number, height: num
     imageCache.set(layer.src!, image);
   }));
   layers.forEach((layer) => drawLayer(ctx, layer));
+  const selected = layers.find((layer) => layer.id === selectedLayerId);
+  if (selected) {
+    ctx.save();
+    ctx.translate(selected.x + selected.width / 2, selected.y + selected.height / 2);
+    ctx.rotate((selected.rotation * Math.PI) / 180);
+    ctx.setLineDash([12, 8]);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "#817bff";
+    ctx.strokeRect(-selected.width / 2, -selected.height / 2, selected.width, selected.height);
+    ctx.restore();
+  }
 }
 
 export default function OverlayStudio({
@@ -171,6 +182,7 @@ export default function OverlayStudio({
   const [notice, setNotice] = useState("");
   const [redraw, setRedraw] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const dragRef = useRef<{ id: string; pointerId: number; x: number; y: number; layerX: number; layerY: number } | null>(null);
   const imageLayerInput = useRef<HTMLInputElement>(null);
   const sourceObjectUrls = useRef(new Set<string>());
   const maxOutputCount = Math.max(0, 10 - currentCount);
@@ -191,10 +203,48 @@ export default function OverlayStudio({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    void paintCanvas(canvas, 1920, height, sources[0]?.src ?? null, layers)
+    void paintCanvas(canvas, 1920, height, sources[0]?.src ?? null, layers, selected)
       .then(() => setRedraw((value) => value + 1))
       .catch((reason: unknown) => setError(errorMessage(reason)));
-  }, [height, layers, sources]);
+  }, [height, layers, selected, sources]);
+
+  function pointerPosition(event: PointerEvent<HTMLCanvasElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return { x: (event.clientX - rect.left) * (1920 / rect.width), y: (event.clientY - rect.top) * (height / rect.height) };
+  }
+
+  function beginLayerDrag(event: PointerEvent<HTMLCanvasElement>) {
+    if (disabled || busy || !layers.length) return;
+    const point = pointerPosition(event);
+    const hit = [...layers].reverse().find((layer) => {
+      const dx = point.x - (layer.x + layer.width / 2);
+      const dy = point.y - (layer.y + layer.height / 2);
+      const angle = (-layer.rotation * Math.PI) / 180;
+      const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+      const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+      return Math.abs(localX) <= layer.width / 2 && Math.abs(localY) <= layer.height / 2;
+    });
+    if (!hit) { setSelected(""); return; }
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setSelected(hit.id);
+    dragRef.current = { id: hit.id, pointerId: event.pointerId, x: point.x, y: point.y, layerX: hit.x, layerY: hit.y };
+  }
+
+  function moveLayer(event: PointerEvent<HTMLCanvasElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const point = pointerPosition(event);
+    const nextX = Math.max(-3840, Math.min(3840, drag.layerX + point.x - drag.x));
+    const nextY = Math.max(-2400, Math.min(2400, drag.layerY + point.y - drag.y));
+    setLayers((current) => current.map((layer) => layer.id === drag.id ? { ...layer, x: Math.round(nextX), y: Math.round(nextY) } : layer));
+  }
+
+  function endLayerDrag(event: PointerEvent<HTMLCanvasElement>) {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }
 
   function updateLayer(patch: Partial<OverlayLayer>) {
     setLayers((current) => current.map((layer) => layer.id === selected ? { ...layer, ...patch } : layer));
@@ -322,7 +372,7 @@ export default function OverlayStudio({
   return (
     <section className="overlay-studio" aria-label="Overlay Studio">
       <header className="overlay-studio-header">
-        <div><h3>Overlay Studio</h3><p>Create reusable, brand-neutral overlays and apply them to multiple preview images.</p></div>
+        <div><h3>Overlay Studio</h3><p>Create reusable overlays and drag layers on the preview to position them.</p></div>
         <label className="overlay-format-select">Format<select value={height} disabled={disabled || busy} onChange={(event) => setHeight(Number(event.target.value))}><option value={1080}>ERLCX · 16:9</option><option value={1200}>ExecLab · 16:10</option></select></label>
       </header>
       <div className="overlay-template-tools">
@@ -334,7 +384,7 @@ export default function OverlayStudio({
       <div className="overlay-studio-layout">
         <div className="overlay-canvas-column">
           <div className="overlay-canvas-frame">
-            <canvas ref={canvasRef} className="overlay-canvas" aria-label="Overlay composition preview" />
+                <canvas ref={canvasRef} className={`overlay-canvas${dragRef.current ? " is-dragging" : ""}`} aria-label="Overlay composition preview. Drag a visible layer to reposition it." onPointerDown={beginLayerDrag} onPointerMove={moveLayer} onPointerUp={endLayerDrag} onPointerCancel={endLayerDrag} />
             {redraw === 0 && !sources.length && <span className="overlay-canvas-empty">Choose source images to preview the overlay</span>}
           </div>
           <div className="overlay-source-tools">

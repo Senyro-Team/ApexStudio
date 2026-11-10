@@ -5305,7 +5305,8 @@ select {
 .overlay-studio-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, .8fr); gap: 18px; align-items: start; }
 .overlay-canvas-column { display: grid; gap: 12px; min-width: 0; }
 .overlay-canvas-frame { position: relative; display: grid; place-items: center; min-height: 180px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #101114; }
-.overlay-canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: contain; }
+.overlay-canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: contain; cursor: grab; touch-action: none; }
+.overlay-canvas.is-dragging { cursor: grabbing; }
 .overlay-canvas-empty { position: absolute; inset: auto 12px 12px; width: fit-content; max-width: calc(100% - 24px); padding: 6px 10px; border-radius: 7px; color: var(--text); background: rgb(0 0 0 / .72); font-size: 12px; pointer-events: none; }
 .overlay-canvas-actions { justify-content: flex-start; flex-wrap: wrap; }
 .overlay-canvas-actions > span { flex: 1; min-width: 140px; }
