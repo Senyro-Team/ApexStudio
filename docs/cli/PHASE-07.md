@@ -14,6 +14,7 @@ Status: In progress.
 - Verified Inno first install with and without the CLI component, component removal on upgrade, and uninstall; unrelated `PATH` entries remained byte-for-byte unchanged.
 - Verified the updated release CLI in a Windows PTY against a new disposable workspace and exited cleanly.
 - Added an offline, machine-checked schema suite that validates all schema documents and representative serialized workspace/service results. The existing CI `cargo test --locked` runs this suite.
+- Latest verification: root `cargo test --locked` passed 138 tests (30 application, 29 CLI unit, 17 CLI smoke, 4 JSON-contract, 7 core, 51 storage); `cargo check -p apex-desktop --all-targets --locked`, formatting, and targeted CLI Clippy passed. Clippy excluded two previously observed warnings in Group Revenue storage and the existing TUI worker enum.
 
 ## Remaining acceptance work
 
