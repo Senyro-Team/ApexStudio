@@ -3127,9 +3127,30 @@ enum Screen {
     RobloxQueue,
     Statistics,
     GroupRevenue,
+    RevenueEditor,
+    RevenuePasses,
+    RevenueCsvPath,
+    RevenueCsvReview,
+    RevenueRemoveReview,
     RobloxCancelReview,
     RobloxLiveries,
     RobloxBatchReview,
+}
+
+struct RevenueEditorState {
+    group_id: String,
+    name: String,
+    experience_ids: String,
+    is_new: bool,
+    active_field: usize,
+    cursor: usize,
+    error: Option<String>,
+}
+
+struct RevenueCsvPathState {
+    paths: String,
+    cursor: usize,
+    error: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -3258,6 +3279,12 @@ struct TuiState {
     statistics_refresh_active: bool,
     statistics_status: String,
     group_revenue: Option<RobloxGroupRevenueData>,
+    revenue_group_focus: Option<String>,
+    revenue_editor: Option<RevenueEditorState>,
+    revenue_csv_path: Option<RevenueCsvPathState>,
+    revenue_csv_preview: Option<revenue_csv::CsvPreview>,
+    revenue_remove_group: Option<String>,
+    revenue_status: Option<(String, bool)>,
     selected_batch: usize,
     queue_batches_focused: bool,
     cancel_batch: Option<String>,
@@ -3311,6 +3338,12 @@ impl TuiState {
             statistics_refresh_active: false,
             statistics_status: "Profile snapshot history".into(),
             group_revenue: None,
+            revenue_group_focus: None,
+            revenue_editor: None,
+            revenue_csv_path: None,
+            revenue_csv_preview: None,
+            revenue_remove_group: None,
+            revenue_status: None,
             selected_batch: 0,
             queue_batches_focused: true,
             cancel_batch: None,
@@ -3406,6 +3439,47 @@ impl TuiState {
                 query.is_empty()
                     || group.name.to_lowercase().contains(&query)
                     || group.group_id.to_lowercase().contains(&query)
+            })
+            .collect()
+    }
+
+    fn visible_revenue_passes(&self) -> Vec<(String, String, bool)> {
+        let Some(group_id) = self.revenue_group_focus.as_deref() else {
+            return Vec::new();
+        };
+        let Some(data) = &self.group_revenue else {
+            return Vec::new();
+        };
+        let Some(group) = data.groups.iter().find(|group| group.group_id == group_id) else {
+            return Vec::new();
+        };
+        let mut passes = BTreeMap::<String, String>::new();
+        for pass in data.passes.iter().filter(|pass| pass.group_id == group_id) {
+            passes.insert(pass.asset_id.clone(), pass.name.clone());
+        }
+        for sale in data.sales.iter().filter(|sale| sale.group_id == group_id) {
+            passes.entry(sale.asset_id.clone()).or_insert_with(|| {
+                group
+                    .pass_mappings
+                    .get(&sale.asset_id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("Unknown Game Pass {}", sale.asset_id))
+            });
+        }
+        for (id, name) in &group.pass_mappings {
+            passes.entry(id.clone()).or_insert_with(|| name.clone());
+        }
+        let query = self.search.to_lowercase();
+        passes
+            .into_iter()
+            .filter(|(id, name)| {
+                query.is_empty()
+                    || id.to_lowercase().contains(&query)
+                    || name.to_lowercase().contains(&query)
+            })
+            .map(|(id, name)| {
+                let selected = group.selected_pass_ids.iter().any(|value| value == &id);
+                (id, name, selected)
             })
             .collect()
     }
@@ -3851,6 +3925,29 @@ fn run_tui(app: ApplicationServices) -> io::Result<()> {
                         refresh_group_revenue_view(&mut state, &app).map_err(io::Error::other)?;
                     }
                     Screen::GroupRevenue => handle_group_revenue_key(&mut state, key.code),
+                    Screen::RevenueEditor
+                        if key.code == KeyCode::Char('s')
+                            && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        if let Err(error) = save_revenue_editor(&mut state, &app) {
+                            if let Some(editor) = &mut state.revenue_editor {
+                                editor.error = Some(error.to_string());
+                            }
+                        }
+                    }
+                    Screen::RevenueEditor => handle_revenue_editor_key(&mut state, key.code),
+                    Screen::RevenuePasses => handle_revenue_passes_key(&mut state, key.code, &app)
+                        .map_err(io::Error::other)?,
+                    Screen::RevenueCsvPath => handle_revenue_csv_path_key(&mut state, key.code)
+                        .map_err(io::Error::other)?,
+                    Screen::RevenueCsvReview => {
+                        handle_revenue_csv_review_key(&mut state, key.code, &app)
+                            .map_err(io::Error::other)?
+                    }
+                    Screen::RevenueRemoveReview => {
+                        handle_revenue_remove_review_key(&mut state, key.code, &app)
+                            .map_err(io::Error::other)?
+                    }
                     Screen::RobloxCancelReview => {
                         handle_roblox_cancel_review_key(&mut state, key.code, &app)
                             .map_err(io::Error::other)?
@@ -5293,8 +5390,360 @@ fn handle_group_revenue_key(state: &mut TuiState, key: KeyCode) {
             state.selected =
                 (state.selected + 1).min(state.visible_revenue_groups().len().saturating_sub(1));
         }
+        KeyCode::Char('a') => {
+            state.revenue_editor = Some(RevenueEditorState {
+                group_id: String::new(),
+                name: String::new(),
+                experience_ids: String::new(),
+                is_new: true,
+                active_field: 0,
+                cursor: 0,
+                error: None,
+            });
+            state.screen = Screen::RevenueEditor;
+        }
+        KeyCode::Char('e') => {
+            if let Some(group) = state.visible_revenue_groups().get(state.selected).copied() {
+                state.revenue_editor = Some(RevenueEditorState {
+                    group_id: group.group_id.clone(),
+                    name: group.name.clone(),
+                    experience_ids: group.experience_ids.join(", "),
+                    is_new: false,
+                    active_field: 0,
+                    cursor: group.name.len(),
+                    error: None,
+                });
+                state.screen = Screen::RevenueEditor;
+            }
+        }
+        KeyCode::Char('p') => {
+            if let Some(group) = state.visible_revenue_groups().get(state.selected) {
+                state.revenue_group_focus = Some(group.group_id.clone());
+                state.search.clear();
+                state.selected = 0;
+                state.screen = Screen::RevenuePasses;
+            }
+        }
+        KeyCode::Char('i') => {
+            if let Some(group) = state.visible_revenue_groups().get(state.selected) {
+                state.revenue_group_focus = Some(group.group_id.clone());
+                state.revenue_csv_path = Some(RevenueCsvPathState {
+                    paths: String::new(),
+                    cursor: 0,
+                    error: None,
+                });
+                state.screen = Screen::RevenueCsvPath;
+            }
+        }
+        KeyCode::Char('d') => {
+            if let Some(group) = state.visible_revenue_groups().get(state.selected) {
+                state.revenue_remove_group = Some(group.group_id.clone());
+                state.screen = Screen::RevenueRemoveReview;
+            }
+        }
         _ => {}
     }
+}
+
+fn handle_revenue_editor_key(state: &mut TuiState, key: KeyCode) {
+    let Some(editor) = &mut state.revenue_editor else {
+        state.screen = Screen::GroupRevenue;
+        return;
+    };
+    match key {
+        KeyCode::Esc => {
+            state.revenue_editor = None;
+            state.screen = Screen::GroupRevenue;
+        }
+        KeyCode::Tab | KeyCode::Enter => {
+            let fields = if editor.is_new { 3 } else { 2 };
+            editor.active_field = (editor.active_field + 1) % fields;
+            editor.cursor = revenue_editor_value(editor).len();
+            editor.error = None;
+        }
+        _ => {
+            let cursor = &mut editor.cursor;
+            let value = if editor.is_new {
+                match editor.active_field {
+                    0 => &mut editor.group_id,
+                    1 => &mut editor.name,
+                    _ => &mut editor.experience_ids,
+                }
+            } else if editor.active_field == 0 {
+                &mut editor.name
+            } else {
+                &mut editor.experience_ids
+            };
+            if edit_text_at_cursor(value, cursor, key) {
+                editor.error = None;
+            }
+        }
+    }
+}
+
+fn revenue_editor_value(editor: &RevenueEditorState) -> &str {
+    if editor.is_new {
+        match editor.active_field {
+            0 => &editor.group_id,
+            1 => &editor.name,
+            _ => &editor.experience_ids,
+        }
+    } else if editor.active_field == 0 {
+        &editor.name
+    } else {
+        &editor.experience_ids
+    }
+}
+
+fn save_revenue_editor(state: &mut TuiState, app: &ApplicationServices) -> Result<(), Error> {
+    let editor = state
+        .revenue_editor
+        .as_ref()
+        .ok_or_else(|| Error::InvalidContent("No Group Revenue group is open.".into()))?;
+    let id = editor.group_id.trim().to_owned();
+    let name = editor.name.trim().to_owned();
+    let mut experience_ids = editor
+        .experience_ids
+        .split(|character: char| character == ',' || character.is_whitespace())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    experience_ids.sort();
+    experience_ids.dedup();
+    let is_new = editor.is_new;
+    let mut group = if is_new {
+        RobloxRevenueGroup {
+            group_id: id,
+            name,
+            experience_ids,
+            pass_mappings: BTreeMap::new(),
+            selected_pass_ids: Vec::new(),
+            api_updated_at: None,
+            api_coverage_from: None,
+            api_coverage_to: None,
+            api_summary: None,
+            api_status: None,
+            updated_at: None,
+            last_import_at: None,
+        }
+    } else {
+        let mut current = app
+            .roblox_group_revenue()?
+            .groups
+            .into_iter()
+            .find(|group| group.group_id == id)
+            .ok_or(Error::NotFound)?;
+        current.name = name;
+        current.experience_ids = experience_ids;
+        current
+    };
+    // Storage owns validation and rejects empty names, invalid IDs, and duplicate experiences.
+    group.name = group.name.trim().to_owned();
+    let data = app.save_roblox_revenue_group(&group)?;
+    state.group_revenue = Some(data);
+    state.revenue_group_focus = Some(group.group_id.clone());
+    state.revenue_editor = None;
+    state.screen = Screen::GroupRevenue;
+    state.search.clear();
+    state.selected = state
+        .visible_revenue_groups()
+        .iter()
+        .position(|entry| entry.group_id == group.group_id)
+        .unwrap_or(0);
+    state.revenue_status = Some((
+        format!(
+            "Saved {} · {} experience(s)",
+            group.name,
+            group.experience_ids.len()
+        ),
+        true,
+    ));
+    Ok(())
+}
+
+fn handle_revenue_passes_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    if state.searching {
+        match key {
+            KeyCode::Esc | KeyCode::Enter => state.searching = false,
+            KeyCode::Backspace => {
+                state.search.pop();
+                state.selected = 0;
+            }
+            KeyCode::Char(character) if !character.is_control() => {
+                state.search.push(character);
+                state.selected = 0;
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
+    match key {
+        KeyCode::Esc | KeyCode::Backspace | KeyCode::Char('q') => {
+            state.search.clear();
+            state.screen = Screen::GroupRevenue;
+            if let Some(group_id) = &state.revenue_group_focus {
+                state.selected = state
+                    .visible_revenue_groups()
+                    .iter()
+                    .position(|group| &group.group_id == group_id)
+                    .unwrap_or(0);
+            }
+        }
+        KeyCode::Char('/') => state.searching = true,
+        KeyCode::Up | KeyCode::Char('k') => state.selected = state.selected.saturating_sub(1),
+        KeyCode::Down | KeyCode::Char('j') => {
+            state.selected =
+                (state.selected + 1).min(state.visible_revenue_passes().len().saturating_sub(1));
+        }
+        KeyCode::Enter | KeyCode::Char(' ') => {
+            if let Some((asset_id, _, selected)) =
+                state.visible_revenue_passes().get(state.selected).cloned()
+            {
+                let group_id = state.revenue_group_focus.clone().ok_or(Error::NotFound)?;
+                let mut group = state
+                    .group_revenue
+                    .as_ref()
+                    .and_then(|data| data.groups.iter().find(|group| group.group_id == group_id))
+                    .cloned()
+                    .ok_or(Error::NotFound)?;
+                if selected {
+                    group.selected_pass_ids.retain(|id| id != &asset_id);
+                } else {
+                    group.selected_pass_ids.push(asset_id);
+                    group.selected_pass_ids.sort();
+                }
+                state.group_revenue = Some(app.save_roblox_revenue_group(&group)?);
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn handle_revenue_csv_path_key(state: &mut TuiState, key: KeyCode) -> Result<(), Error> {
+    let Some(input) = &mut state.revenue_csv_path else {
+        state.screen = Screen::GroupRevenue;
+        return Ok(());
+    };
+    match key {
+        KeyCode::Esc => {
+            state.revenue_csv_path = None;
+            state.screen = Screen::GroupRevenue;
+        }
+        KeyCode::Enter => {
+            let paths = input
+                .paths
+                .split(';')
+                .map(str::trim)
+                .filter(|path| !path.is_empty())
+                .map(PathBuf::from)
+                .collect::<Vec<_>>();
+            let group_id = state.revenue_group_focus.clone().ok_or(Error::NotFound)?;
+            let data = state.group_revenue.as_ref().ok_or(Error::NotFound)?;
+            let group = data
+                .groups
+                .iter()
+                .find(|group| group.group_id == group_id)
+                .ok_or(Error::NotFound)?;
+            match revenue_csv::read_csv_files(&paths, group, &data.sales) {
+                Ok(preview) => {
+                    state.revenue_csv_preview = Some(preview);
+                    state.revenue_csv_path = None;
+                    state.screen = Screen::RevenueCsvReview;
+                }
+                Err(error) => input.error = Some(error),
+            }
+        }
+        _ => {
+            if edit_text_at_cursor(&mut input.paths, &mut input.cursor, key) {
+                input.error = None;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn handle_revenue_csv_review_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    match key {
+        KeyCode::Esc | KeyCode::Char('n') => {
+            state.revenue_csv_preview = None;
+            state.screen = Screen::GroupRevenue;
+        }
+        KeyCode::Char('e') => {
+            state.revenue_csv_preview = None;
+            state.revenue_csv_path = Some(RevenueCsvPathState {
+                paths: String::new(),
+                cursor: 0,
+                error: None,
+            });
+            state.screen = Screen::RevenueCsvPath;
+        }
+        KeyCode::Char('y') => {
+            let preview = state.revenue_csv_preview.take().ok_or(Error::NotFound)?;
+            let group_id = state.revenue_group_focus.clone().ok_or(Error::NotFound)?;
+            let group = app
+                .roblox_group_revenue()?
+                .groups
+                .into_iter()
+                .find(|group| group.group_id == group_id)
+                .ok_or(Error::NotFound)?;
+            match app.import_roblox_group_sales(&group, &preview.batch_id, &preview.sales) {
+                Ok(result) => {
+                    state.group_revenue = Some(app.roblox_group_revenue()?);
+                    state.screen = Screen::GroupRevenue;
+                    state.revenue_status = Some((
+                        format!(
+                            "Imported {} rows · {} duplicates skipped",
+                            result.inserted, result.duplicates
+                        ),
+                        true,
+                    ));
+                }
+                Err(error) => {
+                    state.revenue_status = Some((error.to_string(), false));
+                    state.screen = Screen::GroupRevenue;
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn handle_revenue_remove_review_key(
+    state: &mut TuiState,
+    key: KeyCode,
+    app: &ApplicationServices,
+) -> Result<(), Error> {
+    match key {
+        KeyCode::Esc | KeyCode::Char('n') => {
+            state.revenue_remove_group = None;
+            state.screen = Screen::GroupRevenue;
+        }
+        KeyCode::Char('y') => {
+            let group_id = state.revenue_remove_group.take().ok_or(Error::NotFound)?;
+            app.remove_roblox_group_revenue(&group_id)?;
+            state.group_revenue = Some(app.roblox_group_revenue()?);
+            state.selected = 0;
+            state.revenue_group_focus = None;
+            state.screen = Screen::GroupRevenue;
+            state.revenue_status = Some((
+                format!("Removed group {group_id} and its imported sales"),
+                true,
+            ));
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn selected_upload_batch(state: &TuiState) -> Option<(String, String)> {
@@ -5671,6 +6120,13 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::RobloxQueue => draw_roblox_queue(frame, state, regions[1], accent, muted),
         Screen::Statistics => draw_statistics(frame, state, regions[1], accent, muted),
         Screen::GroupRevenue => draw_group_revenue(frame, state, regions[1], accent, muted),
+        Screen::RevenueEditor => draw_revenue_editor(frame, state, regions[1], accent, muted),
+        Screen::RevenuePasses => draw_revenue_passes(frame, state, regions[1], accent, muted),
+        Screen::RevenueCsvPath => draw_revenue_csv_path(frame, state, regions[1], accent, muted),
+        Screen::RevenueCsvReview => {
+            draw_revenue_csv_review(frame, state, regions[1], accent, muted)
+        }
+        Screen::RevenueRemoveReview => draw_revenue_remove_review(frame, state, regions[1], muted),
         Screen::RobloxCancelReview => {
             draw_roblox_cancel_review(frame, state, regions[1], accent, muted)
         }
@@ -5735,7 +6191,16 @@ fn draw(frame: &mut Frame<'_>, state: &TuiState) {
         Screen::PostRemoveReview => " y Remove from draft   n/Esc Keep ",
         Screen::Statistics => " r Refresh public ERLCX profile   Esc/q Back ",
         Screen::GroupRevenue if state.searching => " Type to filter   Enter/Esc Finish search ",
-        Screen::GroupRevenue => " ↑/↓ Select group   / Search   r Refresh   Esc/q Back ",
+        Screen::GroupRevenue if regions[2].width < 64 => {
+            "↑↓ Select · a Add · e Edit · p Passes\ni Import · d Remove · / Search · r Reload"
+        }
+        Screen::GroupRevenue => " ↑/↓ Groups   a Add   e Edit   p Passes   i Import CSV   d Remove   / Search   r Refresh ",
+        Screen::RevenueEditor => " Tab/Enter Next field   Ctrl+S Save   Esc Cancel ",
+        Screen::RevenuePasses if state.searching => " Type to filter   Enter/Esc Finish search ",
+        Screen::RevenuePasses => " ↑/↓ Select   Space/Enter Toggle pass   / Search   Esc Back ",
+        Screen::RevenueCsvPath => " Type/paste CSV paths separated by ;   Enter Preview   Esc Cancel ",
+        Screen::RevenueCsvReview => " y Import reviewed rows   e Change files   n/Esc Cancel ",
+        Screen::RevenueRemoveReview => " y Remove group and sales   n/Esc Keep ",
         Screen::RobloxQueue if state.searching => " Type to filter   Enter/Esc Finish search ",
         Screen::RobloxQueue if regions[2].width < 64 => {
             "Tab Focus · ↑↓ Select · g Run · x Stop\np Pause · t Retry · c Cancel · u Upload\n/ Search · r Refresh · Esc Back"
@@ -7438,9 +7903,24 @@ fn draw_group_revenue(
                 "Price and revenue are kept as separate source fields.",
                 Style::default().fg(muted),
             ));
+            if let Some((message, successful)) = &state.revenue_status {
+                lines.push(Line::raw(""));
+                lines.push(Line::styled(
+                    message,
+                    Style::default().fg(if *successful { accent } else { Color::Red }),
+                ));
+            }
             lines
         } else if state.search.is_empty() {
-            vec![Line::raw("No Group Revenue groups are configured yet.")]
+            let mut lines = vec![Line::raw("No Group Revenue groups are configured yet.")];
+            if let Some((message, successful)) = &state.revenue_status {
+                lines.push(Line::raw(""));
+                lines.push(Line::styled(
+                    message,
+                    Style::default().fg(if *successful { accent } else { Color::Red }),
+                ));
+            }
+            lines
         } else {
             vec![Line::raw("No groups match this search.")]
         };
@@ -7454,6 +7934,321 @@ fn draw_group_revenue(
             .style(Style::default().fg(muted))
             .wrap(Wrap { trim: true }),
         sections[1],
+    );
+}
+
+fn draw_revenue_editor(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let Some(editor) = &state.revenue_editor else {
+        frame.render_widget(Paragraph::new("No Group Revenue group is open."), area);
+        return;
+    };
+    let mut constraints = Vec::new();
+    if editor.is_new {
+        constraints.push(Constraint::Length(3));
+    }
+    constraints.extend([
+        Constraint::Length(3),
+        Constraint::Length(3),
+        Constraint::Min(3),
+    ]);
+    let fields = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(area);
+    let title = if editor.is_new {
+        "Add Group Revenue group"
+    } else {
+        "Edit Group Revenue group"
+    };
+    let mut values = Vec::<(&str, &str, bool)>::new();
+    if editor.is_new {
+        values.push(("Group ID", &editor.group_id, true));
+    }
+    values.push(("Group name", &editor.name, true));
+    values.push(("Experience IDs", &editor.experience_ids, true));
+    for (index, (label, value, editable)) in values.into_iter().enumerate() {
+        let field_index = index;
+        let focused = editable && editor.active_field == field_index;
+        let shown = if focused {
+            let cursor = editor.cursor.min(value.len());
+            format!("{}▏{}", &value[..cursor], &value[cursor..])
+        } else if value.is_empty() {
+            "(empty)".into()
+        } else {
+            value.to_owned()
+        };
+        frame.render_widget(
+            Paragraph::new(shown)
+                .block(
+                    Block::default()
+                        .title(if focused {
+                            format!("▶ {label}")
+                        } else {
+                            label.to_owned()
+                        })
+                        .borders(Borders::ALL)
+                        .border_style(if focused {
+                            Style::default().fg(accent)
+                        } else {
+                            Style::default().fg(muted)
+                        }),
+                )
+                .wrap(Wrap { trim: true }),
+            fields[index],
+        );
+    }
+    let notice = editor
+        .error
+        .as_deref()
+        .unwrap_or("Experience IDs: separate with commas or spaces. Ctrl+S validates and saves.");
+    frame.render_widget(
+        Paragraph::new(notice)
+            .block(Block::default().title(title).borders(Borders::ALL))
+            .style(Style::default().fg(if editor.error.is_some() {
+                Color::Red
+            } else {
+                muted
+            }))
+            .wrap(Wrap { trim: true }),
+        *fields.last().unwrap_or(&area),
+    );
+}
+
+fn draw_revenue_passes(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let sections = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+        .split(area);
+    let passes = state.visible_revenue_passes();
+    let items = passes
+        .iter()
+        .map(|(id, name, selected)| {
+            ListItem::new(format!(
+                "{} {} · {}",
+                if *selected { "[x]" } else { "[ ]" },
+                name,
+                id
+            ))
+        })
+        .collect::<Vec<_>>();
+    let group_name = state
+        .revenue_group_focus
+        .as_deref()
+        .and_then(|group_id| {
+            state
+                .group_revenue
+                .as_ref()?
+                .groups
+                .iter()
+                .find(|group| group.group_id == group_id)
+        })
+        .map_or("Group", |group| group.name.as_str());
+    let mut list_state = ListState::default()
+        .with_selected((!items.is_empty()).then(|| state.selected.min(items.len() - 1)));
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(
+                Block::default()
+                    .title(format!("Game Passes · {group_name}"))
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(accent)),
+            )
+            .highlight_symbol("▶ ")
+            .highlight_style(Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        sections[0],
+        &mut list_state,
+    );
+    let details = passes.get(state.selected).map_or_else(
+        || {
+            vec![
+                Line::raw("No discovered or imported passes yet."),
+                Line::raw("Refresh Roblox group data or import a sales CSV first."),
+            ]
+        },
+        |(id, name, selected)| {
+            vec![
+                Line::styled(
+                    name,
+                    Style::default().fg(accent).add_modifier(Modifier::BOLD),
+                ),
+                Line::raw(format!("Asset ID: {id}")),
+                Line::raw(format!(
+                    "Included in totals: {}",
+                    if *selected { "yes" } else { "no" }
+                )),
+            ]
+        },
+    );
+    frame.render_widget(
+        Paragraph::new(details)
+            .block(
+                Block::default()
+                    .title("Pass selection")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        sections[1],
+    );
+}
+
+fn draw_revenue_csv_path(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let Some(input) = &state.revenue_csv_path else {
+        frame.render_widget(Paragraph::new("No CSV path is being entered."), area);
+        return;
+    };
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(5),
+            Constraint::Length(4),
+            Constraint::Min(3),
+        ])
+        .split(area);
+    let cursor = input.cursor.min(input.paths.len());
+    frame.render_widget(
+        Paragraph::new(format!(
+            "{}▏{}",
+            &input.paths[..cursor],
+            &input.paths[cursor..]
+        ))
+        .block(
+            Block::default()
+                .title("Creator Hub CSV file path(s)")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(accent)),
+        )
+        .wrap(Wrap { trim: true }),
+        sections[0],
+    );
+    frame.render_widget(
+        Paragraph::new("Paste full paths. For multiple files, separate paths with semicolons.")
+            .block(Block::default().title("Input").borders(Borders::ALL))
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        sections[1],
+    );
+    if let Some(error) = &input.error {
+        frame.render_widget(
+            Paragraph::new(error.as_str())
+                .block(
+                    Block::default()
+                        .title("Could not preview files")
+                        .borders(Borders::ALL),
+                )
+                .style(Style::default().fg(Color::Red))
+                .wrap(Wrap { trim: true }),
+            sections[2],
+        );
+    }
+}
+
+fn draw_revenue_csv_review(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    accent: Color,
+    muted: Color,
+) {
+    let Some(preview) = &state.revenue_csv_preview else {
+        frame.render_widget(Paragraph::new("No CSV preview is available."), area);
+        return;
+    };
+    let mut lines = vec![
+        Line::styled(
+            "Review Group Revenue CSV import",
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ),
+        Line::raw(format!("Files: {}", preview.files.join(", "))),
+        Line::raw(format!("Valid Game Pass rows: {}", preview.sales.len())),
+        Line::raw(format!("Skipped rows: {}", preview.skipped)),
+        Line::raw(format!("Possible duplicates: {}", preview.duplicates)),
+        Line::raw(format!("UTC range: {} to {}", preview.from, preview.to)),
+        Line::raw("Buyer IDs and raw CSV rows are discarded."),
+    ];
+    lines.extend(
+        preview
+            .warnings
+            .iter()
+            .map(|warning| Line::raw(format!("Warning: {warning}"))),
+    );
+    lines.push(Line::raw(""));
+    lines.push(Line::raw(
+        "Press Y to import these rows, E to choose files again, or Esc/N to cancel.",
+    ));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title("Import preview")
+                    .borders(Borders::ALL),
+            )
+            .style(Style::default().fg(muted))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
+fn draw_revenue_remove_review(
+    frame: &mut Frame<'_>,
+    state: &TuiState,
+    area: ratatui::layout::Rect,
+    muted: Color,
+) {
+    let group_id = state
+        .revenue_remove_group
+        .as_deref()
+        .unwrap_or("selected group");
+    let group = state
+        .group_revenue
+        .as_ref()
+        .and_then(|data| data.groups.iter().find(|group| group.group_id == group_id));
+    let sales = state.group_revenue.as_ref().map_or(0, |data| {
+        data.sales
+            .iter()
+            .filter(|sale| sale.group_id == group_id)
+            .count()
+    });
+    let name = group.map_or("this group", |entry| entry.name.as_str());
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::styled(
+                format!("Remove {name}?"),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Line::raw(format!(
+                "Group ID: {group_id} · imported sales to remove: {sales}"
+            )),
+            Line::raw("This removes the saved group revenue history from this workspace."),
+            Line::raw(""),
+            Line::raw("Press Y to confirm, or Esc/N to keep it."),
+        ])
+        .block(
+            Block::default()
+                .title("Confirm group removal")
+                .borders(Borders::ALL),
+        )
+        .style(Style::default().fg(muted))
+        .wrap(Wrap { trim: true }),
+        area,
     );
 }
 
@@ -8899,5 +9694,197 @@ mod tests {
         let groups = state.visible_revenue_groups();
         assert_eq!(groups.len(), 1);
         assert_eq!(groups[0].group_id, "456");
+    }
+
+    #[test]
+    fn group_revenue_tui_edits_and_selects_passes_in_a_dummy_workspace() {
+        let directory = tempfile::tempdir().expect("temporary workspace");
+        let app = ApplicationServices::open(directory.path()).expect("dummy workspace");
+        let mut state = TuiState::new(Vec::new());
+        state.screen = Screen::GroupRevenue;
+        state.group_revenue = Some(
+            app.roblox_group_revenue()
+                .expect("initial empty revenue data"),
+        );
+        handle_group_revenue_key(&mut state, KeyCode::Char('a'));
+        let editor = state.revenue_editor.as_mut().expect("new group editor");
+        editor.group_id = "16538500".into();
+        editor.name = "APX TUI Test".into();
+        editor.experience_ids = "84560840200510".into();
+        save_revenue_editor(&mut state, &app).expect("save group from TUI editor");
+
+        let mut group = app
+            .roblox_group_revenue()
+            .expect("read saved group")
+            .groups
+            .remove(0);
+        group
+            .pass_mappings
+            .insert("2053361604".into(), "EMS Fleet Pack".into());
+        app.save_roblox_revenue_group(&group)
+            .expect("seed one discovered pass mapping");
+        state.group_revenue = Some(app.roblox_group_revenue().expect("read dummy group data"));
+        state.revenue_group_focus = Some(group.group_id.clone());
+        state.screen = Screen::RevenuePasses;
+        handle_revenue_passes_key(&mut state, KeyCode::Enter, &app).expect("toggle pass in TUI");
+        let selected = app
+            .roblox_group_revenue()
+            .expect("read selected pass")
+            .groups
+            .remove(0);
+        assert_eq!(selected.selected_pass_ids, vec!["2053361604"]);
+        handle_revenue_passes_key(&mut state, KeyCode::Enter, &app)
+            .expect("toggle pass off in TUI");
+        assert!(app
+            .roblox_group_revenue()
+            .expect("read deselected pass")
+            .groups[0]
+            .selected_pass_ids
+            .is_empty());
+    }
+
+    #[test]
+    fn group_revenue_tui_previews_imports_and_removes_with_confirmation() {
+        let directory = tempfile::tempdir().expect("temporary workspace");
+        let app = ApplicationServices::open(directory.path()).expect("dummy workspace");
+        let group = RobloxRevenueGroup {
+            group_id: "16538500".into(),
+            name: "APX CSV Test".into(),
+            experience_ids: vec!["84560840200510".into()],
+            pass_mappings: BTreeMap::new(),
+            selected_pass_ids: Vec::new(),
+            api_updated_at: None,
+            api_coverage_from: None,
+            api_coverage_to: None,
+            api_summary: None,
+            api_status: None,
+            updated_at: None,
+            last_import_at: None,
+        };
+        app.save_roblox_revenue_group(&group)
+            .expect("seed test group");
+        let csv_dir = tempfile::tempdir().expect("temporary CSV directory");
+        let csv_path = csv_dir.path().join("sales.csv");
+        let source = "Id,Sale Date and Time,Sale Location,Universe Id,Asset Id,Asset Type,Hold Status,Revenue,Price,Buyer User ID\ntransaction-1,2026-11-07T22:31:20Z,Website,84560840200510,2053361604,Game Pass,Released,700,1000,private-user\n";
+        fs::write(&csv_path, source).expect("write mock export");
+
+        let mut state = TuiState::new(Vec::new());
+        state.group_revenue = Some(app.roblox_group_revenue().expect("read test group"));
+        state.revenue_group_focus = Some(group.group_id.clone());
+        state.revenue_csv_path = Some(RevenueCsvPathState {
+            paths: csv_path.to_string_lossy().into_owned(),
+            cursor: csv_path.to_string_lossy().len(),
+            error: None,
+        });
+        state.screen = Screen::RevenueCsvPath;
+        handle_revenue_csv_path_key(&mut state, KeyCode::Enter).expect("prepare import preview");
+        assert_eq!(state.screen, Screen::RevenueCsvReview);
+        assert_eq!(state.revenue_csv_preview.as_ref().unwrap().sales.len(), 1);
+        assert_eq!(
+            app.roblox_group_revenue()
+                .expect("no pre-import write")
+                .sales
+                .len(),
+            0
+        );
+        handle_revenue_csv_review_key(&mut state, KeyCode::Char('y'), &app)
+            .expect("confirm CSV import");
+        assert_eq!(state.screen, Screen::GroupRevenue);
+        assert_eq!(
+            app.roblox_group_revenue()
+                .expect("imported sale")
+                .sales
+                .len(),
+            1
+        );
+        assert_eq!(
+            fs::read_to_string(&csv_path).expect("source remains unchanged"),
+            source
+        );
+
+        state.revenue_remove_group = Some(group.group_id.clone());
+        state.screen = Screen::RevenueRemoveReview;
+        handle_revenue_remove_review_key(&mut state, KeyCode::Char('n'), &app)
+            .expect("cancel group removal");
+        assert_eq!(
+            app.roblox_group_revenue()
+                .expect("group preserved")
+                .groups
+                .len(),
+            1
+        );
+        state.revenue_remove_group = Some(group.group_id.clone());
+        state.screen = Screen::RevenueRemoveReview;
+        handle_revenue_remove_review_key(&mut state, KeyCode::Char('y'), &app)
+            .expect("confirm group removal");
+        assert!(app
+            .roblox_group_revenue()
+            .expect("removed group")
+            .groups
+            .is_empty());
+        assert!(app
+            .roblox_group_revenue()
+            .expect("removed group sales")
+            .sales
+            .is_empty());
+    }
+
+    #[test]
+    fn group_revenue_tui_forms_render_at_compact_and_wide_sizes() {
+        for (width, height) in [(40, 12), (80, 24), (120, 36)] {
+            let backend = TestBackend::new(width, height);
+            let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+            let mut state = TuiState::new(Vec::new());
+            state.group_revenue = Some(RobloxGroupRevenueData {
+                groups: Vec::new(),
+                sales: Vec::new(),
+                passes: Vec::new(),
+            });
+            state.revenue_editor = Some(RevenueEditorState {
+                group_id: "16538500".into(),
+                name: "APX".into(),
+                experience_ids: "84560840200510".into(),
+                is_new: true,
+                active_field: 0,
+                cursor: 8,
+                error: None,
+            });
+            state.screen = Screen::RevenueEditor;
+            terminal
+                .draw(|frame| draw(frame, &state))
+                .expect("render revenue editor");
+            state.screen = Screen::RevenuePasses;
+            terminal
+                .draw(|frame| draw(frame, &state))
+                .expect("render revenue passes");
+            state.revenue_csv_path = Some(RevenueCsvPathState {
+                paths: "sales.csv".into(),
+                cursor: 9,
+                error: None,
+            });
+            state.screen = Screen::RevenueCsvPath;
+            terminal
+                .draw(|frame| draw(frame, &state))
+                .expect("render CSV path input");
+            state.revenue_csv_preview = Some(revenue_csv::CsvPreview {
+                sales: Vec::new(),
+                skipped: 3,
+                duplicates: 1,
+                files: vec!["sales.csv".into()],
+                warnings: vec!["Timezone-free sale times are interpreted as UTC.".into()],
+                from: "2026-11-07".into(),
+                to: "2026-11-08".into(),
+                batch_id: "test".into(),
+            });
+            state.screen = Screen::RevenueCsvReview;
+            terminal
+                .draw(|frame| draw(frame, &state))
+                .expect("render CSV preview");
+            state.revenue_remove_group = Some("16538500".into());
+            state.screen = Screen::RevenueRemoveReview;
+            terminal
+                .draw(|frame| draw(frame, &state))
+                .expect("render remove review");
+        }
     }
 }
