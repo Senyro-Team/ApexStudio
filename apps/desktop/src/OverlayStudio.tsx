@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
-import { ArrowDownToLine, ImagePlus, Layers3, Save, Shapes, Trash2, Type, Upload } from "lucide-react";
+import { ArrowDownToLine, Download, ImagePlus, Layers3, Save, Shapes, Trash2, Type, Upload } from "lucide-react";
 import {
   deleteOverlayTemplate,
   importOverlayPreviews,
@@ -39,7 +39,58 @@ type SourceImage = { name: string; src: string; hash?: string };
 
 const MAX_LAYERS = 50;
 const MAX_TEMPLATE_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_TEMPLATE_FILE_BYTES = 25 * 1024 * 1024;
 const id = () => crypto.randomUUID();
+
+type PortableTemplate = { format: "apex-studio-overlay"; version: 1; name: string; width: 1920; height: 1080 | 1200; layers: OverlayLayer[] };
+
+function importedTemplate(value: unknown): PortableTemplate {
+  if (!value || typeof value !== "object") throw new Error("This file is not an Apex Studio overlay template.");
+  const candidate = value as Record<string, unknown>;
+  if (candidate.format !== "apex-studio-overlay" || candidate.version !== 1 || candidate.width !== 1920 || (candidate.height !== 1080 && candidate.height !== 1200)) {
+    throw new Error("This overlay template has an unsupported format or canvas size.");
+  }
+  if (typeof candidate.name !== "string" || !candidate.name.trim() || candidate.name.length > 120 || !Array.isArray(candidate.layers) || candidate.layers.length > MAX_LAYERS) {
+    throw new Error("The template name or number of layers is invalid.");
+  }
+  const color = (entry: unknown) => typeof entry === "string" && /^#[0-9a-f]{6}$/i.test(entry);
+  const number = (entry: unknown, min: number, max: number) => typeof entry === "number" && Number.isFinite(entry) && entry >= min && entry <= max;
+  const layers = candidate.layers.map((entry): OverlayLayer => {
+    if (!entry || typeof entry !== "object") throw new Error("A template layer is invalid.");
+    const layer = entry as Record<string, unknown>;
+    if (!(["text", "image", "shape"] as unknown[]).includes(layer.kind)
+      || typeof layer.name !== "string" || layer.name.length > 120
+      || !number(layer.x, -3840, 3840) || !number(layer.y, -2400, 2400)
+      || !number(layer.width, 1, 3840) || !number(layer.height, 1, 2400)
+      || !number(layer.opacity, 0, 100) || !number(layer.rotation, -180, 180)) {
+      throw new Error("A template layer has invalid dimensions or positioning.");
+    }
+    if (layer.kind === "text" && (typeof layer.text !== "string" || layer.text.length > 5000
+      || !number(layer.fontSize, 8, 800) || typeof layer.fontFamily !== "string" || layer.fontFamily.length > 100
+      || !(["left", "center", "right"] as unknown[]).includes(layer.align) || !color(layer.color))) {
+      throw new Error("A text layer contains invalid properties.");
+    }
+    if (layer.kind === "shape" && (!(["rectangle", "ellipse", "line"] as unknown[]).includes(layer.shape)
+      || (layer.fill !== undefined && !color(layer.fill)) || (layer.stroke !== undefined && !color(layer.stroke))
+      || !number(layer.strokeWidth ?? 0, 0, 80))) {
+      throw new Error("A shape layer contains invalid properties.");
+    }
+    if (layer.kind === "image" && layer.src !== undefined && layer.src !== ""
+      && (typeof layer.src !== "string" || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(layer.src)
+        || layer.src.length > Math.ceil(MAX_TEMPLATE_IMAGE_BYTES * 4 / 3) + 128)) {
+      throw new Error("Image layers must use an embedded PNG, JPEG or WebP under 2 MB.");
+    }
+    return {
+      id: id(), kind: layer.kind as LayerKind, name: layer.name,
+      x: layer.x as number, y: layer.y as number, width: layer.width as number, height: layer.height as number,
+      opacity: layer.opacity as number, rotation: layer.rotation as number,
+      ...(layer.kind === "text" ? { text: layer.text as string, fontSize: layer.fontSize as number, fontFamily: layer.fontFamily as string, align: layer.align as CanvasTextAlign, color: layer.color as string } : {}),
+      ...(layer.kind === "shape" ? { shape: layer.shape as OverlayLayer["shape"], fill: layer.fill as string | undefined, stroke: layer.stroke as string | undefined, strokeWidth: layer.strokeWidth as number | undefined } : {}),
+      ...(layer.kind === "image" && typeof layer.src === "string" && layer.src ? { src: layer.src } : {}),
+    };
+  });
+  return { format: "apex-studio-overlay", version: 1, name: candidate.name.trim(), width: 1920, height: candidate.height, layers };
+}
 
 function readFile(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -183,7 +234,7 @@ export default function OverlayStudio({
   libraryItems: MediaLibraryItem[];
   onExported: (images: OverlayPreviewOutput[]) => Promise<void>;
 }) {
-  const [height, setHeight] = useState(1080);
+  const [height, setHeight] = useState<1080 | 1200>(1080);
   const [layers, setLayers] = useState<OverlayLayer[]>([]);
   const [selected, setSelected] = useState("");
   const [templates, setTemplates] = useState<OverlayTemplate[]>([]);
@@ -199,6 +250,7 @@ export default function OverlayStudio({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragRef = useRef<{ id: string; pointerId: number; x: number; y: number; layerX: number; layerY: number } | null>(null);
   const imageLayerInput = useRef<HTMLInputElement>(null);
+  const templateFileInput = useRef<HTMLInputElement>(null);
   const sourceObjectUrls = useRef(new Set<string>());
   const maxOutputCount = Math.max(0, 10 - currentCount);
   const remainingToAdd = Math.max(0, maxOutputCount - sources.length);
@@ -281,7 +333,7 @@ export default function OverlayStudio({
 
   async function addLayerImage(file: File | undefined) {
     if (!file) return;
-    if (!file.type.startsWith("image/")) { setError("Choose an image file."); return; }
+    if (!(["image/png", "image/jpeg", "image/webp"] as string[]).includes(file.type)) { setError("Choose a PNG, JPEG or WebP image."); return; }
     if (file.size > MAX_TEMPLATE_IMAGE_BYTES) { setError("Overlay images must be 2 MB or smaller so templates stay portable in workspace backups."); return; }
     try {
       const src = await readFile(file);
@@ -335,13 +387,43 @@ export default function OverlayStudio({
     finally { setBusy(false); }
   }
 
+  function exportTemplate() {
+    setError("");
+    try {
+      const file: PortableTemplate = { format: "apex-studio-overlay", version: 1, name: templateName.trim() || "Untitled overlay", width: 1920, height, layers };
+      const json = JSON.stringify(file, null, 2);
+      if (new Blob([json]).size > MAX_TEMPLATE_FILE_BYTES) throw new Error("This template is too large to export. Remove some embedded image layers first.");
+      const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${file.name.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "") || "overlay-template"}.apexoverlay.json`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice("Overlay template exported.");
+    } catch (reason) { setError(errorMessage(reason)); }
+  }
+
+  async function importTemplate(file: File | undefined) {
+    if (!file) return;
+    if (file.size > MAX_TEMPLATE_FILE_BYTES) { setError("Overlay template files must be 25 MB or smaller."); return; }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const portable = importedTemplate(JSON.parse(await file.text()) as unknown);
+      const saved = await saveOverlayTemplate({ name: portable.name, width: portable.width, height: portable.height, layersJson: JSON.stringify(portable.layers) });
+      setLayers(portable.layers); setSelected(portable.layers[0]?.id ?? ""); setHeight(portable.height); setTemplateName(portable.name); setTemplateId(saved.id);
+      setTemplates(await listOverlayTemplates());
+      setNotice("Overlay template imported into this workspace.");
+    } catch (reason) { setError(errorMessage(reason)); }
+    finally { setBusy(false); }
+  }
+
   function loadTemplate(idToLoad: string) {
     setTemplateId(idToLoad);
     const template = templates.find((item) => item.id === idToLoad);
     if (!template) { setLayers([]); setTemplateName("Untitled overlay"); return; }
     try {
       const restored = JSON.parse(template.layersJson) as OverlayLayer[];
-      setLayers(restored); setSelected(restored[0]?.id ?? ""); setHeight(template.height); setTemplateName(template.name); setError("");
+      setLayers(restored); setSelected(restored[0]?.id ?? ""); setHeight(template.height === 1200 ? 1200 : 1080); setTemplateName(template.name); setError("");
     } catch { setError("This overlay template could not be opened."); }
   }
 
@@ -388,18 +470,21 @@ export default function OverlayStudio({
     <section className="overlay-studio" aria-label="Overlay Studio">
       <header className="overlay-studio-header">
         <div><h3>Overlay Studio</h3><p>Create reusable overlays and drag layers on the preview to position them.</p></div>
-        <label className="overlay-format-select">Format<select value={height} disabled={disabled || busy} onChange={(event) => setHeight(Number(event.target.value))}><option value={1080}>ERLCX · 16:9</option><option value={1200}>ExecLab · 16:10</option></select></label>
+        <label className="overlay-format-select">Format<select value={height} disabled={disabled || busy} onChange={(event) => setHeight(Number(event.target.value) as 1080 | 1200)}><option value={1080}>ERLCX · 16:9</option><option value={1200}>ExecLab · 16:10</option></select></label>
       </header>
       <div className="overlay-template-tools">
         <label>Saved template<select value={templateId} disabled={disabled || busy} onChange={(event) => loadTemplate(event.target.value)}><option value="">New overlay</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name} · {template.height === 1080 ? "16:9" : "16:10"}</option>)}</select></label>
         <label>Template name<input value={templateName} maxLength={120} disabled={disabled || busy} onChange={(event) => setTemplateName(event.target.value)} /></label>
         <button className="secondary" type="button" disabled={disabled || busy || !templateName.trim()} onClick={() => void saveTemplate()}><Save size={15} /> Save template</button>
+        <button className="secondary" type="button" disabled={disabled || busy} onClick={() => templateFileInput.current?.click()}><Upload size={15} /> Import template</button>
+        <button className="secondary" type="button" disabled={disabled || busy} onClick={exportTemplate}><Download size={15} /> Export template</button>
         {templateId && <button className="text-button" type="button" disabled={disabled || busy} onClick={() => void removeTemplate()}><Trash2 size={15} /> Delete template</button>}
       </div>
+      <input ref={templateFileInput} type="file" accept=".json,.apexoverlay,application/json" hidden onChange={(event) => { void importTemplate(event.target.files?.[0]); event.currentTarget.value = ""; }} />
       <div className="overlay-studio-layout">
         <div className="overlay-canvas-column">
           <div className="overlay-canvas-frame">
-                <canvas ref={canvasRef} className={`overlay-canvas${dragRef.current ? " is-dragging" : ""}`} aria-label="Overlay composition preview. Drag a visible layer to reposition it." onPointerDown={beginLayerDrag} onPointerMove={moveLayer} onPointerUp={endLayerDrag} onPointerCancel={endLayerDrag} />
+                <canvas ref={canvasRef} className={`overlay-canvas${height === 1200 ? " is-execlab" : ""}${dragRef.current ? " is-dragging" : ""}`} aria-label="Overlay composition preview. Drag a visible layer to reposition it." onPointerDown={beginLayerDrag} onPointerMove={moveLayer} onPointerUp={endLayerDrag} onPointerCancel={endLayerDrag} />
             {redraw === 0 && !sources.length && <span className="overlay-canvas-empty">Choose source images to preview the overlay</span>}
           </div>
           <div className="overlay-source-tools">
