@@ -189,3 +189,61 @@ it("exports selected source images at the ERLCX 16:9 dimensions", async () => {
   });
   expect(JSON.parse(exported[0].compositionJson).target).toBe("erlcx");
 });
+
+it("exports multiple locally selected images into ERLCX previews", async () => {
+  const user = userEvent.setup();
+  const onExported = vi.fn(async (_images: OverlayPreviewOutput[]) => undefined);
+  const createObjectUrl = vi.fn()
+    .mockReturnValueOnce("blob:local-preview-1")
+    .mockReturnValueOnce("blob:local-preview-2");
+  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectUrl });
+  const revokeObjectUrl = vi.fn();
+  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectUrl });
+  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,b3V0cHV0");
+  vi.stubGlobal("Image", class {
+    complete = true;
+    naturalWidth = 1920;
+    naturalHeight = 1080;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    set src(_value: string) { queueMicrotask(() => this.onload?.()); }
+  });
+  render(
+    <OverlayStudio
+      postId="test-post"
+      projectId={undefined}
+      currentCount={2}
+      disabled={false}
+      projectImages={[]}
+      libraryItems={[]}
+      onExported={onExported}
+    />,
+  );
+
+  const fileInput = document.querySelector<HTMLInputElement>('input[type="file"][accept="image/*"][multiple]');
+  expect(fileInput).not.toBeNull();
+  const firstFile = new File(["first image"], "Apex-Banner.png", { type: "image/png" });
+  const secondFile = new File(["second image"], "Support-Banner.png", { type: "image/png" });
+  for (const [file, contents] of [[firstFile, "first image"], [secondFile, "second image"]] as const) {
+    Object.defineProperty(file, "arrayBuffer", {
+      value: async () => new TextEncoder().encode(contents).buffer,
+    });
+  }
+  await user.upload(fileInput!, [firstFile, secondFile]);
+  await screen.findByText("2 source images ready for export.");
+  await user.click(screen.getByRole("button", { name: "Apply to previews" }));
+
+  await waitFor(() => expect(onExported).toHaveBeenCalledTimes(1));
+  const exported = onExported.mock.calls[0][0];
+  expect(createObjectUrl).toHaveBeenCalledTimes(2);
+  expect(exported).toHaveLength(2);
+  expect(exported.map((image) => image.name)).toEqual([
+    "Apex-Banner-erlcx.png",
+    "Support-Banner-erlcx.png",
+  ]);
+  expect(exported.map((image) => [image.width, image.height])).toEqual([[1920, 1080], [1920, 1080]]);
+  expect(exported.every((image) => /^[a-f0-9]{64}$/.test(image.sourceHash))).toBe(true);
+  expect(exported[0].sourceHash).not.toBe(exported[1].sourceHash);
+  expect(exported.every((image) => JSON.parse(image.compositionJson).target === "erlcx")).toBe(true);
+  expect(revokeObjectUrl).toHaveBeenCalledTimes(2);
+});
