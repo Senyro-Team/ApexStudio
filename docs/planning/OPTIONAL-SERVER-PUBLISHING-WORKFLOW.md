@@ -84,7 +84,8 @@ The supplied overlay-builder HTML is a behavior and format reference only. Build
 
 ## Current verification evidence (2026-11-11)
 
-- Desktop publishing, Image Library, and Overlay Studio regression suites pass: 14 tests across three files. The desktop TypeScript/Vite production build succeeds; Vite reports the existing large Notes chunk warning.
+- The full desktop suite passes: 104 tests across 23 files. This includes local-only Markdown copy, service-independent Image Library loading, reusable overlay import behavior, and a two-image ExecLab batch. The desktop TypeScript/Vite production build succeeds; Vite reports the existing large Notes chunk warning.
+- The full Rust workspace passes, including 53 storage tests, 30 application tests, 29 CLI unit tests, 17 CLI smoke tests, and all 5 JSON contract tests. The contract run exposed and fixed a stale PublishingDraft schema that omitted the serialized `markdownBlocks` field.
 - Sync Server formatting, four unit tests, and strict Clippy (`--all-targets -- -D warnings`) pass. Clippy required replacing an explicit upload-count range check and allowing `expect` only in tests that parse fixed known-valid URLs.
 - Invite Tracker attribution tests pass (5), workspace type checks pass, and its Next.js production build succeeds. The Image Provider source passes `node --check`; its package has no automated test script.
 - These are source-level checks. Live calls through the deployed gateway to both optional services have not been re-run in this review. Interactive batch-export and portable-template import review also remain outstanding.
