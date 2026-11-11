@@ -117,3 +117,5 @@ The supplied overlay-builder HTML is a behavior and format reference only. Build
 - Markdown copy now blocks the entire copy when any image URL, click-through destination, or invite URL is invalid or missing; it reports the affected block instead of silently emitting a partial post. Regression tests cover incomplete and unsafe invite/image destinations. The full desktop suite passes (116 tests across 23 files); production build succeeds.
 
 - The ERLCX composer now requests team-shared images only after Image Hosting is configured and not reported unreachable. It shows compact manual-URL fallback notices when either service is unavailable or capability discovery fails. Regression tests verify the no-request behavior for unavailable services and the local composer path. Full desktop suite: 117 tests across 23 files; production build succeeds.
+
+- Separate backend recheck: Invite Tracker passes its five attribution tests, all workspace TypeScript checks, and the Next.js production build; Image Provider passes `node --check src/server.js`. These checks do not contact Discord or upload media.
