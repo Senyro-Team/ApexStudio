@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Publishing from "./Publishing";
 import {
@@ -469,6 +469,34 @@ it("keeps a fast team-library response when the local media query finishes later
   const availableImages = Array.from((librarySelect as HTMLSelectElement).options).map((option) => option.textContent);
   expect(availableImages).toContain("Local banner");
   expect(availableImages).toContain("Shared banner");
+});
+
+it("creates and copies manual post Markdown while optional services are disconnected", async () => {
+  const user = userEvent.setup();
+  const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  render(<Publishing project={project} catalogue={catalogue} onEditingChange={() => {}} />);
+
+  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(screen.getByRole("button", { name: "Add text" }));
+  await user.type(screen.getByLabelText("Markdown text"), "**Latest release**");
+  await user.click(screen.getByRole("button", { name: "Add image URL" }));
+  await user.type(screen.getByLabelText("Alt text"), "Release banner");
+  await user.type(screen.getByLabelText("Public image URL"), "https://images.example.com/release.png");
+  await user.type(screen.getByLabelText("Click-through URL (optional)"), "https://erlcx.com/groups/123");
+  await user.click(screen.getByRole("button", { name: "Add invite link" }));
+  await user.clear(screen.getByLabelText("Link label"));
+  await user.type(screen.getByLabelText("Link label"), "Join Discord");
+  await user.type(screen.getByLabelText("Invite URL"), "https://discord.gg/example");
+  await user.click(screen.getByRole("button", { name: "Copy Markdown" }));
+
+  await waitFor(() => expect(clipboard).toHaveBeenCalledOnce());
+  expect(clipboard.mock.calls[0][0]).toBe([
+    "**Latest release**",
+    "[![Release banner](https://images.example.com/release.png)](https://erlcx.com/groups/123)",
+    "[Join Discord](https://discord.gg/example)",
+  ].join("\n\n"));
+  expect(syncImageLibrary).not.toHaveBeenCalled();
+  expect(syncCreateInviteCampaign).not.toHaveBeenCalled();
 });
 
 it("reuses the same invite idempotency key after an ambiguous failure and remount", async () => {
