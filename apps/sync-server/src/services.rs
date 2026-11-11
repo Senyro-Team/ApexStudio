@@ -446,6 +446,7 @@ async fn proxy_json(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::{has_safe_service_transport, is_private_service_origin};
     use url::Url;
