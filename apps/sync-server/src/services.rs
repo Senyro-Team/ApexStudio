@@ -461,6 +461,7 @@ mod tests {
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://[::1]:3000",
+            "http://[fe80::1]:3000",
             "http://10.0.0.12:3000",
             "http://172.20.0.4:3000",
             "http://192.168.1.12:3000",
@@ -481,6 +482,7 @@ mod tests {
             "http://images.example.com",
             "http://203.0.113.10",
             "http://0.0.0.0:3000",
+            "http://[::]:3000",
             "http://[2606:4700::1111]:3000",
         ] {
             let url = Url::parse(origin).expect("valid test URL");
