@@ -207,13 +207,14 @@ async fn list_invite_campaigns(
     membership_role(&state, team_id, user.id).await?;
     let service = invite_tracker(&state)?;
     proxy_json(
-        provider_client()?
+        provider_client("invite_tracking_unavailable")?
             .get(service_url(service, "api/service/campaigns")?)
             .header("x-apex-service-key", service.key.as_str())
             .header("x-apex-user-id", user.id.to_string())
             .header("x-apex-team-id", team_id.to_string())
             .send()
             .await,
+        "invite_tracking_unavailable",
     )
     .await
 }
@@ -246,7 +247,7 @@ async fn create_invite_campaign(
         .map_err(|_| ApiError::bad_request("campaign_request_too_large"))?;
     let service = invite_tracker(&state)?;
     proxy_json(
-        provider_client()?
+        provider_client("invite_tracking_unavailable")?
             .post(service_url(service, "api/service/campaigns")?)
             .header("content-type", content_type)
             .header("x-apex-service-key", service.key.as_str())
@@ -256,6 +257,7 @@ async fn create_invite_campaign(
             .body(body)
             .send()
             .await,
+        "invite_tracking_unavailable",
     )
     .await
 }
@@ -284,13 +286,14 @@ async fn list_images(
     let mut url = service_url(service, "api/service/images")?;
     url.query_pairs_mut().append_pair("scope", &query.scope);
     proxy_json(
-        provider_client()?
+        provider_client("image_hosting_unavailable")?
             .get(url)
             .header("x-apex-service-key", service.key.as_str())
             .header("x-apex-user-id", user.id.to_string())
             .header("x-apex-team-id", team_id.to_string())
             .send()
             .await,
+        "image_hosting_unavailable",
     )
     .await
 }
@@ -329,7 +332,7 @@ async fn upload_images(
         .await
         .map_err(|_| ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, "image_upload_too_large"))?;
     let url = service_url(service, "api/service/images")?;
-    let response = provider_client()?
+    let response = provider_client("image_hosting_unavailable")?
         .post(url)
         .header("content-type", content_type)
         .header("x-apex-service-key", service.key.as_str())
@@ -339,7 +342,7 @@ async fn upload_images(
         .body(body)
         .send()
         .await;
-    proxy_json(response).await
+    proxy_json(response, "image_hosting_unavailable").await
 }
 
 async fn set_image_scope(
@@ -358,7 +361,7 @@ async fn set_image_scope(
     let service = image_provider(&state)?;
     let url = service_url(service, &format!("api/service/images/{image_id}/sharing"))?;
     proxy_json(
-        provider_client()?
+        provider_client("image_hosting_unavailable")?
             .patch(url)
             .header("x-apex-service-key", service.key.as_str())
             .header("x-apex-user-id", user.id.to_string())
@@ -366,6 +369,7 @@ async fn set_image_scope(
             .json(&json!({"scope": input.scope}))
             .send()
             .await,
+        "image_hosting_unavailable",
     )
     .await
 }
@@ -392,26 +396,24 @@ fn service_url(service: &ServiceEndpoint, path: &str) -> Result<Url, ApiError> {
     service.origin.join(path).map_err(|_| ApiError::internal())
 }
 
-fn provider_client() -> Result<reqwest::Client, ApiError> {
+fn provider_client(unavailable_code: &'static str) -> Result<reqwest::Client, ApiError> {
     reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(8))
         .timeout(Duration::from_secs(90))
         .build()
-        .map_err(|_| ApiError::new(StatusCode::BAD_GATEWAY, "image_provider_unavailable"))
+        .map_err(|_| ApiError::new(StatusCode::BAD_GATEWAY, unavailable_code))
 }
 
 async fn proxy_json(
     response: Result<reqwest::Response, reqwest::Error>,
+    unavailable_code: &'static str,
 ) -> Result<Response, ApiError> {
-    let upstream = response
-        .map_err(|_| ApiError::new(StatusCode::BAD_GATEWAY, "image_provider_unavailable"))?;
+    let upstream =
+        response.map_err(|_| ApiError::new(StatusCode::BAD_GATEWAY, unavailable_code))?;
     let status = upstream.status();
     if status.is_server_error() || status == StatusCode::UNAUTHORIZED {
-        return Err(ApiError::new(
-            StatusCode::BAD_GATEWAY,
-            "image_provider_unavailable",
-        ));
+        return Err(ApiError::new(StatusCode::BAD_GATEWAY, unavailable_code));
     }
     if upstream
         .content_length()
@@ -426,8 +428,7 @@ async fn proxy_json(
     let mut body = Vec::new();
     use futures_util::StreamExt;
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk
-            .map_err(|_| ApiError::new(StatusCode::BAD_GATEWAY, "image_provider_unavailable"))?;
+        let chunk = chunk.map_err(|_| ApiError::new(StatusCode::BAD_GATEWAY, unavailable_code))?;
         if body.len().saturating_add(chunk.len()) > MAX_PROVIDER_RESPONSE_BYTES {
             return Err(ApiError::new(
                 StatusCode::BAD_GATEWAY,
@@ -448,7 +449,8 @@ async fn proxy_json(
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
-    use super::{has_safe_service_transport, is_private_service_origin};
+    use super::{has_safe_service_transport, is_private_service_origin, proxy_json};
+    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
     use url::Url;
 
     fn private_http_origin(value: &str) -> bool {
@@ -498,5 +500,28 @@ mod tests {
         let url = Url::parse("https://images.example.com").expect("valid test URL");
 
         assert!(has_safe_service_transport(&url));
+    }
+
+    #[tokio::test]
+    async fn proxy_failures_report_the_service_that_was_unavailable() {
+        for unavailable_code in ["image_hosting_unavailable", "invite_tracking_unavailable"] {
+            let request_error = reqwest::Client::new()
+                .get("not a valid URL")
+                .send()
+                .await
+                .expect_err("invalid test URL must fail before connecting");
+            let Err(error) = proxy_json(Err(request_error), unavailable_code).await else {
+                panic!("failed upstream request must return an API error");
+            };
+            let response = error.into_response();
+
+            assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+            let body = to_bytes(response.into_body(), 1024)
+                .await
+                .expect("small API error response");
+            let body: serde_json::Value =
+                serde_json::from_slice(&body).expect("valid JSON error response");
+            assert_eq!(body["error"], unavailable_code);
+        }
     }
 }
