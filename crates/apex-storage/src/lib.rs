@@ -39,7 +39,7 @@ pub use posts::*;
 pub use statistics::*;
 pub use team_sync::*;
 pub use trash::*;
-const SCHEMA_VERSION: u32 = 25;
+const SCHEMA_VERSION: u32 = 26;
 
 fn storage(error: impl std::fmt::Display) -> Error {
     Error::Storage(error.to_string())
@@ -340,6 +340,11 @@ impl Workspace {
         if version < 25 {
             connection
                 .execute_batch(include_str!("schema25.sql"))
+                .map_err(storage)?;
+        }
+        if version < 26 {
+            connection
+                .execute_batch(include_str!("schema26.sql"))
                 .map_err(storage)?;
         }
         *workspace

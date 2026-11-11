@@ -210,3 +210,67 @@ impl Workspace {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Workspace;
+    use rusqlite::Connection;
+    use tempfile::tempdir;
+
+    #[test]
+    fn migration_preserves_templates_and_allows_same_named_imports(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempdir()?;
+        let database = directory.path().join("workspace.sqlite3");
+        let connection = Connection::open(&database)?;
+        connection.execute_batch(
+            "CREATE TABLE managed_files (
+                hash TEXT PRIMARY KEY,
+                size INTEGER NOT NULL,
+                local_available INTEGER NOT NULL DEFAULT 1
+            );
+            CREATE TABLE overlay_templates (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                width INTEGER NOT NULL CHECK(width = 1920),
+                height INTEGER NOT NULL CHECK(height IN (1080, 1200)),
+                layers_json TEXT NOT NULL CHECK(length(layers_json) <= 8388608),
+                created_at TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                UNIQUE(name COLLATE NOCASE, width, height)
+            );
+            CREATE INDEX overlay_templates_updated ON overlay_templates(updated_at DESC, name COLLATE NOCASE);
+            INSERT INTO overlay_templates(id,name,width,height,layers_json)
+                VALUES('existing-template','Neutral QA Template',1920,1080,'[]');
+            PRAGMA user_version = 25;",
+        )?;
+        drop(connection);
+
+        let workspace = Workspace::open(directory.path())?;
+        let before_import = workspace.overlay_templates()?;
+        assert_eq!(before_import.len(), 1);
+        assert_eq!(before_import[0].id, "existing-template");
+
+        let imported =
+            workspace.save_overlay_template(None, "Neutral QA Template", 1920, 1080, "[]")?;
+        assert_ne!(imported.id, before_import[0].id);
+
+        let templates = workspace.overlay_templates()?;
+        assert_eq!(templates.len(), 2);
+        assert!(templates
+            .iter()
+            .any(|template| template.id == "existing-template"));
+        assert!(templates.iter().any(|template| template.id == imported.id));
+        let backups = std::fs::read_dir(directory.path().join("backups"))?
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .is_some_and(|extension| extension == "apexbackup")
+            })
+            .count();
+        assert_eq!(backups, 1);
+        Ok(())
+    }
+}
