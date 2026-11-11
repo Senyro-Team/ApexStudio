@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Publishing from "./Publishing";
 import {
@@ -483,20 +483,20 @@ it("creates and copies manual post Markdown while optional services are disconne
   await user.click(screen.getByRole("button", { name: "Add text" }));
   await user.type(screen.getByLabelText("Markdown text"), "**Latest release**");
   await user.click(screen.getByRole("button", { name: "Add image URL" }));
-  await user.type(screen.getByLabelText("Alt text"), "Release banner");
-  await user.type(screen.getByLabelText("Public image URL"), "https://images.example.com/release.png");
+  fireEvent.change(screen.getByLabelText("Alt text"), { target: { value: "Release [banner]" } });
+  await user.type(screen.getByLabelText("Public image URL"), "https://images.example.com/release_(1).png");
   await user.type(screen.getByLabelText("Click-through URL (optional)"), "https://erlcx.com/groups/123");
   await user.click(screen.getByRole("button", { name: "Add invite link" }));
   await user.clear(screen.getByLabelText("Link label"));
-  await user.type(screen.getByLabelText("Link label"), "Join Discord");
+  fireEvent.change(screen.getByLabelText("Link label"), { target: { value: "Join [Discord]" } });
   await user.type(screen.getByLabelText("Invite URL"), "https://discord.gg/example");
   await user.click(screen.getByRole("button", { name: "Copy Markdown" }));
 
   await waitFor(() => expect(clipboard).toHaveBeenCalledOnce());
   expect(clipboard.mock.calls[0][0]).toBe([
     "**Latest release**",
-    "[![Release banner](https://images.example.com/release.png)](https://erlcx.com/groups/123)",
-    "[Join Discord](https://discord.gg/example)",
+    "[![Release \\[banner\\]](<https://images.example.com/release_(1).png>)](<https://erlcx.com/groups/123>)",
+    "[Join \\[Discord\\]](<https://discord.gg/example>)",
   ].join("\n\n"));
   expect(syncImageLibrary).not.toHaveBeenCalled();
   expect(syncCreateInviteCampaign).not.toHaveBeenCalled();

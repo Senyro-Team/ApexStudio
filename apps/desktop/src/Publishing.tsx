@@ -99,6 +99,17 @@ function safeHttpsUrl(value: string): string | null {
   } catch { return null; }
 }
 
+function markdownLabel(value: string): string {
+  return value.replace(/[\\\[\]\r\n]/g, (character) => {
+    if (character === "\r" || character === "\n") return " ";
+    return `\\${character}`;
+  });
+}
+
+function markdownDestination(value: string): string {
+  return `<${value}>`;
+}
+
 function renderInlineMarkdown(value: string): ReactNode[] {
   const parts = value.split(/(\[[^\]]+\]\([^)]+\)|\*\*.+?\*\*|\*.+?\*|`[^`]+`)/g);
   return parts.map((part, index) => {
@@ -483,13 +494,13 @@ export default function Publishing({
       if (block.kind === "text") return block.text;
       if (block.kind === "invite") {
         const url = safeHttpsUrl(block.inviteUrl);
-        return url ? `[${block.text || "Discord invite"}](${url})` : "";
+        return url ? `[${markdownLabel(block.text || "Discord invite")}](${markdownDestination(url)})` : "";
       }
       const imageUrl = safeHttpsUrl(block.imageUrl);
       if (!imageUrl) return "";
-      const image = `![${block.altText}](${imageUrl})`;
+      const image = `![${markdownLabel(block.altText)}](${markdownDestination(imageUrl)})`;
       const linkUrl = safeHttpsUrl(block.linkUrl);
-      return linkUrl ? `[${image}](${linkUrl})` : image;
+      return linkUrl ? `[${image}](${markdownDestination(linkUrl)})` : image;
     }).filter(Boolean).join("\n\n");
   }
   async function copyMarkdown() {
