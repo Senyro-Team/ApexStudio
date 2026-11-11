@@ -503,7 +503,29 @@ export default function Publishing({
       return linkUrl ? `[${image}](${markdownDestination(linkUrl)})` : image;
     }).filter(Boolean).join("\n\n");
   }
+  function markdownCopyErrors() {
+    const issues: string[] = [];
+    markdownBlocks.forEach((block, index) => {
+      const position = index + 1;
+      if (block.kind === "invite" && !safeHttpsUrl(block.inviteUrl)) {
+        issues.push(`Invite link ${position} needs a valid HTTPS URL.`);
+      } else if (block.kind === "image") {
+        if (!safeHttpsUrl(block.imageUrl)) {
+          issues.push(`Image ${position} needs a valid public HTTPS URL.`);
+        }
+        if (block.linkUrl.trim() && !safeHttpsUrl(block.linkUrl)) {
+          issues.push(`Image ${position} has an invalid click-through URL.`);
+        }
+      }
+    });
+    return issues;
+  }
   async function copyMarkdown() {
+    const issues = markdownCopyErrors();
+    if (issues.length) {
+      setError(`Fix these Markdown blocks before copying: ${issues.join(" ")}`);
+      return;
+    }
     const value = markdownText();
     if (!value) { setError("Add a public image URL or an invite link before copying."); return; }
     try { await navigator.clipboard.writeText(value); setNotice("Markdown copied."); }

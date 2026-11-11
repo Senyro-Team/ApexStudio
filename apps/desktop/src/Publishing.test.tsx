@@ -508,12 +508,30 @@ it("does not copy empty or unsafe manual invite links", async () => {
   render(<Publishing project={project} catalogue={catalogue} onEditingChange={() => {}} />);
 
   await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(screen.getByRole("button", { name: "Add text" }));
+  await user.type(screen.getByLabelText("Markdown text"), "Keep this announcement intact");
   await user.click(screen.getByRole("button", { name: "Add invite link" }));
   await user.click(screen.getByRole("button", { name: "Copy Markdown" }));
-  expect(await screen.findByText("Add a public image URL or an invite link before copying.")).toBeTruthy();
+  expect(await screen.findByText("Fix these Markdown blocks before copying: Invite link 2 needs a valid HTTPS URL.")).toBeTruthy();
 
   await user.type(screen.getByLabelText("Invite URL"), "javascript:alert(1)");
   await user.click(screen.getByRole("button", { name: "Copy Markdown" }));
+  expect(clipboard).not.toHaveBeenCalled();
+});
+
+it("blocks a partial copy when an image click-through URL is invalid", async () => {
+  const user = userEvent.setup();
+  const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  render(<Publishing project={project} catalogue={catalogue} onEditingChange={() => {}} />);
+
+  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(screen.getByRole("button", { name: "Add image URL" }));
+  await user.type(screen.getByLabelText("Alt text"), "Banner");
+  await user.type(screen.getByLabelText("Public image URL"), "https://images.example/banner.png");
+  await user.type(screen.getByLabelText("Click-through URL (optional)"), "javascript:alert(1)");
+  await user.click(screen.getByRole("button", { name: "Copy Markdown" }));
+
+  expect(await screen.findByText("Fix these Markdown blocks before copying: Image 1 has an invalid click-through URL.")).toBeTruthy();
   expect(clipboard).not.toHaveBeenCalled();
 });
 

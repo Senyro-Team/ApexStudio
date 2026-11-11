@@ -113,3 +113,5 @@ The supplied overlay-builder HTML is a behavior and format reference only. Build
 - A rejected Sync Server capability check is now covered: the local Image Library remains usable, its status explains the failed check, and neither shared-image listing nor upload is attempted. The full desktop suite passes (114 tests across 23 files) and the production build succeeds.
 
 - Image Library regression coverage also includes a successful capability probe followed by a failed shared-image list request. The local library and manual URL editor stay available, with no upload attempt. Current full desktop suite: 115 tests across 23 files; production build passes.
+
+- Markdown copy now blocks the entire copy when any image URL, click-through destination, or invite URL is invalid or missing; it reports the affected block instead of silently emitting a partial post. Regression tests cover incomplete and unsafe invite/image destinations. The full desktop suite passes (116 tests across 23 files); production build succeeds.
