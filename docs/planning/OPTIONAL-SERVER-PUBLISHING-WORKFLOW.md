@@ -105,3 +105,5 @@ The supplied overlay-builder HTML is a behavior and format reference only. Build
 - Verification after the optional-service reachability fix: the complete desktop suite passes (111 tests across 23 files), the Sync Server's standalone Cargo suite passes (5 tests), and the desktop TypeScript/Vite production build succeeds. The only build notice remains the existing large Notes bundle warning.
 
 - The Assets → Image Library now checks Image Hosting capability before requesting the shared library or enabling public batch uploads. If the capability is missing, unreachable, or the status check fails, uploads stay disabled and manual public URLs remain usable. Regression tests cover the unavailable state and local URL entry. Latest full desktop run: 112 tests across 23 files; production build passes with the existing large Notes chunk warning.
+
+- Markdown copy now excludes invite blocks without a valid HTTPS URL and rejects unsafe image, click-through, or invite destinations in the generated source. Regression coverage verifies an empty and a javascript: invite URL are not copied. Full desktop suite: 113 tests across 23 files; production build succeeds.

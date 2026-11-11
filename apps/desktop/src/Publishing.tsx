@@ -481,10 +481,15 @@ export default function Publishing({
   function markdownText() {
     return markdownBlocks.map((block) => {
       if (block.kind === "text") return block.text;
-      if (block.kind === "invite") return `[${block.text || "Discord invite"}](${block.inviteUrl})`;
-      if (!block.imageUrl) return "";
-      const image = `![${block.altText}](${block.imageUrl})`;
-      return block.linkUrl ? `[${image}](${block.linkUrl})` : image;
+      if (block.kind === "invite") {
+        const url = safeHttpsUrl(block.inviteUrl);
+        return url ? `[${block.text || "Discord invite"}](${url})` : "";
+      }
+      const imageUrl = safeHttpsUrl(block.imageUrl);
+      if (!imageUrl) return "";
+      const image = `![${block.altText}](${imageUrl})`;
+      const linkUrl = safeHttpsUrl(block.linkUrl);
+      return linkUrl ? `[${image}](${linkUrl})` : image;
     }).filter(Boolean).join("\n\n");
   }
   async function copyMarkdown() {

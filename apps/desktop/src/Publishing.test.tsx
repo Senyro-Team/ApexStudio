@@ -502,6 +502,21 @@ it("creates and copies manual post Markdown while optional services are disconne
   expect(syncCreateInviteCampaign).not.toHaveBeenCalled();
 });
 
+it("does not copy empty or unsafe manual invite links", async () => {
+  const user = userEvent.setup();
+  const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  render(<Publishing project={project} catalogue={catalogue} onEditingChange={() => {}} />);
+
+  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(screen.getByRole("button", { name: "Add invite link" }));
+  await user.click(screen.getByRole("button", { name: "Copy Markdown" }));
+  expect(await screen.findByText("Add a public image URL or an invite link before copying.")).toBeTruthy();
+
+  await user.type(screen.getByLabelText("Invite URL"), "javascript:alert(1)");
+  await user.click(screen.getByRole("button", { name: "Copy Markdown" }));
+  expect(clipboard).not.toHaveBeenCalled();
+});
+
 it("reuses an uploaded image URL when only its Markdown destination changes", async () => {
   const user = userEvent.setup();
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
