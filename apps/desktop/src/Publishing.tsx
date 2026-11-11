@@ -245,6 +245,7 @@ export default function Publishing({
   const [markdownPresetName, setMarkdownPresetName] = useState("");
   const [imageHostingAvailable, setImageHostingAvailable] = useState(false);
   const [inviteTrackingAvailable, setInviteTrackingAvailable] = useState(false);
+  const [serverServiceNotices, setServerServiceNotices] = useState<string[]>([]);
   const [inviteCampaignBusy, setInviteCampaignBusy] = useState(false);
   const inviteRequestId = useRef<{ id: string; payload: string; scope: string } | null>(null);
   const [inviteTitle, setInviteTitle] = useState("");
@@ -274,9 +275,34 @@ export default function Publishing({
         if (!active) return;
         const inviteTrackingReady = availability.inviteTracking
           && availability.inviteTrackingReachable !== false;
+        const imageHostingReady = availability.imageHosting
+          && availability.imageHostingReachable !== false;
         setInviteTrackingAvailable(inviteTrackingReady);
-        setImageHostingAvailable(availability.imageHosting
-          && availability.imageHostingReachable !== false);
+        setImageHostingAvailable(imageHostingReady);
+        setServerServiceNotices([
+          ...(!imageHostingReady ? ["Image Hosting is unavailable; add public image URLs manually."] : []),
+          ...(!inviteTrackingReady ? ["Invite Tracking is unavailable; add invite URLs manually."] : []),
+        ]);
+        if (imageHostingReady) {
+          void syncImageLibrary(serverUrl, teamId).then((shared) => {
+            if (!active) return;
+            setLibraryItems((current) => {
+              const localItems = current.filter((item) => !item.isRemote);
+              const localRemoteIds = new Set(localItems.map((item) => item.providerImageId).filter(Boolean));
+              const remoteItems: MediaLibraryItem[] = shared.images
+                .filter((image) => !localRemoteIds.has(image.id))
+                .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, folder: "", tags: [], overlayVersionGroup: null, overlayVersion: null, overlayTarget: null, ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? teamId : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
+              return [...remoteItems, ...localItems];
+            });
+          }).catch(() => {
+            if (!active) return;
+            setImageHostingAvailable(false);
+            setServerServiceNotices((current) => [
+              ...current.filter((message) => !message.startsWith("Image Hosting")),
+              "Image Hosting could not be reached; add public image URLs manually.",
+            ]);
+          });
+        }
         if (inviteTrackingReady) {
           setInviteCampaignsLoading(true);
           try {
@@ -291,18 +317,11 @@ export default function Publishing({
             if (active) setInviteCampaignsLoading(false);
           }
         }
-      }).catch(() => { /* Optional services do not gate local editing. */ });
-      void syncImageLibrary(serverUrl, teamId).then((shared) => {
-        if (!active) return;
-        setLibraryItems((current) => {
-          const localItems = current.filter((item) => !item.isRemote);
-          const localRemoteIds = new Set(localItems.map((item) => item.providerImageId).filter(Boolean));
-          const remoteItems: MediaLibraryItem[] = shared.images
-            .filter((image) => !localRemoteIds.has(image.id))
-            .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, folder: "", tags: [], overlayVersionGroup: null, overlayVersion: null, overlayTarget: null, ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? teamId : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
-          return [...remoteItems, ...localItems];
-        });
-      }).catch(() => { /* The local library stays available without the server. */ });
+      }).catch(() => {
+        if (active) setServerServiceNotices([
+          "Could not check optional server services; manual image URLs and invite URLs remain available.",
+        ]);
+      });
     }
     return () => { active = false; };
   }, []);
@@ -1352,6 +1371,7 @@ export default function Publishing({
             {libraryItems.length > 0 && <><select aria-label="Choose an image from Image Library" value={libraryChoice} disabled={locked} onChange={(event) => setLibraryChoice(event.target.value)}><option value="">Choose library image</option>{libraryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !libraryChoice || markdownBlocks.length >= 100} onClick={addLibraryImage}>Add library image</button></>}
             {imageHostingAvailable && <button className="secondary" type="button" disabled={locked || !markdownBlocks.some((block) => block.kind === "image" && !block.imageUrl.trim() && block.mediaHash && libraryItems.some((item) => item.hash === block.mediaHash && item.hash && !item.providerImageId && !item.isRemote))} onClick={() => void uploadMarkdownImages()}><Upload size={15} /> Upload missing images</button>}
           </div>
+          {serverServiceNotices.length > 0 && <p role="status" className="field-hint">{serverServiceNotices.join(" ")}</p>}
           <section className="publishing-reusable-markdown" aria-label="Reusable Markdown blocks">
             <div><strong>Reusable blocks</strong><p>{markdownPresets.length ? "Saved text, image and invite blocks are available in this workspace." : "Save a block below to reuse it in other posts."}</p></div>
             <div className="button-row">

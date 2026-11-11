@@ -384,9 +384,9 @@ it("shows local library images in the composer without waiting for optional serv
   const librarySelect = await screen.findByRole("combobox", { name: "Choose an image from Image Library" });
   expect(Array.from((librarySelect as HTMLSelectElement).options).map((option) => option.textContent)).toContain("Local banner");
   expect(syncServiceAvailability).toHaveBeenCalledWith("https://team.example", "team-1");
-  expect(syncImageLibrary).toHaveBeenCalledWith("https://team.example", "team-1");
 
   finishAvailability({ projectSync: true, imageHosting: true, inviteTracking: true });
+  await vi.waitFor(() => expect(syncImageLibrary).toHaveBeenCalledWith("https://team.example", "team-1"));
   finishSharedImages({ images: [], errors: [] });
   await vi.waitFor(() => expect(screen.getByText("Local banner")).toBeTruthy());
 });
@@ -445,6 +445,12 @@ it("keeps a fast team-library response when the local media query finishes later
   let finishLocal!: (rows: MediaLibraryItem[]) => void;
   window.localStorage.setItem("apex-studio.team-sync.server-url", "https://team.example");
   window.localStorage.setItem("apex-studio.team-sync.active-team", "team-1");
+  vi.mocked(syncServiceAvailability).mockResolvedValue({
+    projectSync: true,
+    imageHosting: true,
+    inviteTracking: false,
+    imageHostingReachable: true,
+  });
   vi.mocked(mediaLibrary).mockImplementation(() => new Promise((resolve) => {
     finishLocal = resolve;
   }));
@@ -710,6 +716,7 @@ it("keeps manual Markdown available when optional server services are unreachabl
 
   render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
   await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  expect(await screen.findByText("Image Hosting is unavailable; add public image URLs manually. Invite Tracking is unavailable; add invite URLs manually.")).toBeTruthy();
 
   await user.selectOptions(
     await screen.findByRole("combobox", { name: "Choose an image from Image Library" }),
@@ -722,6 +729,22 @@ it("keeps manual Markdown available when optional server services are unreachabl
   expect(screen.getByRole("button", { name: "Add invite link" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Upload missing images" })).toBeNull();
   expect(screen.queryByText("Tracked Discord invites")).toBeNull();
+  expect(syncImageLibrary).not.toHaveBeenCalled();
   expect(syncListInviteCampaigns).not.toHaveBeenCalled();
   expect(syncCreateInviteCampaign).not.toHaveBeenCalled();
+});
+
+it("shows manual URL fallbacks when optional service availability cannot be checked", async () => {
+  const user = userEvent.setup();
+  window.localStorage.setItem("apex-studio.team-sync.server-url", "https://team.example");
+  window.localStorage.setItem("apex-studio.team-sync.active-team", "team-1");
+  vi.mocked(syncServiceAvailability).mockRejectedValue(new Error("Server is offline"));
+
+  render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
+  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+
+  expect(await screen.findByText("Could not check optional server services; manual image URLs and invite URLs remain available.")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Add invite link" })).toBeTruthy();
+  expect(syncImageLibrary).not.toHaveBeenCalled();
+  expect(syncListInviteCampaigns).not.toHaveBeenCalled();
 });
