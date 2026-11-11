@@ -87,6 +87,7 @@ it("imports a same-named overlay as a new template without replacing the existin
     'input[type="file"][accept*=".apexoverlay"]',
   );
   expect(input).not.toBeNull();
+  expect(input!.style.display).toBe("none");
   await user.upload(input!, file);
 
   await waitFor(() => expect(saveOverlayTemplate).toHaveBeenCalledTimes(1));

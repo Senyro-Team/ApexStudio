@@ -866,6 +866,9 @@ input {
   max-width: 440px;
   caret-color: var(--accent);
 }
+[hidden] {
+  display: none !important;
+}
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {

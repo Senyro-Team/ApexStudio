@@ -502,7 +502,7 @@ export default function OverlayStudio({
         <button className="secondary" type="button" disabled={disabled || busy} onClick={exportTemplate}><Download size={15} /> Export template</button>
         {templateId && <button className="text-button" type="button" disabled={disabled || busy} onClick={() => void removeTemplate()}><Trash2 size={15} /> Delete template</button>}
       </div>
-      <input ref={templateFileInput} type="file" accept=".json,.apexoverlay,application/json" hidden onChange={(event) => { void importTemplate(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+      <input ref={templateFileInput} type="file" accept=".json,.apexoverlay,application/json" hidden style={{ display: "none" }} onChange={(event) => { void importTemplate(event.target.files?.[0]); event.currentTarget.value = ""; }} />
       <div className="overlay-studio-layout">
         <div className="overlay-canvas-column">
           <div className="overlay-canvas-frame">
@@ -527,7 +527,7 @@ export default function OverlayStudio({
             <button className="secondary" type="button" disabled={disabled || busy || layers.length >= MAX_LAYERS} onClick={() => addLayer("shape")}><Shapes size={15} /> Shape</button>
             <button className="secondary" type="button" disabled={disabled || busy || layers.length >= MAX_LAYERS} onClick={() => addLayer("image")}><ImagePlus size={15} /> Image</button>
           </div>
-          <input ref={imageLayerInput} type="file" accept="image/*" hidden onChange={(event) => { void addLayerImage(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+          <input ref={imageLayerInput} type="file" accept="image/*" hidden style={{ display: "none" }} onChange={(event) => { void addLayerImage(event.target.files?.[0]); event.currentTarget.value = ""; }} />
           <div className="overlay-layer-list">{layers.map((layer, index) => <button className={layer.id === selected ? "overlay-layer-item is-selected" : "overlay-layer-item"} type="button" key={layer.id} onClick={() => setSelected(layer.id)}><span>{layer.kind === "text" ? <Type size={14} /> : layer.kind === "image" ? <ImagePlus size={14} /> : <Shapes size={14} />}{layer.name || layer.kind}</span><small>{String(index + 1).padStart(2, "0")}</small></button>)}</div>
           {currentLayer && <div className="overlay-layer-properties">
             <label>Layer name<input maxLength={120} value={currentLayer.name} disabled={disabled || busy} onChange={(event) => updateLayer({ name: event.target.value })} /></label>
