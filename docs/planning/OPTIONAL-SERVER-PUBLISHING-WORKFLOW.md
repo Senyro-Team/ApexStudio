@@ -17,7 +17,7 @@ Server-backed services are optional conveniences. A disconnected, unavailable, o
 
 Use the existing Sync Server account and team membership as the one app-to-server authentication system. Current Sync Server sessions are opaque database-backed bearer tokens, so do not copy them into Image Provider or Invite Tracker databases or expose their service credentials to the desktop app.
 
-The authenticated server API should authorize each operation and act as a gateway to optional service APIs using server-held, narrowly scoped credentials. Each service keeps its own database, file storage, rate limits, and operational logs. Enforce team membership and role permissions at the gateway; never infer a user's team ownership from a client-supplied ID. Project sync, image hosting, and invite tracking are separate capabilities and can be enabled independently.
+The authenticated server API should authorize each operation and act as a gateway to optional service APIs using server-held, narrowly scoped credentials. Each service keeps its own database, file storage, rate limits, and operational logs. Public service endpoints must use HTTPS because the gateway sends service credentials; HTTP is restricted to loopback, private IP addresses, and local service hostnames for deployments on a trusted private network. Enforce team membership and role permissions at the gateway; never infer a user's team ownership from a client-supplied ID. Project sync, image hosting, and invite tracking are separate capabilities and can be enabled independently.
 
 Image-library ownership is **personal by default**. A user explicitly marks an item for team sharing. This controls who can organize and reuse its library metadata; it does not make an uploaded provider URL private. Public media and private project files are different data classes and must be presented as such.
 
@@ -79,3 +79,4 @@ The supplied overlay-builder HTML is a behavior and format reference only. Build
 - Team sharing is opt-in, team membership and role are checked on the server, and personal items stay personal by default.
 - Backups/restores preserve local media referenced by the library and drafts without including service secrets.
 - The overlay editor does not depend on Apex-branded artwork and exports the selected target dimensions in a batch.
+- Sync Server service endpoint configuration rejects cleartext HTTP to public hosts while retaining private-network and Docker service-name endpoints. Tests cover local/private IPv4 and IPv6, public hosts, and unspecified addresses.

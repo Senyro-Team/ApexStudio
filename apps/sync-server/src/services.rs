@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::time::Duration;
+use std::{net::IpAddr, time::Duration};
 use url::Url;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -75,8 +75,12 @@ fn endpoint_from_env(
                 || parsed.fragment().is_some()
                 || parsed.path() != "/"
                 || key.trim().len() < 32
+                || !has_safe_service_transport(&parsed)
             {
-                return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Configure a valid service URL and a key of at least 32 characters for {url_name}")));
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Configure a valid service URL and a key of at least 32 characters for {url_name}; public service URLs must use HTTPS"),
+                ));
             }
             Ok(Some(ServiceEndpoint {
                 origin: parsed,
@@ -88,6 +92,38 @@ fn endpoint_from_env(
             format!("Set both {url_name} and {key_name}, or leave both unset"),
         )),
     }
+}
+
+fn is_private_service_origin(origin: &Url) -> bool {
+    let Some(host) = origin.host_str() else {
+        return false;
+    };
+    let host = host
+        .strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(host);
+    if let Ok(address) = host.parse::<IpAddr>() {
+        return match address {
+            IpAddr::V4(address) => {
+                address.is_loopback() || address.is_private() || address.is_link_local()
+            }
+            IpAddr::V6(address) => {
+                address.is_loopback()
+                    || address.is_unique_local()
+                    || address.is_unicast_link_local()
+            }
+        };
+    }
+
+    let host = host.trim_end_matches('.');
+    !host.contains('.')
+        || ["localhost", "local", "internal", "lan", "test"]
+            .iter()
+            .any(|suffix| host == *suffix || host.ends_with(&format!(".{suffix}")))
+}
+
+fn has_safe_service_transport(origin: &Url) -> bool {
+    origin.scheme() == "https" || (origin.scheme() == "http" && is_private_service_origin(origin))
 }
 
 #[derive(Serialize)]
@@ -407,4 +443,57 @@ async fn proxy_json(
         HeaderValue::from_static("application/json"),
     );
     Ok(response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{has_safe_service_transport, is_private_service_origin};
+    use url::Url;
+
+    fn private_http_origin(value: &str) -> bool {
+        is_private_service_origin(&Url::parse(value).expect("valid test URL"))
+    }
+
+    #[test]
+    fn allows_http_for_loopback_private_ip_and_local_service_names() {
+        for origin in [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://[::1]:3000",
+            "http://10.0.0.12:3000",
+            "http://172.20.0.4:3000",
+            "http://192.168.1.12:3000",
+            "http://image-provider:3000",
+            "http://images.internal:3000",
+            "http://tracker.local:3000",
+        ] {
+            assert!(
+                private_http_origin(origin),
+                "expected private origin: {origin}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_http_for_public_or_unspecified_hosts() {
+        for origin in [
+            "http://images.example.com",
+            "http://203.0.113.10",
+            "http://0.0.0.0:3000",
+            "http://[2606:4700::1111]:3000",
+        ] {
+            let url = Url::parse(origin).expect("valid test URL");
+            assert!(
+                !has_safe_service_transport(&url),
+                "expected public origin: {origin}"
+            );
+        }
+    }
+
+    #[test]
+    fn allows_https_for_public_service_hosts() {
+        let url = Url::parse("https://images.example.com").expect("valid test URL");
+
+        assert!(has_safe_service_transport(&url));
+    }
 }
