@@ -645,8 +645,28 @@ it("shows tracked campaign loading failures and allows a manual retry", async ()
 
 it("keeps manual Markdown available when optional server services are unreachable", async () => {
   const user = userEvent.setup();
+  const localImage: MediaLibraryItem = {
+    id: "offline-banner",
+    hash: "9".repeat(64),
+    name: "Offline banner.png",
+    altText: "Offline banner",
+    imageUrl: "",
+    defaultLinkUrl: null,
+    folder: "",
+    tags: [],
+    overlayVersionGroup: null,
+    overlayVersion: null,
+    overlayTarget: null,
+    ownerScope: "personal",
+    teamId: null,
+    providerImageId: null,
+    createdAt: "2026-11-10T00:00:00Z",
+    updatedAt: "2026-11-10T00:00:00Z",
+    preview: null,
+  };
   window.localStorage.setItem("apex-studio.team-sync.server-url", "https://team.example");
   window.localStorage.setItem("apex-studio.team-sync.active-team", "team-1");
+  vi.mocked(mediaLibrary).mockResolvedValue([localImage]);
   vi.mocked(syncServiceAvailability).mockResolvedValue({
     projectSync: true,
     imageHosting: true,
@@ -657,6 +677,14 @@ it("keeps manual Markdown available when optional server services are unreachabl
 
   render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
   await user.click(await screen.findByRole("button", { name: "Markdown" }));
+
+  await user.selectOptions(
+    await screen.findByRole("combobox", { name: "Choose an image from Image Library" }),
+    localImage.id,
+  );
+  await user.click(screen.getByRole("button", { name: "Add library image" }));
+  const publicUrl = await screen.findByLabelText("Public image URL");
+  await user.type(publicUrl, "https://images.example/offline-banner.png");
 
   expect(screen.getByRole("button", { name: "Add invite link" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Upload missing images" })).toBeNull();
