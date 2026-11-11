@@ -261,9 +261,12 @@ export default function Publishing({
     if (serverUrl && teamId) {
       void syncServiceAvailability(serverUrl, teamId).then(async (availability) => {
         if (!active) return;
-        setInviteTrackingAvailable(availability.inviteTracking);
-        setImageHostingAvailable(availability.imageHosting);
-        if (availability.inviteTracking) {
+        const inviteTrackingReady = availability.inviteTracking
+          && availability.inviteTrackingReachable !== false;
+        setInviteTrackingAvailable(inviteTrackingReady);
+        setImageHostingAvailable(availability.imageHosting
+          && availability.imageHostingReachable !== false);
+        if (inviteTrackingReady) {
           setInviteCampaignsLoading(true);
           try {
             const campaigns = await syncListInviteCampaigns(serverUrl, teamId);

@@ -642,3 +642,25 @@ it("shows tracked campaign loading failures and allows a manual retry", async ()
   expect(await screen.findByText("No tracked campaigns yet.")).toBeTruthy();
   expect(syncListInviteCampaigns).toHaveBeenCalledTimes(2);
 });
+
+it("keeps manual Markdown available when optional server services are unreachable", async () => {
+  const user = userEvent.setup();
+  window.localStorage.setItem("apex-studio.team-sync.server-url", "https://team.example");
+  window.localStorage.setItem("apex-studio.team-sync.active-team", "team-1");
+  vi.mocked(syncServiceAvailability).mockResolvedValue({
+    projectSync: true,
+    imageHosting: true,
+    inviteTracking: true,
+    imageHostingReachable: false,
+    inviteTrackingReachable: false,
+  });
+
+  render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
+  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+
+  expect(screen.getByRole("button", { name: "Add invite link" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Upload missing images" })).toBeNull();
+  expect(screen.queryByText("Tracked Discord invites")).toBeNull();
+  expect(syncListInviteCampaigns).not.toHaveBeenCalled();
+  expect(syncCreateInviteCampaign).not.toHaveBeenCalled();
+});
