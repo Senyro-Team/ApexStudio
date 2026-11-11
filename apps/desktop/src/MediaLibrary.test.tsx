@@ -140,3 +140,16 @@ it("keeps the local library usable when the server capability check fails", asyn
   expect(syncImageLibrary).not.toHaveBeenCalled();
   expect(syncUploadLibraryImages).not.toHaveBeenCalled();
 });
+
+it("falls back to manual URLs when the Image Provider list request fails", async () => {
+  const user = userEvent.setup();
+  vi.mocked(syncImageLibrary).mockRejectedValue(new Error("Provider is offline"));
+  render(<MediaLibrary onBusy={vi.fn()} />);
+
+  expect(await screen.findByText("Image Hosting could not be reached. You can still add public image URLs manually.")).toBeTruthy();
+  expect(screen.getByText("Local banner")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Add image URL" }));
+  expect((screen.getByLabelText("Public image URL") as HTMLInputElement).disabled).toBe(false);
+  expect(syncImageLibrary).toHaveBeenCalledOnce();
+  expect(syncUploadLibraryImages).not.toHaveBeenCalled();
+});

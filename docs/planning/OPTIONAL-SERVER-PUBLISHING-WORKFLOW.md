@@ -111,3 +111,5 @@ The supplied overlay-builder HTML is a behavior and format reference only. Build
 - Markdown generation escapes bracket and backslash characters in image alt text and invite labels, and wraps normalized HTTPS destinations in angle-bracket syntax so parentheses in URLs do not break links. Regression coverage exercises these cases; the full desktop suite passes (113 tests across 23 files) and the production build succeeds.
 
 - A rejected Sync Server capability check is now covered: the local Image Library remains usable, its status explains the failed check, and neither shared-image listing nor upload is attempted. The full desktop suite passes (114 tests across 23 files) and the production build succeeds.
+
+- Image Library regression coverage also includes a successful capability probe followed by a failed shared-image list request. The local library and manual URL editor stay available, with no upload attempt. Current full desktop suite: 115 tests across 23 files; production build passes.
