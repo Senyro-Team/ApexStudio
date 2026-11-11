@@ -4660,6 +4660,16 @@ select {
   background: color-mix(in srgb, var(--accent-strong) 54%, transparent);
   color: #fff;
 }
+:root[data-wallpaper="true"] .app button:disabled,
+:root[data-wallpaper="true"] .app button:disabled:hover {
+  background: #292b31;
+  color: #777b86;
+  border-color: #34363e;
+  opacity: 1;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
 :root[data-wallpaper="true"] .app .danger {
   border-color: #e4a0a7;
   background: rgb(135 43 56 / 0.75);
