@@ -109,3 +109,5 @@ The supplied overlay-builder HTML is a behavior and format reference only. Build
 - Markdown copy now excludes invite blocks without a valid HTTPS URL and rejects unsafe image, click-through, or invite destinations in the generated source. Regression coverage verifies an empty and a javascript: invite URL are not copied. Full desktop suite: 113 tests across 23 files; production build succeeds.
 
 - Markdown generation escapes bracket and backslash characters in image alt text and invite labels, and wraps normalized HTTPS destinations in angle-bracket syntax so parentheses in URLs do not break links. Regression coverage exercises these cases; the full desktop suite passes (113 tests across 23 files) and the production build succeeds.
+
+- A rejected Sync Server capability check is now covered: the local Image Library remains usable, its status explains the failed check, and neither shared-image listing nor upload is attempted. The full desktop suite passes (114 tests across 23 files) and the production build succeeds.
