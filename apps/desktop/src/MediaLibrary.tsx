@@ -9,6 +9,7 @@ import {
   mediaLibrary,
   pickMediaLibraryImage,
   updateMediaLibraryItem,
+  syncServiceAvailability,
   syncImageLibrary,
   syncUploadLibraryImages,
   syncSetLibraryImageScope,
@@ -41,6 +42,10 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
   const [serverUrl, setServerUrl] = useState("");
   const [teamId, setTeamId] = useState("");
   const [uploadScope, setUploadScope] = useState<"personal" | "team">("personal");
+  const [imageHostingConfigured, setImageHostingConfigured] = useState(false);
+  const [imageHostingReachable, setImageHostingReachable] = useState(false);
+  const [imageHostingStatusKnown, setImageHostingStatusKnown] = useState(false);
+  const [imageHostingStatusMessage, setImageHostingStatusMessage] = useState("");
   const [selectedForUpload, setSelectedForUpload] = useState<string[]>([]);
   const refreshSequence = useRef(0);
 
@@ -50,6 +55,10 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
     const savedTeam = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
     setServerUrl(savedUrl);
     setTeamId(savedTeam);
+    setImageHostingConfigured(false);
+    setImageHostingReachable(false);
+    setImageHostingStatusKnown(false);
+    setImageHostingStatusMessage("");
     void listAssets(null).then((projectAssets) => {
       if (sequence !== refreshSequence.current) return;
       setAssets(projectAssets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
@@ -65,16 +74,37 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
     setSelectedForUpload((current) => current.filter((id) => availableIds.has(id)));
 
     if (savedUrl && savedTeam) {
-      void syncImageLibrary(savedUrl, savedTeam).then((shared) => {
+      void syncServiceAvailability(savedUrl, savedTeam).then((availability) => {
         if (sequence !== refreshSequence.current) return;
-        const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
-        const remoteItems: MediaLibraryItem[] = shared.images
-          .filter((image) => !localRemoteIds.has(image.id))
-          .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, folder: "", tags: [], overlayVersionGroup: null, overlayVersion: null, overlayTarget: null, ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? savedTeam : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
-        setItems([...remoteItems, ...library]);
+        const configured = availability.imageHosting;
+        const reachable = configured && availability.imageHostingReachable !== false;
+        setImageHostingConfigured(configured);
+        setImageHostingReachable(reachable);
+        setImageHostingStatusKnown(true);
+        setImageHostingStatusMessage(!reachable
+          ? configured
+            ? "Image Hosting is unreachable. You can still add public image URLs manually."
+            : "Image Hosting is not configured for this team. You can still add public image URLs manually."
+          : "");
+        if (!reachable) return;
+        void syncImageLibrary(savedUrl, savedTeam).then((shared) => {
+          if (sequence !== refreshSequence.current) return;
+          const localRemoteIds = new Set(library.map((item) => item.providerImageId).filter(Boolean));
+          const remoteItems: MediaLibraryItem[] = shared.images
+            .filter((image) => !localRemoteIds.has(image.id))
+            .map((image) => ({ id: `remote-${image.id}`, hash: null, name: image.name, altText: image.altText, imageUrl: image.imageUrl, defaultLinkUrl: image.defaultLinkUrl, folder: "", tags: [], overlayVersionGroup: null, overlayVersion: null, overlayTarget: null, ownerScope: image.ownerScope, teamId: image.ownerScope === "team" ? savedTeam : null, providerImageId: image.id, createdAt: image.createdAt, updatedAt: image.createdAt, preview: null, isRemote: true }));
+          setItems([...remoteItems, ...library]);
+        }).catch(() => {
+          if (sequence !== refreshSequence.current) return;
+          setImageHostingReachable(false);
+          setImageHostingStatusMessage("Image Hosting could not be reached. You can still add public image URLs manually.");
+        });
       }).catch(() => {
         if (sequence !== refreshSequence.current) return;
-        setNotice("Team Image Hosting could not be reached. Local images and manual URLs are still available.");
+        setImageHostingConfigured(false);
+        setImageHostingReachable(false);
+        setImageHostingStatusKnown(true);
+        setImageHostingStatusMessage("Could not check Image Hosting. You can still add public image URLs manually.");
       });
     }
     return library;
@@ -219,11 +249,12 @@ export default function MediaLibrary({ onBusy }: { onBusy: (busy: boolean) => vo
       </header>
       <p className="field-hint">Adding an image here does not upload it to a server. Add the public URL manually after uploading it wherever you choose.</p>
       {serverUrl && teamId && <div className="media-library-project-add"><label htmlFor="image-upload-scope">For uploads</label><select id="image-upload-scope" value={uploadScope} disabled={busy} onChange={(event) => setUploadScope(event.target.value as "personal" | "team")}><option value="personal">Personal</option><option value="team">Selected team</option></select><span className="field-hint">Uploads are public and require confirmation each time.</span></div>}
+      {serverUrl && teamId && imageHostingStatusKnown && !imageHostingReachable && <p className="field-hint">{imageHostingStatusMessage || (imageHostingConfigured ? "Image Hosting is unreachable." : "Image Hosting is not configured for this team. You can still add public image URLs manually.")}</p>}
       {serverUrl && teamId && <div className="media-library-batch-toolbar">
         <span>{selectedForUpload.length} of 10 selected</span>
         <button className="text-button" type="button" disabled={busy || !filtered.some((item) => item.hash && !item.providerImageId && !item.isRemote)} onClick={() => setSelectedForUpload(filtered.filter((item) => item.hash && !item.providerImageId && !item.isRemote).slice(0, 10).map((item) => item.id))}>Select first 10 available</button>
         <button className="text-button" type="button" disabled={busy || !selectedForUpload.length} onClick={() => setSelectedForUpload([])}>Clear selection</button>
-        <button className="primary" type="button" disabled={busy || !selectedForUpload.length} onClick={() => void uploadSelected()}><Upload size={15} /> {busy ? "Uploading…" : `Upload ${selectedForUpload.length || "selected"}`}</button>
+        <button className="primary" type="button" disabled={busy || !imageHostingReachable || !selectedForUpload.length} onClick={() => void uploadSelected()}><Upload size={15} /> {busy ? "Uploading…" : `Upload ${selectedForUpload.length || "selected"}`}</button>
       </div>}
       {error && <p role="alert" className="error">{error}</p>}
       {notice && <p role="status" className="field-hint">{notice}</p>}

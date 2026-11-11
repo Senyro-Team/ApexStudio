@@ -5,6 +5,7 @@ import MediaLibrary from "./MediaLibrary";
 import {
   listAssets,
   mediaLibrary,
+  syncServiceAvailability,
   syncImageLibrary,
   syncUploadLibraryImages,
   type MediaLibraryItem,
@@ -20,6 +21,7 @@ vi.mock("./bridge", () => ({
   pickMediaLibraryImage: vi.fn(),
   updateMediaLibraryItem: vi.fn(),
   syncImageLibrary: vi.fn(),
+  syncServiceAvailability: vi.fn(),
   syncUploadLibraryImages: vi.fn(),
   syncSetLibraryImageScope: vi.fn(),
 }));
@@ -50,6 +52,13 @@ beforeEach(() => {
   window.localStorage.setItem("apex-studio.team-sync.active-team", "team-1");
   vi.mocked(mediaLibrary).mockResolvedValue([localItem]);
   vi.mocked(listAssets).mockResolvedValue([]);
+  vi.mocked(syncServiceAvailability).mockResolvedValue({
+    projectSync: true,
+    imageHosting: true,
+    inviteTracking: false,
+    imageHostingReachable: true,
+  });
+  vi.mocked(syncImageLibrary).mockResolvedValue({ images: [], errors: [] });
 });
 
 afterEach(() => {
@@ -95,5 +104,26 @@ it("sends no public upload when the user declines the confirmation", async () =>
   await user.click(screen.getByRole("button", { name: "Upload 1" }));
 
   expect(window.confirm).toHaveBeenCalledOnce();
+  expect(syncUploadLibraryImages).not.toHaveBeenCalled();
+});
+
+it("keeps manual public URLs available and disables uploads when hosting is unreachable", async () => {
+  const user = userEvent.setup();
+  vi.mocked(syncServiceAvailability).mockResolvedValue({
+    projectSync: true,
+    imageHosting: true,
+    inviteTracking: false,
+    imageHostingReachable: false,
+  });
+  render(<MediaLibrary onBusy={vi.fn()} />);
+
+  expect(await screen.findByText("Image Hosting is unreachable. You can still add public image URLs manually.")).toBeTruthy();
+  await user.click(screen.getByLabelText("Select for upload"));
+  expect((screen.getByRole("button", { name: "Upload 1" }) as HTMLButtonElement).disabled).toBe(true);
+  await user.click(screen.getByRole("button", { name: "Add image URL" }));
+  await user.type(screen.getByLabelText("Name"), "Manual banner");
+  await user.type(screen.getByLabelText("Public image URL"), "https://images.example/banner.png");
+  expect((screen.getByLabelText("Public image URL") as HTMLInputElement).value).toBe("https://images.example/banner.png");
+  expect(syncImageLibrary).not.toHaveBeenCalled();
   expect(syncUploadLibraryImages).not.toHaveBeenCalled();
 });
