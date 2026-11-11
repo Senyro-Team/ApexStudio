@@ -20,6 +20,8 @@ use crate::{
 
 const MAX_IMAGE_UPLOAD_BYTES: usize = 50 * 1024 * 1024;
 const MAX_PROVIDER_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+const SERVICE_PROBE_USER_ID: &str = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+const SERVICE_PROBE_TEAM_ID: &str = "ffffffff-ffff-4fff-8fff-fffffffffffe";
 
 #[derive(Clone)]
 pub struct ServiceEndpoint {
@@ -169,8 +171,14 @@ async fn service_availability(
 ) -> Result<Json<ServiceAvailability>, ApiError> {
     membership_role(&state, team_id, user.id).await?;
     let (image_hosting_reachable, invite_tracking_reachable) = tokio::join!(
-        endpoint_health(state.services.image_provider.as_ref(), "health"),
-        endpoint_health(state.services.invite_tracker.as_ref(), "api/health"),
+        endpoint_health(
+            state.services.image_provider.as_ref(),
+            "api/service/images?scope=available",
+        ),
+        endpoint_health(
+            state.services.invite_tracker.as_ref(),
+            "api/service/campaigns",
+        ),
     );
     Ok(Json(ServiceAvailability {
         project_sync: true,
@@ -193,6 +201,9 @@ async fn endpoint_health(service: Option<&ServiceEndpoint>, path: &str) -> Optio
     Some(
         client
             .get(url)
+            .header("x-apex-service-key", service.key.as_str())
+            .header("x-apex-user-id", SERVICE_PROBE_USER_ID)
+            .header("x-apex-team-id", SERVICE_PROBE_TEAM_ID)
             .send()
             .await
             .is_ok_and(|response| response.status().is_success()),

@@ -10,6 +10,8 @@ Project synchronization remains independent of optional services. To enable Imag
 
 Image Provider source and deployment instructions are maintained separately in the Image Provider project. The gateway expects its `GET/POST /api/service/images` and `PATCH /api/service/images/{id}/sharing` contract; the browser and desktop app must call only the authenticated Sync Server routes. Invite Tracker exposes service-key-protected `GET/POST /api/service/campaigns`; its campaign records are scoped to the Apex team and creation is idempotent. Apex Studio accesses invites through `GET/POST /api/v1/teams/{team_id}/invite-campaigns`. The authenticated image routes remain `GET/POST /api/v1/teams/{team_id}/image-library` and `PATCH /api/v1/teams/{team_id}/image-library/{image_id}/sharing`; service availability is returned by `GET /api/v1/teams/{team_id}/services`. Upstream connection failures return distinct `image_hosting_unavailable` and `invite_tracking_unavailable` codes so clients can identify which optional service failed.
 
+The service availability response checks the authenticated image-list and invite-list routes using the configured service keys. It sends reserved synthetic user/team IDs and discards the response body, so service status does not retrieve a real member's library or invite campaigns. Public health endpoints alone are not used to report these integrations as ready.
+
 ## Requirements
 
 For a temporary Windows PC deployment without incoming ports, use the
