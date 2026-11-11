@@ -618,3 +618,27 @@ it("reuses the same invite idempotency key after an ambiguous failure and remoun
   expect(vi.mocked(syncCreateInviteCampaign).mock.calls[1][2]).toBe(firstRequestId);
   expect(window.localStorage.getItem("apex-studio.pending-invite-requests.v1")).toBe("[]");
 });
+
+it("shows tracked campaign loading failures and allows a manual retry", async () => {
+  const user = userEvent.setup();
+  window.localStorage.setItem("apex-studio.team-sync.server-url", "https://team.example");
+  window.localStorage.setItem("apex-studio.team-sync.active-team", "team-1");
+  vi.mocked(syncServiceAvailability).mockResolvedValue({
+    projectSync: true,
+    imageHosting: false,
+    inviteTracking: true,
+  });
+  vi.mocked(syncListInviteCampaigns)
+    .mockRejectedValueOnce(new Error("Server temporarily unavailable"))
+    .mockResolvedValueOnce([]);
+
+  render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
+  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "Could not load tracked campaigns: Server temporarily unavailable",
+  );
+
+  await user.click(screen.getByRole("button", { name: "Refresh campaigns" }));
+  expect(await screen.findByText("No tracked campaigns yet.")).toBeTruthy();
+  expect(syncListInviteCampaigns).toHaveBeenCalledTimes(2);
+});

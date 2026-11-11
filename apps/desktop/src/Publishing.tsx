@@ -226,6 +226,8 @@ export default function Publishing({
   const [projectImages, setProjectImages] = useState<Asset[]>([]);
   const [projectImageChoice, setProjectImageChoice] = useState("");
   const [inviteCampaigns, setInviteCampaigns] = useState<InviteCampaign[]>([]);
+  const [inviteCampaignsLoading, setInviteCampaignsLoading] = useState(false);
+  const [inviteCampaignsError, setInviteCampaignsError] = useState("");
   const [markdownPresets, setMarkdownPresets] = useState<MarkdownPreset[]>([]);
   const [markdownPresetChoice, setMarkdownPresetChoice] = useState("");
   const [savingMarkdownBlockId, setSavingMarkdownBlockId] = useState("");
@@ -262,10 +264,18 @@ export default function Publishing({
         setInviteTrackingAvailable(availability.inviteTracking);
         setImageHostingAvailable(availability.imageHosting);
         if (availability.inviteTracking) {
+          setInviteCampaignsLoading(true);
           try {
             const campaigns = await syncListInviteCampaigns(serverUrl, teamId);
-            if (active) setInviteCampaigns(campaigns);
-          } catch { /* Manual invite URLs remain available. */ }
+            if (active) {
+              setInviteCampaigns(campaigns);
+              setInviteCampaignsError("");
+            }
+          } catch (cause) {
+            if (active) setInviteCampaignsError(errorMessage(cause));
+          } finally {
+            if (active) setInviteCampaignsLoading(false);
+          }
         }
       }).catch(() => { /* Optional services do not gate local editing. */ });
       void syncImageLibrary(serverUrl, teamId).then((shared) => {
@@ -428,6 +438,7 @@ export default function Publishing({
       const campaign = await syncCreateInviteCampaign(serverUrl, teamId, inviteRequestId.current.id, input);
       inviteRequestId.current = null;
       setInviteCampaigns((current) => [campaign, ...current.filter((item) => item.id !== campaign.id)]);
+      setInviteCampaignsError("");
       if (campaign.inviteUrl) addInviteUrl(campaign.title, campaign.inviteUrl);
       setInviteTitle(""); setInviteNotes("");
       try {
@@ -438,6 +449,24 @@ export default function Publishing({
       }
     } catch (cause) { setError(errorMessage(cause)); }
     finally { setInviteCampaignBusy(false); }
+  }
+  async function refreshTrackedInvites() {
+    const serverUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
+    const teamId = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
+    if (!serverUrl || !teamId || !inviteTrackingAvailable || inviteCampaignsLoading) return;
+    setInviteCampaignsLoading(true);
+    setInviteCampaignsError("");
+    try {
+      const campaigns = await syncListInviteCampaigns(serverUrl, teamId);
+      if (window.localStorage.getItem("apex-studio.team-sync.server-url") === serverUrl
+        && window.localStorage.getItem("apex-studio.team-sync.active-team") === teamId) {
+        setInviteCampaigns(campaigns);
+      }
+    } catch (cause) {
+      setInviteCampaignsError(errorMessage(cause));
+    } finally {
+      setInviteCampaignsLoading(false);
+    }
   }
   function moveMarkdown(index: number, delta: number) {
     const target = index + delta;
@@ -1291,7 +1320,7 @@ export default function Publishing({
             </div>
           </section>
           {inviteTrackingAvailable && <section className="publishing-invite-tracker">
-            <div><h3>Tracked Discord invites</h3><p className="field-hint">Create an invite for a specific post or add an existing team invite link.</p></div>
+            <div className="publishing-markdown-heading"><div><h3>Tracked Discord invites</h3><p className="field-hint">Create an invite for a specific post or add an existing team invite link.</p></div><button type="button" className="secondary" disabled={locked || inviteCampaignsLoading} onClick={() => void refreshTrackedInvites()}>{inviteCampaignsLoading ? "Loading…" : "Refresh campaigns"}</button></div>
             <div className="publishing-invite-form">
               <label>Campaign title<input value={inviteTitle} maxLength={80} disabled={locked || inviteCampaignBusy} onChange={(event) => setInviteTitle(event.target.value)} placeholder="ERLCX release post" /></label>
               <label>Category<select value={inviteCategory} disabled={locked || inviteCampaignBusy} onChange={(event) => setInviteCategory(event.target.value as InviteCampaign["category"])}><option value="livery">Livery</option><option value="social">Social</option><option value="other">Other</option></select></label>
@@ -1301,6 +1330,9 @@ export default function Publishing({
               <label>Notes <span className="optional">(optional)</span><input value={inviteNotes} maxLength={280} disabled={locked || inviteCampaignBusy} onChange={(event) => setInviteNotes(event.target.value)} placeholder="Internal context" /></label>
             </div>
             <button className="secondary" type="button" disabled={locked || inviteCampaignBusy || inviteTitle.trim().length < 2 || !/^\d{17,20}$/.test(inviteChannelId)} onClick={() => void createTrackedInvite()}>{inviteCampaignBusy ? "Creating…" : "Create invite and add link"}</button>
+            {inviteCampaignsLoading && <p role="status" className="field-hint">Loading tracked campaigns…</p>}
+            {inviteCampaignsError && <p role="alert" className="error">Could not load tracked campaigns: {inviteCampaignsError}</p>}
+            {!inviteCampaignsLoading && !inviteCampaignsError && inviteCampaigns.length === 0 && <p className="field-hint">No tracked campaigns yet.</p>}
             {inviteCampaigns.length > 0 && <div className="publishing-invite-list">{inviteCampaigns.map((campaign) => <article key={campaign.id}>
               <div><strong>{campaign.title}</strong><span>{campaign.category} · {campaign.trackedJoins} tracked joins{campaign.maxUses > 0 ? ` · ${campaign.totalUses}/${campaign.maxUses} uses` : ` · ${campaign.totalUses} uses`}{!campaign.isActive ? " · inactive" : ""}</span></div>
               <button type="button" className="secondary" disabled={locked || !campaign.inviteUrl || markdownBlocks.length >= 100} onClick={() => campaign.inviteUrl && addInviteUrl(campaign.title, campaign.inviteUrl)}>Add link</button>
