@@ -144,3 +144,47 @@ it("exports all selected source images at the chosen ExecLab dimensions", async 
   expect(exported.map((image) => image.sourceHash)).toEqual(["a".repeat(64), "b".repeat(64)]);
   expect(exported.every((image) => JSON.parse(image.compositionJson).target === "execlab")).toBe(true);
 });
+
+it("exports selected source images at the ERLCX 16:9 dimensions", async () => {
+  const user = userEvent.setup();
+  const onExported = vi.fn(async (_images: OverlayPreviewOutput[]) => undefined);
+  vi.mocked(overlayImageData).mockResolvedValue("data:image/png;base64,aW1hZ2U=");
+  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,b3V0cHV0");
+  vi.stubGlobal("Image", class {
+    complete = true;
+    naturalWidth = 1920;
+    naturalHeight = 1080;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    set src(_value: string) { queueMicrotask(() => this.onload?.()); }
+  });
+  render(
+    <OverlayStudio
+      postId="test-post"
+      projectId="project"
+      currentCount={1}
+      disabled={false}
+      projectImages={[
+        { id: "asset-erlcx", projectId: "project", name: "Patrol.png", hash: "c".repeat(64), size: 10, importedAt: "now", preview: null },
+      ]}
+      libraryItems={[]}
+      onExported={onExported}
+    />,
+  );
+
+  const projectImage = screen.getByLabelText("Choose a project image for overlay");
+  await user.selectOptions(projectImage, "asset-erlcx");
+  await user.click(screen.getByRole("button", { name: "Add project image" }));
+  await user.click(screen.getByRole("button", { name: "Apply to previews" }));
+
+  await waitFor(() => expect(onExported).toHaveBeenCalledTimes(1));
+  const exported = onExported.mock.calls[0][0];
+  expect(exported).toHaveLength(1);
+  expect(exported[0]).toMatchObject({
+    name: "Patrol-erlcx.png",
+    sourceHash: "c".repeat(64),
+    width: 1920,
+    height: 1080,
+  });
+  expect(JSON.parse(exported[0].compositionJson).target).toBe("erlcx");
+});
