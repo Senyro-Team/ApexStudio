@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
-import { autoSyncEnabled, setAutoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Check, CircleAlert, Copy, ImagePlus, Link2, LogOut, RefreshCw, Server, Trash2, UserPlus, Users } from "lucide-react";
 import AppSelect from "./AppSelect";
 import { readTeamSyncLog, recordTeamSyncError, recordTeamSyncReport, syncSummary } from "./teamSyncLog";
@@ -64,12 +63,6 @@ export default function TeamSyncSettings({
   const [servicesBusy, setServicesBusy] = useState(false);
   const [servicesError, setServicesError] = useState("");
   const [syncLog, setSyncLog] = useState(() => readTeamSyncLog(initialUrl.current, ""));
-  const automaticSync = useSyncExternalStore(subscribeAutoSync, autoSyncEnabled, () => true);
-  useEffect(() => {
-    const failed = (event: Event) => setError(String((event as CustomEvent).detail));
-    window.addEventListener("apex-project-sync-error", failed);
-    return () => window.removeEventListener("apex-project-sync-error", failed);
-  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [invitationToken, setInvitationToken] = useState("");
@@ -172,7 +165,7 @@ export default function TeamSyncSettings({
     } catch {
       // The selected team remains available for this session.
     }
-    window.dispatchEvent(new Event("apex-project-sync-request"));
+    window.dispatchEvent(new Event("apex-sync-destination-changed"));
   }
 
   function checkServer(event: FormEvent) {
@@ -453,17 +446,7 @@ export default function TeamSyncSettings({
           </section>}
           {selectedTeam && <section className="project-sync-options" aria-label="Team project synchronization">
             <h3>Project synchronization</h3>
-            <label className="check-label">
-              <input type="checkbox" checked={automaticSync} onChange={(event) => {
-                try {
-                  setAutoSyncEnabled(event.target.checked);
-                  setNotice(event.target.checked ? "Automatic synchronization enabled." : "Automatic synchronization disabled. Use Sync projects now to synchronize manually.");
-                } catch { setError("The automatic sync setting could not be saved on this device."); }
-              }} />
-              Automatically synchronize projects
-            </label>
-            <p className="field-hint">Sync saved changes shortly after editing and check for team updates every 2 seconds.</p>
-            <p className="field-hint">Shared projects download automatically. Choose “Synchronize with team server” when creating a project or in its Details to share it.</p>
+            <p className="field-hint">Projects transfer only when you select “Sync projects now”. Linking a project does not upload or download its contents.</p>
             <button className="secondary" type="button" disabled={busy || syncBusy} onClick={() => {
               setSyncBusy(true); setError(""); setNotice("");
               void syncProjects(serverUrl, selectedTeam.id).then((report) => {
@@ -483,7 +466,7 @@ export default function TeamSyncSettings({
                 <li key={`${item.at}-${index}`}>
                   <div className="team-sync-log-heading">
                     <time dateTime={item.at}>{new Date(item.at).toLocaleString()}</time>
-                    <span>{item.source === "manual" ? "Manual" : "Automatic"}</span>
+                    <span>{item.source === "manual" ? "Manual" : "Automatic (legacy)"}</span>
                   </div>
                   <p>{item.summary}</p>
                   {item.error && <p className="team-sync-log-error">{item.error}</p>}

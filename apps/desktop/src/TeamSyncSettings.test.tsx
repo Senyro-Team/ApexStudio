@@ -8,7 +8,6 @@ import {
   syncProjects,
   type SyncConnectionStatus,
 } from "./bridge";
-import { autoSyncEnabled } from "./teamSyncPreferences";
 vi.mock("./bridge", () => ({
   desktopAvailable: true,
   syncConnectionStatus: vi.fn(),
@@ -20,6 +19,13 @@ vi.mock("./bridge", () => ({
   syncInitialSetup: vi.fn(),
   syncSignIn: vi.fn(),
   syncListMembers: vi.fn(),
+  syncServiceAvailability: vi.fn().mockResolvedValue({
+    projectSync: true,
+    imageHosting: false,
+    inviteTracking: false,
+    imageHostingReachable: null,
+    inviteTrackingReachable: null,
+  }),
 }));
 const connection: SyncConnectionStatus = {
   server: {
@@ -62,27 +68,15 @@ afterEach(cleanup);
 it("restores an available team when the saved team selection is missing", async () => {
   localStorage.removeItem("apex-studio.team-sync.active-team");
   render(<TeamSyncSettings onBusy={vi.fn()} />);
-  await screen.findByRole("checkbox", {name: "Automatically synchronize projects"});
+  await screen.findByRole("button", {name: "Sync projects now"});
   expect(localStorage.getItem("apex-studio.team-sync.active-team")).toBe("team");
 });
 
-it("keeps the auto-sync choice when Settings is reopened and allows manual synchronization", async () => {
-  const user = userEvent.setup();
-  const first = render(<TeamSyncSettings onBusy={vi.fn()} />);
-  const toggle = await screen.findByRole("checkbox", {
-    name: "Automatically synchronize projects",
-  });
-  expect(toggle).toHaveProperty("checked", true);
-  await user.click(toggle);
-  expect(autoSyncEnabled()).toBe(false);
-  first.unmount();
+it("keeps team transfers behind the explicit manual sync action", async () => {
   render(<TeamSyncSettings onBusy={vi.fn()} />);
-  expect(
-    await screen.findByRole("checkbox", {
-      name: "Automatically synchronize projects",
-    }),
-  ).toHaveProperty("checked", false);
-  await user.click(screen.getByRole("button", { name: "Sync projects now" }));
+  expect(await screen.findByText(/Projects transfer only when you select/)).toBeTruthy();
+  expect(screen.queryByRole("checkbox", { name: /automatically synchronize/i })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Sync projects now" }));
   await screen.findAllByText("1 uploaded · 0 downloaded · 0 already current");
   expect(syncProjects).toHaveBeenCalledWith(connection.server.origin, "team");
 });

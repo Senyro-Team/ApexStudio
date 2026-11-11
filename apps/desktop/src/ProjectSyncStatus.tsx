@@ -1,5 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { autoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
+import { useEffect, useState } from "react";
 import {
   desktopAvailable,
   projectSyncSettings,
@@ -9,7 +8,7 @@ import {
   resolveProjectSync,
   type ProjectSyncSettings,
 } from "./bridge";
-import { savedSyncDestination } from "./useTeamProjectSync";
+import { savedSyncDestination } from "./teamSyncDestination";
 
 export function syncErrorText(reason: unknown) {
   return typeof reason === "string"
@@ -29,11 +28,6 @@ export default function ProjectSyncStatus({
   const [error, setError] = useState("");
   const [resolution, setResolution] = useState<"server" | "local" | null>(null);
   const [destination, setDestination] = useState(savedSyncDestination);
-  const automaticSync = useSyncExternalStore(
-    subscribeAutoSync,
-    autoSyncEnabled,
-    () => true,
-  );
   useEffect(() => {
     if (!desktopAvailable) {
       setLoading(false);
@@ -60,8 +54,8 @@ export default function ProjectSyncStatus({
   }, [projectId]);
   useEffect(() => {
     const refreshDestination = () => setDestination(savedSyncDestination());
-    window.addEventListener("apex-project-sync-request", refreshDestination);
-    return () => window.removeEventListener("apex-project-sync-request", refreshDestination);
+    window.addEventListener("apex-sync-destination-changed", refreshDestination);
+    return () => window.removeEventListener("apex-sync-destination-changed", refreshDestination);
   }, []);
   const needsReconnect = [error, binding?.message ?? ""].some((message) =>
     message.includes("not available to this account") ||
@@ -89,7 +83,6 @@ export default function ProjectSyncStatus({
           teamId: target.teamId,
         }),
       );
-      window.dispatchEvent(new Event("apex-project-sync-request"));
     } catch (e) {
       setError(syncErrorText(e));
     } finally {
@@ -136,7 +129,6 @@ export default function ProjectSyncStatus({
         teamId: destination.teamId,
       });
       setBinding(next);
-      window.dispatchEvent(new Event("apex-project-sync-request"));
     } catch (reason) {
       setError(syncErrorText(reason));
     } finally {
@@ -183,9 +175,9 @@ export default function ProjectSyncStatus({
           ? binding.message
           : "Local only on this device. Existing server copies are kept when you turn sync off."}
       </p>
-      {binding?.enabled && !automaticSync && (
+      {binding?.enabled && (
         <p className="field-hint">
-          Automatic sync is off. Use Sync now to send and receive changes.
+          This project transfers only when you select “Sync projects now” in Server.
         </p>
       )}
       {binding?.origin && (

@@ -5,7 +5,6 @@ import RobloxSettings from "./RobloxSettings";
 import TeamSyncSettings from "./TeamSyncSettings";
 import UpdaterSettings from "./UpdaterSettings";
 import Onboarding from "./Onboarding";
-import useTeamProjectSync from "./useTeamProjectSync";
 import Statistics, { StatisticsSettings, useStatistics } from "./Statistics";
 import { DashboardWidgets, DashboardWidgetEditor, loadDashboardLayout, saveDashboardLayout, type DashboardLayout } from "./DashboardWidgets";
 import { loadWallpaper, saveWallpaper } from "./wallpaper";
@@ -419,7 +418,6 @@ function AppContent() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [navigationLocked, setNavigationLocked] = useState(false);
-  useTeamProjectSync(navigationLocked);
   const [robloxLock, setRobloxLock] = useState(false),
     [chromeLock, setChromeLock] = useState(false),
     [backupLock, setBackupLock] = useState(false),

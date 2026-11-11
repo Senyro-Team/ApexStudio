@@ -5,6 +5,7 @@ import ProjectSyncStatus from "./ProjectSyncStatus";
 import {
   projectSyncSettings,
   setProjectSync,
+  syncProjects,
   resolveProjectSync,
   type ProjectSyncSettings,
 } from "./bridge";
@@ -39,6 +40,23 @@ beforeEach(() => {
   vi.mocked(resolveProjectSync).mockResolvedValue(undefined);
 });
 afterEach(cleanup);
+it("does not transfer project data when linking; Sync now is a separate action", async () => {
+  const unlinked = { ...binding, enabled: false, message: "Local only" };
+  vi.mocked(projectSyncSettings).mockResolvedValue(unlinked);
+  vi.mocked(setProjectSync).mockResolvedValue({ ...binding, enabled: true });
+  const user = userEvent.setup();
+  render(<ProjectSyncStatus projectId="project" />);
+  await user.click(await screen.findByRole("checkbox", { name: "Synchronize with team server" }));
+  expect(setProjectSync).toHaveBeenCalledWith("project", {
+    enabled: true,
+    serverUrl: binding.origin,
+    teamId: binding.teamId,
+  });
+  expect(syncProjects).not.toHaveBeenCalled();
+  expect(await screen.findByText(/transfers only when you select “Sync projects now”/)).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Sync now" }));
+  expect(syncProjects).toHaveBeenCalledWith(binding.origin, binding.teamId);
+});
 it("disables project synchronization without removing the local or remote project", async () => {
   const user = userEvent.setup();
   render(<ProjectSyncStatus projectId="project" />);
