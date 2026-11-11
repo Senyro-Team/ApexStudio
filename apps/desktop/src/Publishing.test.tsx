@@ -11,6 +11,7 @@ import {
   listAssets,
   mediaLibrary,
   syncImageLibrary,
+  syncUploadLibraryImages,
   syncCreateInviteCampaign,
   syncListInviteCampaigns,
   syncServiceAvailability,
@@ -33,6 +34,7 @@ vi.mock("./bridge", () => ({
   listAssets: vi.fn(),
   mediaLibrary: vi.fn(),
   syncImageLibrary: vi.fn(),
+  syncUploadLibraryImages: vi.fn(),
   syncCreateInviteCampaign: vi.fn(),
   syncListInviteCampaigns: vi.fn(),
   syncServiceAvailability: vi.fn(),
@@ -102,6 +104,7 @@ beforeEach(() => {
   });
   vi.mocked(syncListInviteCampaigns).mockResolvedValue([]);
   vi.mocked(syncImageLibrary).mockResolvedValue({ images: [], errors: [] });
+  vi.mocked(syncUploadLibraryImages).mockResolvedValue({ images: [], errors: [] });
   vi.mocked(syncCreateInviteCampaign).mockResolvedValue({
     id: "campaign-1",
     title: "Campaign",
@@ -497,6 +500,67 @@ it("creates and copies manual post Markdown while optional services are disconne
   ].join("\n\n"));
   expect(syncImageLibrary).not.toHaveBeenCalled();
   expect(syncCreateInviteCampaign).not.toHaveBeenCalled();
+});
+
+it("reuses an uploaded image URL when only its Markdown destination changes", async () => {
+  const user = userEvent.setup();
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  const image: MediaLibraryItem = {
+    id: "local-banner",
+    hash: "f".repeat(64),
+    name: "Banner.png",
+    altText: "Studio banner",
+    imageUrl: "",
+    defaultLinkUrl: null,
+    folder: "",
+    tags: [],
+    overlayVersionGroup: null,
+    overlayVersion: null,
+    overlayTarget: null,
+    ownerScope: "personal",
+    teamId: null,
+    providerImageId: null,
+    createdAt: "2026-11-10T00:00:00Z",
+    updatedAt: "2026-11-10T00:00:00Z",
+    preview: null,
+  };
+  window.localStorage.setItem("apex-studio.team-sync.server-url", "https://team.example");
+  window.localStorage.setItem("apex-studio.team-sync.active-team", "team-1");
+  vi.mocked(mediaLibrary).mockResolvedValue([image]);
+  vi.mocked(syncServiceAvailability).mockResolvedValue({
+    projectSync: true,
+    imageHosting: true,
+    inviteTracking: false,
+  });
+  vi.mocked(syncUploadLibraryImages).mockResolvedValue({
+    images: [{
+      id: "hosted-banner",
+      name: image.name,
+      clientId: image.id,
+      imageUrl: "https://images.example/banner.png",
+      hash: image.hash!,
+      altText: image.altText,
+      defaultLinkUrl: null,
+      ownerScope: "personal",
+      createdAt: image.createdAt,
+      reused: false,
+    }],
+    errors: [],
+  });
+
+  render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
+  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.selectOptions(await screen.findByRole("combobox", { name: "Choose an image from Image Library" }), image.id);
+  await user.click(screen.getByRole("button", { name: "Add library image" }));
+  await user.click(screen.getByRole("button", { name: "Upload missing images" }));
+  const imageUrl = await screen.findByLabelText("Public image URL") as HTMLInputElement;
+  await waitFor(() => expect(imageUrl.value).toBe("https://images.example/banner.png"));
+  expect(syncUploadLibraryImages).toHaveBeenCalledTimes(1);
+  expect(confirm).toHaveBeenCalledOnce();
+
+  await user.type(screen.getByLabelText("Click-through URL (optional)"), "https://erlcx.com/groups/123");
+  expect(imageUrl.value).toBe("https://images.example/banner.png");
+  expect(syncUploadLibraryImages).toHaveBeenCalledTimes(1);
 });
 
 it("reuses the same invite idempotency key after an ambiguous failure and remount", async () => {

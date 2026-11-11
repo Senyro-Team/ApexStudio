@@ -6,6 +6,7 @@ import {
   listAssets,
   mediaLibrary,
   syncImageLibrary,
+  syncUploadLibraryImages,
   type MediaLibraryItem,
 } from "./bridge";
 
@@ -80,4 +81,19 @@ it("loads and edits local library items while project assets are still loading",
   expect(await screen.findByText("Local banner")).toBeTruthy();
   await user.click(screen.getByRole("button", { name: "Add image URL" }));
   expect((screen.getByLabelText("Public image URL") as HTMLInputElement).disabled).toBe(false);
+});
+
+it("sends no public upload when the user declines the confirmation", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(window, "confirm").mockReturnValue(false);
+  vi.mocked(syncImageLibrary).mockResolvedValue({ images: [], errors: [] });
+  render(<MediaLibrary onBusy={vi.fn()} />);
+
+  expect(await screen.findByText("Local banner")).toBeTruthy();
+  expect((screen.getByLabelText("For uploads") as HTMLSelectElement).value).toBe("personal");
+  await user.click(screen.getByLabelText("Select for upload"));
+  await user.click(screen.getByRole("button", { name: "Upload 1" }));
+
+  expect(window.confirm).toHaveBeenCalledOnce();
+  expect(syncUploadLibraryImages).not.toHaveBeenCalled();
 });
