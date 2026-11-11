@@ -6,6 +6,7 @@ import {
   syncConnectionStatus,
   syncListMembers,
   syncProjects,
+  syncServiceAvailability,
   type SyncConnectionStatus,
 } from "./bridge";
 vi.mock("./bridge", () => ({
@@ -102,4 +103,22 @@ it("explains a zero transfer and records the manual sync", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Sync projects now" }));
   await screen.findAllByText("4 of 4 projects already up to date.");
   expect(screen.getByLabelText("Synchronization log").textContent).toContain("Manual");
+});
+
+it("keeps optional services independent and preserves manual fallbacks when one is unreachable", async () => {
+  vi.mocked(syncServiceAvailability).mockResolvedValue({
+    projectSync: true,
+    imageHosting: true,
+    inviteTracking: true,
+    imageHostingReachable: false,
+    inviteTrackingReachable: true,
+  });
+  render(<TeamSyncSettings onBusy={vi.fn()} />);
+
+  expect(await screen.findByText("Optional services")).toBeTruthy();
+  expect(await screen.findAllByText("Online")).toHaveLength(2);
+  expect(screen.getByText("Team project synchronization remains active.")).toBeTruthy();
+  expect(screen.getByText("Images stay local; you can still paste URLs from any image host.")).toBeTruthy();
+  expect(screen.getByText("Create tracked invite campaigns from the ERLCX post composer.")).toBeTruthy();
+  expect(screen.getByText("Unreachable")).toBeTruthy();
 });
