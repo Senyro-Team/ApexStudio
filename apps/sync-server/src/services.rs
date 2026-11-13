@@ -684,7 +684,13 @@ mod tests {
         team_id: Uuid,
     ) {
         let request = request.to_ascii_lowercase();
-        assert!(request.starts_with(&format!("{method} {path} http/1.1")));
+        let request_line = request.lines().next().unwrap_or_default();
+        assert!(
+            request_line.starts_with(&format!("{method} "))
+                && request_line.contains(path)
+                && request_line.ends_with("http/1.1"),
+            "unexpected upstream request line: {request_line}"
+        );
         assert!(request.contains("x-apex-service-key: service-key-never-exposed-1234567890"));
         assert!(request.contains(&format!("x-apex-user-id: {user_id}")));
         assert!(request.contains(&format!("x-apex-team-id: {team_id}")));
