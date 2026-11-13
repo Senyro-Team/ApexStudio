@@ -686,7 +686,7 @@ mod tests {
         let request = request.to_ascii_lowercase();
         let request_line = request.lines().next().unwrap_or_default();
         assert!(
-            request_line.starts_with(&format!("{method} "))
+            request_line.starts_with(&format!("{} ", method.to_ascii_lowercase()))
                 && request_line.contains(path)
                 && request_line.ends_with("http/1.1"),
             "unexpected upstream request line: {request_line}"
