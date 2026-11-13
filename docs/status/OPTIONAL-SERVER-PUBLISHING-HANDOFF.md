@@ -25,3 +25,11 @@ Date: 2026-11-11
 - Last source commit: `53eb314 docs: verify live invite campaign listing`.
 - Local branch contained 125 commits not present in `origin/main` and included `origin/main` at handoff time. The temporary branch therefore preserves the complete current local history, not just the handoff note.
 - The only untracked item at handoff time was `target-native-diagnostic/`; it was not staged or committed.
+
+## Review update (2026-11-13)
+
+- Re-ran the full desktop suite on this branch: 117 tests passed across 23 files. Focused Publishing, Media Library, Team Sync Settings, and Overlay Studio suites passed 31 tests across 4 files.
+- Sync Server passed all 5 unit tests and `cargo fmt --all --check`. `npm run build` passed; Vite still reports the Notes bundle size warning.
+- Source review confirms service routes call `membership_role` for team reads; image upload, image sharing, and invite creation additionally require a write-capable role. Service keys are held in the Sync Server configuration and forwarded server-to-service. The Image Provider and Invite Tracker compare their gateway key in constant time and scope queries by the asserted user/team identity.
+- The current Sync Server test suite does **not** exercise those route authorization checks against a database-backed membership or mock upstream. Add that coverage before treating gateway authorization as fully verified. The live test only confirmed the current team’s campaign list is empty; it did not verify rendering a populated list. No public image upload has been tested live.
+- The goal is still in progress. Resume with authorization integration coverage, then complete the remaining offline/manual-fallback and media-version/reuse checks listed above. Preserve the no-write live-test boundary unless a specific campaign or public upload test is explicitly approved.
