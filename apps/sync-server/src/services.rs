@@ -460,9 +460,26 @@ async fn proxy_json(
 #[cfg(test)]
 #[allow(clippy::expect_used)]
 mod tests {
-    use super::{has_safe_service_transport, is_private_service_origin, proxy_json};
-    use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
+    use super::{
+        create_invite_campaign, has_safe_service_transport, is_private_service_origin, list_images,
+        list_invite_campaigns, proxy_json, service_availability, set_image_scope, upload_images,
+        ImageQuery, ServiceConfig, ShareRequest,
+    };
+    use crate::{
+        auth::{ApiError, AuthUser},
+        AppState,
+    };
+    use axum::{
+        body::{to_bytes, Body},
+        extract::{Extension, Path, Query, Request, State},
+        http::StatusCode,
+        response::IntoResponse,
+        Json,
+    };
+    use sqlx::postgres::PgPoolOptions;
+    use std::{env, path::PathBuf, sync::Arc};
     use url::Url;
+    use uuid::Uuid;
 
     fn private_http_origin(value: &str) -> bool {
         is_private_service_origin(&Url::parse(value).expect("valid test URL"))
@@ -534,5 +551,218 @@ mod tests {
                 serde_json::from_slice(&body).expect("valid JSON error response");
             assert_eq!(body["error"], unavailable_code);
         }
+    }
+
+    struct MembershipFixture {
+        state: AppState,
+        team_id: Uuid,
+        other_team_id: Uuid,
+        owner_id: Uuid,
+        read_only_id: Uuid,
+        designer_id: Uuid,
+    }
+
+    async fn membership_fixture() -> Option<MembershipFixture> {
+        let database_url = match env::var("APEX_SYNC_TEST_DATABASE_URL") {
+            Ok(value) => value,
+            Err(_) => {
+                eprintln!("skipping database-backed service authorization test; APEX_SYNC_TEST_DATABASE_URL is not set");
+                return None;
+            }
+        };
+        let database = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&database_url)
+            .await
+            .expect("test PostgreSQL service should be reachable");
+        sqlx::query(
+            "CREATE TEMPORARY TABLE team_memberships (team_id UUID NOT NULL, user_id UUID NOT NULL, role TEXT NOT NULL, PRIMARY KEY(team_id, user_id))",
+        )
+        .execute(&database)
+        .await
+        .expect("temporary membership table should be created");
+
+        let team_id = Uuid::now_v7();
+        let other_team_id = Uuid::now_v7();
+        let owner_id = Uuid::now_v7();
+        let read_only_id = Uuid::now_v7();
+        let designer_id = Uuid::now_v7();
+        for (user_id, role) in [
+            (owner_id, "owner"),
+            (read_only_id, "read_only"),
+            (designer_id, "designer"),
+        ] {
+            sqlx::query("INSERT INTO team_memberships(team_id,user_id,role) VALUES ($1,$2,$3)")
+                .bind(team_id)
+                .bind(user_id)
+                .bind(role)
+                .execute(&database)
+                .await
+                .expect("team membership should be inserted");
+        }
+
+        Some(MembershipFixture {
+            state: AppState {
+                database,
+                bootstrap_token_hash: None,
+                password_hash_slots: Arc::new(tokio::sync::Semaphore::new(1)),
+                storage_dir: PathBuf::from("test-storage"),
+                max_blob_storage_bytes: 1024,
+                services: ServiceConfig::default(),
+            },
+            team_id,
+            other_team_id,
+            owner_id,
+            read_only_id,
+            designer_id,
+        })
+    }
+
+    fn assert_error_status<T>(result: Result<T, ApiError>, expected: StatusCode) {
+        let Err(error) = result else {
+            panic!("expected API error with status {expected}");
+        };
+        assert_eq!(error.into_response().status(), expected);
+    }
+
+    fn campaign_request() -> Request {
+        Request::builder()
+            .method("POST")
+            .header("content-type", "application/json")
+            .header("idempotency-key", Uuid::now_v7().to_string())
+            .body(Body::from("{}"))
+            .expect("valid test request")
+    }
+
+    #[tokio::test]
+    async fn service_gateway_enforces_team_membership_and_write_roles() {
+        let Some(fixture) = membership_fixture().await else {
+            return;
+        };
+        let MembershipFixture {
+            state,
+            team_id,
+            other_team_id,
+            owner_id,
+            read_only_id,
+            designer_id,
+        } = fixture;
+
+        let nonmember = AuthUser { id: owner_id };
+        assert_error_status(
+            service_availability(
+                State(state.clone()),
+                Extension(nonmember.clone()),
+                Path(other_team_id),
+            )
+            .await
+            .map(|_| ()),
+            StatusCode::FORBIDDEN,
+        );
+        assert_error_status(
+            list_invite_campaigns(
+                State(state.clone()),
+                Extension(nonmember.clone()),
+                Path(other_team_id),
+            )
+            .await,
+            StatusCode::FORBIDDEN,
+        );
+        assert_error_status(
+            list_images(
+                State(state.clone()),
+                Extension(nonmember),
+                Path(other_team_id),
+                Query(ImageQuery {
+                    scope: "available".to_owned(),
+                }),
+            )
+            .await,
+            StatusCode::FORBIDDEN,
+        );
+
+        let read_only = Extension(AuthUser { id: read_only_id });
+        assert_error_status(
+            list_invite_campaigns(State(state.clone()), read_only.clone(), Path(team_id)).await,
+            StatusCode::SERVICE_UNAVAILABLE,
+        );
+        assert_error_status(
+            list_images(
+                State(state.clone()),
+                read_only.clone(),
+                Path(team_id),
+                Query(ImageQuery {
+                    scope: "available".to_owned(),
+                }),
+            )
+            .await,
+            StatusCode::SERVICE_UNAVAILABLE,
+        );
+        assert_error_status(
+            create_invite_campaign(
+                State(state.clone()),
+                read_only.clone(),
+                Path(team_id),
+                campaign_request(),
+            )
+            .await,
+            StatusCode::FORBIDDEN,
+        );
+        assert_error_status(
+            upload_images(
+                State(state.clone()),
+                read_only.clone(),
+                Path(team_id),
+                Request::new(Body::empty()),
+            )
+            .await,
+            StatusCode::FORBIDDEN,
+        );
+        assert_error_status(
+            set_image_scope(
+                State(state.clone()),
+                read_only,
+                Path((team_id, Uuid::now_v7())),
+                Json(ShareRequest {
+                    scope: "team".to_owned(),
+                }),
+            )
+            .await,
+            StatusCode::FORBIDDEN,
+        );
+
+        let designer = Extension(AuthUser { id: designer_id });
+        assert_error_status(
+            create_invite_campaign(
+                State(state.clone()),
+                designer.clone(),
+                Path(team_id),
+                campaign_request(),
+            )
+            .await,
+            StatusCode::SERVICE_UNAVAILABLE,
+        );
+        assert_error_status(
+            upload_images(
+                State(state.clone()),
+                designer.clone(),
+                Path(team_id),
+                Request::new(Body::empty()),
+            )
+            .await,
+            StatusCode::SERVICE_UNAVAILABLE,
+        );
+        assert_error_status(
+            set_image_scope(
+                State(state),
+                designer,
+                Path((team_id, Uuid::now_v7())),
+                Json(ShareRequest {
+                    scope: "team".to_owned(),
+                }),
+            )
+            .await,
+            StatusCode::SERVICE_UNAVAILABLE,
+        );
     }
 }
