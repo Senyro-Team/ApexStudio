@@ -1004,7 +1004,7 @@ function AppContent() {
             </div>
           )}
           <footer className="page-footer">
-            <span>0.1.1</span>
+            <span>0.1.2</span>
             <button
               className="discord-link"
               type="button"
