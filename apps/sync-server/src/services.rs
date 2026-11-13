@@ -676,9 +676,15 @@ mod tests {
         )
     }
 
-    fn assert_scoped_gateway_request(request: &str, path: &str, user_id: Uuid, team_id: Uuid) {
+    fn assert_scoped_gateway_request(
+        request: &str,
+        method: &str,
+        path: &str,
+        user_id: Uuid,
+        team_id: Uuid,
+    ) {
         let request = request.to_ascii_lowercase();
-        assert!(request.starts_with(&format!("get {path} http/1.1")));
+        assert!(request.starts_with(&format!("{method} {path} http/1.1")));
         assert!(request.contains("x-apex-service-key: service-key-never-exposed-1234567890"));
         assert!(request.contains(&format!("x-apex-user-id: {user_id}")));
         assert!(request.contains(&format!("x-apex-team-id: {team_id}")));
@@ -728,6 +734,7 @@ mod tests {
             .expect("mock image provider thread should finish");
         assert_scoped_gateway_request(
             &image_request,
+            "GET",
             "/api/service/images?scope=team",
             user_id,
             team_id,
@@ -747,7 +754,128 @@ mod tests {
         let invite_request = invite_worker
             .join()
             .expect("mock invite tracker thread should finish");
-        assert_scoped_gateway_request(&invite_request, "/api/service/campaigns", user_id, team_id);
+        assert_scoped_gateway_request(
+            &invite_request,
+            "GET",
+            "/api/service/campaigns",
+            user_id,
+            team_id,
+        );
+    }
+
+    #[tokio::test]
+    async fn write_gateways_forward_scope_and_idempotency_to_the_correct_service() {
+        let Some(mut fixture) = membership_fixture().await else {
+            return;
+        };
+        let user_id = fixture.designer_id;
+        let team_id = fixture.team_id;
+        let image_id = Uuid::now_v7();
+        let (upload_provider, upload_worker) = mock_service(r#"{"ok":true}"#);
+        let (share_provider, share_worker) = mock_service(r#"{"ok":true}"#);
+        let (invite_tracker, invite_worker) = mock_service(r#"{"ok":true}"#);
+        fixture.state.services = ServiceConfig {
+            image_provider: Some(upload_provider),
+            invite_tracker: Some(invite_tracker),
+        };
+
+        let upload_request = Request::builder()
+            .method("POST")
+            .uri("/?scope=team")
+            .header(
+                "content-type",
+                "multipart/form-data; boundary=test-boundary",
+            )
+            .body(Body::from("--test-boundary--\r\n"))
+            .expect("valid image upload request");
+        let upload_response = match upload_images(
+            State(fixture.state.clone()),
+            Extension(AuthUser { id: user_id }),
+            Path(team_id),
+            upload_request,
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(_) => panic!("authorized image upload should be proxied"),
+        };
+        assert_provider_response_is_sanitized(upload_response, r#"{"ok":true}"#).await;
+        let upload_request = upload_worker
+            .join()
+            .expect("mock image provider thread should finish")
+            .to_ascii_lowercase();
+        assert_scoped_gateway_request(
+            &upload_request,
+            "POST",
+            "/api/service/images",
+            user_id,
+            team_id,
+        );
+        assert!(upload_request.contains("x-apex-scope: team"));
+        assert!(
+            upload_request.contains("content-type: multipart/form-data; boundary=test-boundary")
+        );
+
+        fixture.state.services.image_provider = Some(share_provider);
+        let share_response = match set_image_scope(
+            State(fixture.state.clone()),
+            Extension(AuthUser { id: user_id }),
+            Path((team_id, image_id)),
+            Json(ShareRequest {
+                scope: "team".to_owned(),
+            }),
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(_) => panic!("authorized image sharing update should be proxied"),
+        };
+        assert_provider_response_is_sanitized(share_response, r#"{"ok":true}"#).await;
+        let share_request = share_worker
+            .join()
+            .expect("mock image provider thread should finish")
+            .to_ascii_lowercase();
+        assert_scoped_gateway_request(
+            &share_request,
+            "PATCH",
+            &format!("/api/service/images/{image_id}/sharing"),
+            user_id,
+            team_id,
+        );
+        assert!(share_request.ends_with(r#"{"scope":"team"}"#));
+
+        let request_id = Uuid::now_v7();
+        let invite_request = Request::builder()
+            .method("POST")
+            .header("content-type", "application/json")
+            .header("idempotency-key", request_id.to_string())
+            .body(Body::from(r#"{"title":"Test campaign"}"#))
+            .expect("valid campaign request");
+        let invite_response = match create_invite_campaign(
+            State(fixture.state),
+            Extension(AuthUser { id: user_id }),
+            Path(team_id),
+            invite_request,
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(_) => panic!("authorized campaign creation should be proxied"),
+        };
+        assert_provider_response_is_sanitized(invite_response, r#"{"ok":true}"#).await;
+        let invite_request = invite_worker
+            .join()
+            .expect("mock invite tracker thread should finish")
+            .to_ascii_lowercase();
+        assert_scoped_gateway_request(
+            &invite_request,
+            "POST",
+            "/api/service/campaigns",
+            user_id,
+            team_id,
+        );
+        assert!(invite_request.contains(&format!("idempotency-key: {request_id}")));
+        assert!(invite_request.contains(r#"{"title":"test campaign"}"#));
     }
 
     #[tokio::test]
