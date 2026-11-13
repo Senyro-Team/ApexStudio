@@ -21,7 +21,7 @@ cargo build --locked -p apex-desktop --features custom-protocol
 .\target\debug\apex-desktop.exe
 ```
 
-The Rust workspace also contains `apex-studio-cli`. Run `cargo run -p apex-cli` for the interactive terminal interface, or use `cargo run -p apex-cli -- projects list --json` for scriptable output. The CLI opens the same local workspace as the desktop app; pass `--workspace <PATH>` to use a disposable or alternate workspace. The Windows installer offers the CLI as a selectable component and adds its install folder to the current user's `PATH`. After installation, open a new PowerShell window and run `apex-studio-cli`; shell completions are available with `apex-studio-cli completions powershell`.
+The Rust workspace also contains `apex-studio-cli`. Run `cargo run -p apex-cli` for the interactive terminal interface, or use `cargo run -p apex-cli -- projects list --json` for scriptable output. The CLI opens the same local workspace as the desktop app; pass `--workspace <PATH>` to use a disposable or alternate workspace. The Windows installer offers the CLI as a selectable component and adds its install folder to the current user's `PATH`. After installation, open a new PowerShell window and run `apex-studio-cli`; shell completions are available with `apex-studio-cli completions powershell`. Its `sync setup` command creates the first account on an already deployed server; it does not install server software.
 
 The native Windows build and project/file persistence across restart have been verified. Current check results are available in the repository's GitHub Actions workflow.
 
@@ -34,6 +34,16 @@ npm run build:windows-installer
 ```
 
 The installer is written to `target/release/bundle/inno/`. It includes the ERLCX Chrome extension package, offers Roblox/Group Revenue and ERLCX setup choices, and installs per-user. Release signing is not configured yet.
+
+The Windows installer installs the Apex Studio client and optional CLI only. It does not install Docker, the Sync Server, Image Provider, or Invite Tracker. Most users only need Apex Studio: their team administrator provides the server address and an invitation. Administrators who want to self-host should follow [Server deployment](#server-deployment).
+
+## Server deployment
+
+This repository includes the Apex Sync Server source and Docker Compose files in [`apps/sync-server`](apps/sync-server/README.md). The standard deployment uses Linux, Docker Compose, a domain, and HTTPS through Caddy. A separate [Cloudflare Tunnel guide](apps/sync-server/TUNNEL.md) covers a temporary PC deployment without incoming ports.
+
+Image Provider and Invite Tracker are optional services integrated through the Sync Server gateway. Their source code and deployment instructions are outside this repository and are not included in the Apex Studio installer. Leave their gateway URLs and keys unset to disable them. An administrator who wants these features must deploy each service from its own project before configuring it on the Sync Server.
+
+Server users do not install these services on their own computers. They connect to an administrator-provided server address and sign in or accept a team invitation from Apex Studio's **Server** area. Do not store important team data on a self-hosted server until an independently tested backup and restore process is in place; a tested backup/restore tool is not included yet.
 
 ## Current behaviour
 
