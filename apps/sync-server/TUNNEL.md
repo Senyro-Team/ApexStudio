@@ -11,9 +11,10 @@ up to three files per service.
 
 The server API includes one-time first-owner setup, password sign-in, invitations,
 team roles, revisioned project data, and content-addressed file transfer. The
-Apex Studio desktop client is not yet connected to it. Do not store real team
-work until client integration and a tested PostgreSQL/blob backup and restore
-process are available. The API routes and current limits are in
+current Apex Studio desktop client connects to the server from its **Server**
+area. This tunnel setup is intended for temporary or test deployments. Do not
+store important team work until a tested PostgreSQL/blob backup and restore
+process is available. The API routes and current limits are in
 [`docs/planning/TEAM-SYNC-API.md`](../../docs/planning/TEAM-SYNC-API.md).
 
 ## 1. Create a remotely managed tunnel
@@ -75,13 +76,25 @@ The local `.env` files are ignored by Git and excluded from Docker build context
 Tokens in environment variables are still visible to users with Docker access.
 Keep the file private; rotate the tunnel token in Cloudflare if it is exposed.
 
-After starting the API, send `POST /api/v1/setup` once with the bootstrap token,
-team name, Owner email/display name, and a 12–128 character password. The
-response contains the first session token. Remove `APEX_SYNC_BOOTSTRAP_TOKEN`
-from `.env.tunnel` and restart the API container after setup. Setup becomes
-unavailable after the first successful account creation even if the token is
-still configured. Keep session tokens private; use them only as bearer tokens
-over HTTPS. A Cloudflare Tunnel does not itself authenticate API requests.
+After starting the API, create the first Owner exactly once. From a Windows
+administrator workstation with the Apex Studio CLI installed, run:
+
+```powershell
+apex-studio-cli sync setup https://sync.your-domain.example `
+  --team-name "Your team" `
+  --email "owner@example.org" `
+  --display-name "Team owner"
+```
+
+The CLI securely prompts for the bootstrap token and Owner password, then saves
+the resulting desktop session in Windows Credential Manager. Alternatively,
+send `POST /api/v1/setup` with the bootstrap token, team name, Owner
+email/display name, and a 12–128 character password. Setup becomes unavailable
+after the first successful account creation even if the token is still
+configured. Remove `APEX_SYNC_BOOTSTRAP_TOKEN` from `.env.tunnel` and restart
+the API container after setup. Keep session tokens private; use them only as
+bearer tokens over HTTPS. A Cloudflare Tunnel does not itself authenticate API
+requests.
 
 ## 3. Start
 
@@ -139,6 +152,11 @@ A 502 response usually means the connector cannot reach `http://api:8080`:
 check the route's type/URL and API logs. An unhealthy database can prevent the API
 from starting. Check `database` logs without sharing credentials. A healthy tunnel
 status only proves the connector is online, not that the API is ready.
+
+This Compose file starts PostgreSQL, the Sync Server API, and the Cloudflare
+Tunnel connector. It does not install Image Provider or Invite Tracker; those
+are separately maintained optional services. See the [Sync Server deployment
+README](README.md) for their gateway configuration.
 
 To update the connector image, run `docker compose --env-file .env.tunnel -f
 compose.tunnel.yaml pull cloudflared`, then repeat the `up --build -d` command.

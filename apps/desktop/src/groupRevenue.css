@@ -27,6 +27,10 @@
 .group-revenue-cards small,.group-revenue-comparison small { color:var(--muted); }
 .group-revenue-map-list { display:grid; gap:.6rem; }
 .group-revenue-map-list label { display:grid; grid-template-columns:minmax(150px,.65fr) minmax(200px,1.35fr); align-items:center; gap:1rem; color:var(--muted); font-size:.82rem; }
+.group-revenue-map-list label > span { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; column-gap:.65rem; row-gap:.25rem; }
+.group-revenue-map-list label > span input[type="checkbox"] { grid-row:1 / span 2; margin:0; }
+.group-revenue-map-list label > span strong { overflow-wrap:anywhere; }
+.group-revenue-map-list label > span small { grid-column:2; color:var(--muted); }
 .group-revenue-map-list label strong { color:var(--text); font-variant-numeric:tabular-nums; }
 .group-revenue-comparison { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.8rem; margin-top:.8rem; }
 .group-revenue-table-wrap { overflow:auto; }

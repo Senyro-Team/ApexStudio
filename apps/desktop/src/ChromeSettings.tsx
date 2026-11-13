@@ -154,8 +154,17 @@ export default function ChromeSettings({
         </div>
       </form>
       <p className="settings-help">
-        Chrome, Opera GX, Edge and other Chromium browsers are supported. Set the browser’s user data folder and profile name (usually Default) to open the correct signed-in profile. Saving Opera GX settings asks Windows to approve its required native messaging registration.
+        Chrome, Opera GX, Edge and other Chromium browsers are supported. Set
+        the browser’s user data folder and profile name (usually Default) to
+        open the correct signed-in profile. Saving Opera GX settings asks
+        Windows to approve its required native messaging registration.
       </p>
+      {status?.state === "checking" && <p role="status">{status.message}</p>}
+      {status?.state === "failed" && (
+        <p role="alert" className="error">
+          {status.message}
+        </p>
+      )}
       <p role="status">
         {status?.connected
           ? "Browser connected"

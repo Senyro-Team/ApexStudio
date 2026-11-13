@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/project.schema.json",
+  "title": "Apex Studio project v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "description", "tags", "vehicles", "referenceLinks", "deadline", "createdAt", "updatedAt", "archived", "assetCount"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "vehicles": { "type": "array", "items": { "type": "string" } },
+    "referenceLinks": { "type": "array", "items": { "type": "string" } },
+    "deadline": { "type": ["string", "null"] },
+    "createdAt": { "type": "string" },
+    "updatedAt": { "type": "string" },
+    "archived": { "type": "boolean" },
+    "assetCount": { "type": "integer", "minimum": 0 }
+  }
+}

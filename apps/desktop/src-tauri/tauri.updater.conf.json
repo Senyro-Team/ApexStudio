@@ -5,6 +5,7 @@
     "createUpdaterArtifacts": true,
     "resources": {
       "../../../target/release/apex-chrome-bridge.exe": "apex-chrome-bridge.exe",
+      "../../../target/release/apex-studio-cli.exe": "apex-studio-cli.exe",
       "../../../dist/apex-erlcx-extension.zip": "apex-erlcx-extension.zip"
     },
     "windows": {

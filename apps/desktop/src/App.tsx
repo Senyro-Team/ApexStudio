@@ -5,7 +5,6 @@ import RobloxSettings from "./RobloxSettings";
 import TeamSyncSettings from "./TeamSyncSettings";
 import UpdaterSettings from "./UpdaterSettings";
 import Onboarding from "./Onboarding";
-import useTeamProjectSync from "./useTeamProjectSync";
 import Statistics, { StatisticsSettings, useStatistics } from "./Statistics";
 import { DashboardWidgets, DashboardWidgetEditor, loadDashboardLayout, saveDashboardLayout, type DashboardLayout } from "./DashboardWidgets";
 import { loadWallpaper, saveWallpaper } from "./wallpaper";
@@ -45,6 +44,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   HardDrive,
+  Server,
   ArrowUpRight,
   ChartNoAxesCombined,
   ImagePlus,
@@ -69,6 +69,7 @@ const sections = [
   { name: "Roblox", icon: Upload },
   { name: "ERLCX", icon: ArrowUpRight },
   { name: "Statistics", icon: ChartNoAxesCombined },
+  { name: "Server", icon: Server },
   { name: "Settings", icon: Settings },
 ] as const;
 type Section = (typeof sections)[number]["name"];
@@ -82,7 +83,6 @@ const settingsCategories = [
   ["roblox", "Roblox"],
   ["chrome", "Chrome"],
   ["statistics", "Statistics"],
-  ["team-sync", "Team sync"],
   ["backups", "Backups"],
   ["workspace", "Workspace"],
   ["storage", "Storage"],
@@ -418,7 +418,6 @@ function AppContent() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [navigationLocked, setNavigationLocked] = useState(false);
-  useTeamProjectSync(navigationLocked);
   const [robloxLock, setRobloxLock] = useState(false),
     [chromeLock, setChromeLock] = useState(false),
     [backupLock, setBackupLock] = useState(false),
@@ -692,6 +691,9 @@ function AppContent() {
               )}
             </>
           )}
+          {section === "Server" && (
+            <TeamSyncSettings onBusy={setTeamSyncLock} />
+          )}
           {section === "Settings" && (
             <div className="settings-content">
               <nav className="settings-nav" aria-label="Settings categories">
@@ -951,7 +953,6 @@ function AppContent() {
               <RobloxSettings onBusy={setRobloxLock} />
               <ChromeSettings onBusy={setChromeLock} />
               <StatisticsSettings stats={stats} />
-              <TeamSyncSettings onBusy={setTeamSyncLock} />
               <BackupTools
                 onBusy={setBackupLock}
                 onRestore={() => {

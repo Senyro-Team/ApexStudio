@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/vehicle-catalogue.schema.json",
+  "title": "Apex Studio ER:LC vehicle search results v1",
+  "type": "array",
+  "items": {
+    "type": "object", "additionalProperties": false,
+    "required": ["id", "team", "name", "source", "liverySupport", "bodyStatus", "windowStatus", "notes", "slots"],
+    "properties": {
+      "id": { "type": "string" }, "team": { "type": "string" },
+      "name": { "type": "string" }, "source": { "type": "string" },
+      "liverySupport": { "type": "string" }, "bodyStatus": { "type": ["string", "null"] },
+      "windowStatus": { "type": ["string", "null"] },
+      "notes": { "type": "array", "items": { "type": "string" } },
+      "slots": {
+        "type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["key", "status", "kind"],
+          "properties": { "key": { "type": "string" }, "status": { "type": "string" }, "kind": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

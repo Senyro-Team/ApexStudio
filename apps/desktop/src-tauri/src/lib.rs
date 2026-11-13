@@ -1,4 +1,4 @@
-use apex_core::{WorkspaceInfo, WorkspaceRepository};
+use apex_core::WorkspaceInfo;
 use apex_storage::Workspace;
 use tauri::{Emitter, Manager};
 mod assets;
@@ -7,7 +7,9 @@ mod browser_bridge;
 mod chrome_protocol;
 mod group_revenue;
 mod installer_resources;
+mod media_library;
 mod notes;
+mod overlays;
 mod posts;
 mod projects;
 mod publishing;
@@ -175,14 +177,15 @@ async fn workspace_info(
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<WorkspaceInfo, CommandError> {
     let workspace = workspace.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || workspace.info())
-        .await
-        .map_err(|_| CommandError {
-            code: "task_failed".into(),
-            message: "The workspace task could not finish. Restart Apex Studio and try again."
-                .into(),
-        })?
-        .map_err(Into::into)
+    tauri::async_runtime::spawn_blocking(move || {
+        apex_application::ApplicationServices::new(workspace).workspace_info()
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "task_failed".into(),
+        message: "The workspace task could not finish. Restart Apex Studio and try again.".into(),
+    })?
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -191,14 +194,15 @@ async fn rename_workspace(
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<WorkspaceInfo, CommandError> {
     let workspace = workspace.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || apex_core::rename_workspace(&workspace, &name))
-        .await
-        .map_err(|_| CommandError {
-            code: "task_failed".into(),
-            message: "The workspace task could not finish. Restart Apex Studio and try again."
-                .into(),
-        })?
-        .map_err(Into::into)
+    tauri::async_runtime::spawn_blocking(move || {
+        apex_application::ApplicationServices::new(workspace).rename_workspace(&name)
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "task_failed".into(),
+        message: "The workspace task could not finish. Restart Apex Studio and try again.".into(),
+    })?
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -333,11 +337,15 @@ pub fn run() {
             browser_bridge::prepare_browser,
             browser_bridge::control_browser,
             posts::list_posts,
+            posts::list_markdown_presets,
+            posts::save_markdown_preset,
+            posts::delete_markdown_preset,
             posts::create_post,
             posts::post_draft,
             posts::save_post,
             posts::post_sources,
             posts::pick_post_images,
+            posts::import_overlay_previews,
             posts::pin_post_images,
             posts::release_post_images,
             posts::export_post,
@@ -346,6 +354,10 @@ pub fn run() {
             publishing::save_publishing,
             publishing::pick_publishing_images,
             publishing::export_publishing,
+            overlays::list_overlay_templates,
+            overlays::overlay_image_data,
+            overlays::save_overlay_template,
+            overlays::delete_overlay_template,
             workspace_info,
             workspace_startup_status,
             retry_workspace_startup,
@@ -361,7 +373,15 @@ pub fn run() {
             group_revenue::remove_roblox_group_revenue,
             browser_bridge::start_statistics_browser,
             browser_bridge::statistics_browser_status,
+            browser_bridge::start_group_revenue_browser,
+            browser_bridge::group_revenue_browser_status,
             team_sync::sync_check_server,
+            team_sync::sync_service_availability,
+            team_sync::sync_image_library,
+            team_sync::sync_list_invite_campaigns,
+            team_sync::sync_create_invite_campaign,
+            team_sync::sync_upload_library_images,
+            team_sync::sync_set_library_image_scope,
             team_sync::sync_connection_status,
             team_sync::sync_sign_in,
             team_sync::sync_accept_invitation,
@@ -384,6 +404,12 @@ pub fn run() {
             projects::list_assets,
             projects::import_assets,
             projects::save_asset_copy,
+            media_library::media_library,
+            media_library::pick_media_library_image,
+            media_library::add_media_library_asset,
+            media_library::add_media_library_url,
+            media_library::update_media_library_item,
+            media_library::delete_media_library_item,
             projects::vehicle_catalogue,
             notes::list_notes,
             notes::create_note,

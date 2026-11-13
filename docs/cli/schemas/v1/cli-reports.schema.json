@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/cli-reports.schema.json",
+  "title": "Apex Studio CLI operation reports v1",
+  "$defs": {
+    "action": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ok", "message"],
+      "properties": { "ok": { "const": true }, "message": { "type": "string" } }
+    },
+    "packagePreview": {
+      "type": "object", "additionalProperties": false,
+      "required": ["title", "assets", "notes", "bytes", "kind"],
+      "properties": {
+        "title": { "type": "string" }, "assets": { "type": "integer", "minimum": 0 },
+        "notes": { "type": "integer", "minimum": 0 }, "bytes": { "type": "integer", "minimum": 0 },
+        "kind": { "type": "string", "enum": ["project", "workspace"] }
+      }
+    },
+    "packageImport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["project", "archive"],
+      "properties": { "project": { "type": "object" }, "archive": { "$ref": "#/$defs/packagePreview" } }
+    },
+    "workspaceRestore": {
+      "type": "object", "additionalProperties": false,
+      "required": ["workspace", "safetyBackup", "archive"],
+      "properties": {
+        "workspace": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "root", "schemaVersion", "managedFileCount"],
+          "properties": {
+            "name": { "type": "string" }, "root": { "type": "string" },
+            "schemaVersion": { "type": "integer", "minimum": 1 }, "managedFileCount": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "safetyBackup": { "type": "string" }, "archive": { "$ref": "#/$defs/packagePreview" }
+      }
+    },
+    "importReport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["imported", "skipped", "failed"],
+      "properties": {
+        "imported": { "type": "array", "items": { "$ref": "#/$defs/asset" } },
+        "skipped": { "type": "array", "items": { "type": "string" } },
+        "failed": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "asset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "projectId", "name", "hash", "size", "importedAt", "preview"],
+      "properties": {
+        "id": { "type": "string" }, "projectId": { "type": "string" }, "name": { "type": "string" },
+        "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "size": { "type": "integer", "minimum": 0 },
+        "importedAt": { "type": "string" }, "preview": { "type": ["string", "null"] }
+      }
+    },
+    "postCreate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "draft"],
+      "properties": { "id": { "type": "string" }, "draft": { "type": "object" } }
+    },
+    "postHandoff": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ok", "postId"],
+      "properties": { "ok": { "const": true }, "postId": { "type": "string" } }
+    },
+    "statisticsProfile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profileId"], "properties": { "profileId": { "type": ["string", "null"] } }
+    },
+    "doubleUploadSetting": {
+      "type": "object", "additionalProperties": false,
+      "required": ["doubleUpload"], "properties": { "doubleUpload": { "type": "boolean" } }
+    },
+    "credentialsSet": {
+      "type": "object", "additionalProperties": false,
+      "required": ["configured", "accountId"],
+      "properties": { "configured": { "const": true }, "accountId": { "type": "string" } }
+    },
+    "liveryUploads": {
+      "type": "object", "additionalProperties": false,
+      "required": ["folderId", "name", "vehicle", "accountId", "textures"],
+      "properties": {
+        "folderId": { "type": "string" }, "name": { "type": "string" }, "vehicle": { "type": "string" },
+        "accountId": { "type": "string" }, "textures": { "type": "array", "items": { "$ref": "#/$defs/uploadTexture" } }
+      }
+    },
+    "uploadTexture": {
+      "type": "object", "additionalProperties": false,
+      "required": ["assetId", "name", "hash", "side", "upload"],
+      "properties": {
+        "assetId": { "type": "string" }, "name": { "type": "string" },
+        "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "side": { "type": "string" },
+        "upload": { "anyOf": [{ "$ref": "#/$defs/decalUpload" }, { "type": "null" }] }
+      }
+    },
+    "decalUpload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["accountId", "hash", "state", "operation", "assetId", "moderation", "message"],
+      "properties": {
+        "accountId": { "type": "string" }, "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "state": { "type": "string" }, "operation": { "type": ["string", "null"] },
+        "assetId": { "type": ["string", "null"] }, "moderation": { "type": "string" }, "message": { "type": "string" }
+      }
+    },
+    "postSource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["folderId", "vehicle", "state"],
+      "properties": { "folderId": { "type": "string" }, "vehicle": { "type": "string" }, "state": { "type": "string" } }
+    },
+    "publishingPreview": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hash", "name", "size", "preview"],
+      "properties": {
+        "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "name": { "type": "string" },
+        "size": { "type": "integer", "minimum": 0 }, "preview": { "type": ["string", "null"] }
+      }
+    },
+    "codesExport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "posts", "liveries", "codes", "missing"],
+      "properties": {
+        "path": { "type": "string" }, "posts": { "type": "integer", "minimum": 0 },
+        "liveries": { "type": "integer", "minimum": 0 }, "codes": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "revenueGroupSummary": {
+      "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["group", "sales"],
+        "properties": { "group": { "type": "object" }, "sales": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "revenueRemove": {
+      "type": "object", "additionalProperties": false,
+      "required": ["removedGroupId"], "properties": { "removedGroupId": { "type": "string" } }
+    },
+    "revenueCsvPreview": {
+      "type": "object", "additionalProperties": false,
+      "required": ["groupId", "files", "rows", "skippedRows", "potentialDuplicates", "fromUtc", "toUtc", "warnings"],
+      "properties": {
+        "groupId": { "type": "string" }, "files": { "type": "array", "items": { "type": "string" } },
+        "rows": { "type": "integer", "minimum": 0 }, "skippedRows": { "type": "integer", "minimum": 0 },
+        "potentialDuplicates": { "type": "integer", "minimum": 0 }, "fromUtc": { "type": ["string", "null"] },
+        "toUtc": { "type": ["string", "null"] }, "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "revenueCsvImport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["preview", "import"],
+      "properties": {
+        "preview": { "$ref": "#/$defs/revenueCsvPreview" },
+        "import": {
+          "type": "object", "additionalProperties": false,
+          "required": ["inserted", "duplicates"],
+          "properties": {
+            "inserted": { "type": "integer", "minimum": 0 },
+            "duplicates": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "revenueGroupDetails": {
+      "type": "object", "additionalProperties": false,
+      "required": ["group", "sales", "passes"],
+      "properties": {
+        "group": { "type": "object" }, "sales": { "type": "array", "items": { "type": "object" } },
+        "passes": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "syncResolution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["projectId", "resolution", "previousRevision"],
+      "properties": {
+        "projectId": { "type": "string" }, "resolution": { "type": "string", "enum": ["local", "server"] },
+        "previousRevision": { "type": "integer" }
+      }
+    },
+    "syncRun": {
+      "type": "object", "additionalProperties": false,
+      "required": ["preview", "report"],
+      "properties": {
+        "preview": {
+          "type": "object", "additionalProperties": false,
+          "required": ["team", "remoteProjects", "linkedProjects"],
+          "properties": {
+            "team": { "type": "object" },
+            "remoteProjects": {
+              "type": "array", "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["id", "name"], "properties": { "id": { "type": "string" }, "name": { "type": "string" } }
+              }
+            },
+            "linkedProjects": { "type": "array", "items": { "type": "object" } }
+          }
+        },
+        "report": {
+          "type": "object", "additionalProperties": false,
+          "required": ["uploaded", "downloaded", "checked", "upToDate", "sharedLocal", "remoteProjects", "errors", "entries"],
+          "properties": {
+            "uploaded": { "type": "integer", "minimum": 0 }, "downloaded": { "type": "integer", "minimum": 0 },
+            "checked": { "type": "integer", "minimum": 0 }, "upToDate": { "type": "integer", "minimum": 0 },
+            "sharedLocal": { "type": "integer", "minimum": 0 }, "remoteProjects": { "type": "integer", "minimum": 0 },
+            "errors": { "type": "array", "items": { "type": "string" } },
+            "entries": { "type": "array", "items": { "type": "object" } }
+          }
+        }
+      }
+    },
+    "robloxLivery": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "projectId", "projectName", "name", "vehicleId", "textures", "uploaded"],
+      "properties": {
+        "id": { "type": "string" }, "projectId": { "type": "string" }, "projectName": { "type": "string" },
+        "name": { "type": "string" }, "vehicleId": { "type": ["string", "null"] },
+        "textures": { "type": "integer", "minimum": 0 }, "uploaded": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "robloxCredentials": {
+      "type": "object", "additionalProperties": false,
+      "required": ["configured", "accountId"],
+      "properties": { "configured": { "type": "boolean" }, "accountId": { "type": ["string", "null"] } }
+    },
+    "robloxBatchCreated": {
+      "type": "object", "additionalProperties": false,
+      "required": ["batchId", "accountId", "liveries", "textures", "reusedIds", "uploadPasses", "doubleUpload"],
+      "properties": {
+        "batchId": { "type": "string" }, "accountId": { "type": "string" },
+        "liveries": { "type": "integer", "minimum": 0 }, "textures": { "type": "integer", "minimum": 0 },
+        "reusedIds": { "type": "integer", "minimum": 0 }, "uploadPasses": { "type": "integer", "minimum": 0 },
+        "doubleUpload": { "type": "boolean" }
+      }
+    },
+    "liveryImport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["folderId", "name", "vehicleId", "skippedEntries", "assets"],
+      "properties": {
+        "folderId": { "type": "string" }, "name": { "type": "string" }, "vehicleId": { "type": "string" },
+        "skippedEntries": { "type": "integer", "minimum": 0 }, "assets": { "type": "array", "items": { "$ref": "#/$defs/asset" } }
+      }
+    },
+    "trashCreated": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ok", "trashId", "preview"],
+      "properties": {
+        "ok": { "const": true }, "trashId": { "type": "string" },
+        "preview": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "files", "folders"],
+          "properties": {
+            "name": { "type": "string" }, "files": { "type": "integer", "minimum": 0 },
+            "folders": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "statisticsMetric": {
+      "type": "object", "additionalProperties": false,
+      "required": ["total", "knownPosts"],
+      "properties": { "total": { "type": ["integer", "null"], "minimum": 0 }, "knownPosts": { "type": "integer", "minimum": 0 } }
+    },
+    "statisticsSummary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profileId", "snapshotCount", "collectedAt", "freshness", "previousCollectedAt", "creatorSalesCollectedAt", "creatorSalesFreshness", "postCount", "views", "likes", "copies", "favourites", "ratingCount", "ratingAverage", "changes", "topPosts"],
+      "properties": {
+        "profileId": { "type": ["string", "null"] }, "snapshotCount": { "type": "integer", "minimum": 0 },
+        "collectedAt": { "type": ["string", "null"] }, "freshness": { "type": "string" },
+        "previousCollectedAt": { "type": ["string", "null"] }, "creatorSalesCollectedAt": { "type": ["string", "null"] },
+        "creatorSalesFreshness": { "type": "string" }, "postCount": { "type": "integer", "minimum": 0 },
+        "views": { "$ref": "#/$defs/statisticsMetric" }, "likes": { "$ref": "#/$defs/statisticsMetric" },
+        "copies": { "$ref": "#/$defs/statisticsMetric" }, "favourites": { "$ref": "#/$defs/statisticsMetric" },
+        "ratingCount": { "$ref": "#/$defs/statisticsMetric" }, "ratingAverage": { "type": ["number", "null"], "minimum": 0 },
+        "changes": {
+          "type": "object", "additionalProperties": false,
+          "required": ["views", "likes", "copies", "favourites"],
+          "properties": {
+            "views": { "type": ["string", "null"] }, "likes": { "type": ["string", "null"] },
+            "copies": { "type": ["string", "null"] }, "favourites": { "type": ["string", "null"] }
+          }
+        },
+        "topPosts": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["bundleId", "title", "views", "likes", "copies", "favourites", "ratingCount", "ratingAverage"],
+            "properties": {
+              "bundleId": { "type": "integer", "minimum": 0 }, "title": { "type": "string" },
+              "views": { "type": ["integer", "null"], "minimum": 0 }, "likes": { "type": ["integer", "null"], "minimum": 0 },
+              "copies": { "type": ["integer", "null"], "minimum": 0 }, "favourites": { "type": ["integer", "null"], "minimum": 0 },
+              "ratingCount": { "type": ["integer", "null"], "minimum": 0 }, "ratingAverage": { "type": ["number", "null"], "minimum": 0 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

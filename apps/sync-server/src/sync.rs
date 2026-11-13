@@ -955,8 +955,7 @@ fn has_upload_capacity(
     requested_bytes: i64,
     storage_limit: i64,
 ) -> bool {
-    pending_uploads >= 0
-        && pending_uploads < MAX_PENDING_BLOB_UPLOADS
+    (0..MAX_PENDING_BLOB_UPLOADS).contains(&pending_uploads)
         && pending_bytes >= 0
         && pending_bytes
             .checked_add(requested_bytes)

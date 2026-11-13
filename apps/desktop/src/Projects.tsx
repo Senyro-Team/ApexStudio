@@ -1,10 +1,11 @@
 import AssetPreview from "./AssetPreview";
 import Trash from "./Trash";
+import MediaLibrary from "./MediaLibrary";
 import AssetBrowser from "./AssetBrowser";
 import { lazy, Suspense } from "react";
 const Notes = lazy(() => import("./Notes"));
 import { ArchiveImport, ProjectExport } from "./Packages";
-import { savedSyncDestination } from "./useTeamProjectSync";
+import { savedSyncDestination } from "./teamSyncDestination";
 import ProjectSyncStatus from "./ProjectSyncStatus";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -150,7 +151,6 @@ function Editor({
         teamId: syncDestination.teamId,
       } : undefined;
       onSave(sync ? await saveProject(project?.id ?? null, values, sync) : await saveProject(project?.id ?? null, values));
-      window.dispatchEvent(new Event("apex-project-sync-request"));
     } catch (error) {
       setError(errorMessage(error));
     } finally {
@@ -319,10 +319,10 @@ function Editor({
               Synchronize with team server
             </label>
             <p className="field-hint">
-              {syncEnabled ? "Share this project's files, folders, notes and details with your team." : "Keep this project on this device. Turning sync off keeps existing copies on the server and other devices."}
+              {syncEnabled ? "Include this project's files, folders, notes and details in manual team sync. Linking it does not transfer content." : "Keep this project on this device. Turning sync off keeps existing copies on the server and other devices."}
             </p>
             {(syncBinding?.origin || destination.serverUrl) && <p className="field-hint">Server: {syncBinding?.origin ?? destination.serverUrl}</p>}
-            {!syncBinding && (!destination.serverUrl || !destination.teamId) && <p className="field-hint">Sign in and choose a team in Settings → Team sync to enable sharing.</p>}
+            {!syncBinding && (!destination.serverUrl || !destination.teamId) && <p className="field-hint">Sign in and choose a team in Server → Team sync to enable sharing.</p>}
             {syncLoading && <p role="status">Loading sync setting…</p>}
             {syncError && <p role="alert" className="inline-error">{syncError}</p>}
           </div>
@@ -354,6 +354,7 @@ export default function Projects({
   onEditingChange: (editing: boolean) => void;
 }) {
   const [showTrash, setShowTrash] = useState(false);
+  const [showMediaLibrary, setShowMediaLibrary] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [syncBindings, setSyncBindings] = useState<Record<string, ProjectSyncSettings>>({});
   const [projectView, setProjectView] = useState<"own" | "shared">("own");
@@ -424,6 +425,7 @@ export default function Projects({
       setConfirmDelete(false);
     }
     setShowTrash(false);
+    setShowMediaLibrary(false);
     setQuery("");
     setInspector(null);
   }, [section]);
@@ -942,14 +944,21 @@ export default function Projects({
         <>
           <header className="page-heading">
             <h1>Assets</h1>
-            <button
-              className="secondary"
-              onClick={() => setShowTrash((v) => !v)}
-            >
-              {showTrash ? "All assets" : "Trash"}
-            </button>
+            <div className="button-row">
+              <button className={showMediaLibrary ? "secondary" : "primary"} onClick={() => { setShowMediaLibrary(false); setShowTrash(false); }}>
+                Project assets
+              </button>
+              <button className={showMediaLibrary ? "primary" : "secondary"} onClick={() => { setShowMediaLibrary(true); setShowTrash(false); }}>
+                Image Library
+              </button>
+              <button className={showTrash ? "primary" : "secondary"} onClick={() => { setShowTrash((v) => !v); setShowMediaLibrary(false); }}>
+                {showTrash ? "Close trash" : "Trash"}
+              </button>
+            </div>
           </header>
-          {showTrash ? (
+          {showMediaLibrary ? (
+            <MediaLibrary onBusy={setNoteDirty} />
+          ) : showTrash ? (
             <Trash
               onBusy={setNoteDirty}
               onChange={() => {

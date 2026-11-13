@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod auth;
+mod services;
 mod sync;
 
 use std::{
@@ -33,6 +34,7 @@ pub struct AppState {
     pub password_hash_slots: Arc<Semaphore>,
     pub storage_dir: PathBuf,
     pub max_blob_storage_bytes: i64,
+    pub services: services::ServiceConfig,
 }
 
 #[derive(Serialize)]
@@ -105,6 +107,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         password_hash_slots: Arc::new(Semaphore::new(4)),
         storage_dir,
         max_blob_storage_bytes,
+        services: services::ServiceConfig::from_env()?,
     };
     let app = Router::new()
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024 + 128 * 1024))
@@ -113,6 +116,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .route("/api/v1/server-info", get(server_info))
         .merge(auth::public_routes())
         .merge(auth::private_routes(state.clone()))
+        .merge(auth::protect(services::private_routes(), state.clone()))
         .merge(auth::protect(sync::private_routes(), state.clone()))
         .layer(middleware::from_fn(log_failed_requests))
         .with_state(state);

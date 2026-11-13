@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/note.schema.json",
+  "title": "Apex Studio note v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "projectId", "title", "document", "markdown", "revision", "archived", "createdAt", "updatedAt"],
+  "properties": {
+    "id": { "type": "string" },
+    "projectId": { "type": ["string", "null"] },
+    "title": { "type": "string" },
+    "document": {
+      "type": "object",
+      "required": ["type", "content"],
+      "properties": {
+        "type": { "const": "doc" },
+        "content": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "markdown": { "type": "string" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "archived": { "type": "boolean" },
+    "createdAt": { "type": "string" },
+    "updatedAt": { "type": "string" }
+  }
+}

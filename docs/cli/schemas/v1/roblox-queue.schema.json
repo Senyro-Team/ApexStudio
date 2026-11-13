@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/roblox-queue.schema.json",
+  "title": "Apex Studio Roblox upload queue v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["batches", "jobs", "items"],
+  "properties": {
+    "batches": { "type": "array", "items": { "$ref": "#/$defs/batch" } },
+    "jobs": { "type": "array", "items": { "$ref": "#/$defs/job" } },
+    "items": { "type": "array", "items": { "$ref": "#/$defs/item" } }
+  },
+  "$defs": {
+    "batch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "accountId", "state", "createdAt"],
+      "properties": {
+        "id": { "type": "string" }, "accountId": { "type": "string" },
+        "state": { "type": "string" }, "createdAt": { "type": "string" }
+      }
+    },
+    "job": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "accountId", "hash", "name", "state", "pass", "passesRequired", "nextAt", "message", "operation", "firstId", "secondId", "moderation", "generation", "pollAttempts"],
+      "properties": {
+        "id": { "type": "string" }, "accountId": { "type": "string" },
+        "hash": { "type": "string" }, "name": { "type": "string" }, "state": { "type": "string" },
+        "pass": { "type": "integer", "minimum": 0 }, "passesRequired": { "type": "integer", "minimum": 1 },
+        "nextAt": { "type": "integer" }, "message": { "type": "string" },
+        "operation": { "type": ["string", "null"] }, "firstId": { "type": ["string", "null"] },
+        "secondId": { "type": ["string", "null"] }, "moderation": { "type": "string" },
+        "generation": { "type": "integer" }, "pollAttempts": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "item": {
+      "type": "object", "additionalProperties": false,
+      "required": ["batchId", "jobId", "folderId", "side"],
+      "properties": {
+        "batchId": { "type": "string" }, "jobId": { "type": "string" },
+        "folderId": { "type": "string" }, "side": { "type": "string" }
+      }
+    }
+  }
+}

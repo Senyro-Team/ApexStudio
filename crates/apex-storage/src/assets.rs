@@ -1,5 +1,6 @@
 use super::{storage, Workspace};
 use apex_core::{AssetBoard, AssetFolder, AssetVersion, Error, ImportReport, Placement};
+use image::GenericImageView;
 use rusqlite::{params, OptionalExtension};
 use std::{
     collections::HashSet,
@@ -626,7 +627,7 @@ fn valid_slot(slot: &str) -> bool {
             .parse::<u8>()
             .is_ok_and(|n| (1..=100).contains(&n) && n.to_string() == number)
 }
-pub fn validate_png(path: &Path) -> Result<(), Error> {
+pub fn validate_png_dimensions(path: &Path) -> Result<(u32, u32), Error> {
     if fs::metadata(path).map_err(storage)?.len() > 20 * 1024 * 1024 {
         return Err(bad("Choose PNG textures smaller than 20 MB."));
     }
@@ -639,9 +640,13 @@ pub fn validate_png(path: &Path) -> Result<(), Error> {
     limits.max_image_height = Some(8000);
     limits.max_alloc = Some(256 * 1024 * 1024);
     r.limits(limits);
-    r.decode()
+    let image = r
+        .decode()
         .map_err(|_| bad("Choose a valid PNG texture up to 8000 × 8000 pixels."))?;
-    Ok(())
+    Ok(image.dimensions())
+}
+pub fn validate_png(path: &Path) -> Result<(), Error> {
+    validate_png_dimensions(path).map(|_| ())
 }
 
 #[cfg(test)]
@@ -972,7 +977,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::open(dir.path().join("old")).unwrap();
         ws.rename("Old studio").unwrap();
-        ws.connection().unwrap().execute_batch("DROP TABLE post_media;DROP TABLE posts;DROP TABLE project_sync;DROP INDEX assets_trash;ALTER TABLE assets DROP COLUMN trash_id;ALTER TABLE managed_files DROP COLUMN local_available;DROP TABLE content_leases;DROP TABLE upload_attempts;DROP TABLE upload_batch_items;DROP TABLE upload_passes;DROP TABLE upload_jobs;DROP TABLE upload_batches;DROP TABLE image_validation;DROP TABLE roblox_uploads;DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;DROP TABLE trash_entries;PRAGMA user_version=3;").unwrap();
+        ws.connection().unwrap().execute_batch("DROP TABLE post_markdown_media;DROP TABLE post_media;DROP TABLE posts;DROP TABLE project_sync;DROP TABLE shared_decal_codes;DROP TABLE roblox_group_revenue_passes;DROP TABLE roblox_group_revenue_sales;DROP TABLE roblox_group_revenue_groups;DROP TABLE media_library;DROP TABLE overlay_templates;DROP TABLE markdown_presets;DROP TABLE overlay_render_versions;DROP INDEX assets_trash;ALTER TABLE assets DROP COLUMN trash_id;ALTER TABLE managed_files DROP COLUMN local_available;DROP TABLE content_leases;DROP TABLE upload_attempts;DROP TABLE upload_batch_items;DROP TABLE upload_passes;DROP TABLE upload_jobs;DROP TABLE upload_batches;DROP TABLE image_validation;DROP TABLE roblox_uploads;DROP TABLE publishing_media;DROP TABLE publishing_drafts;DROP TABLE asset_versions;DROP TABLE asset_placements;DROP TABLE asset_folders;DROP TABLE trash_entries;PRAGMA user_version=3;").unwrap();
         ws.connection()
             .unwrap()
             .execute_batch("DROP TABLE statistics_snapshots; DROP TABLE statistics_sales;")

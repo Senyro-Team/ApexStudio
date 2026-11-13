@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/publishing-draft.schema.json",
+  "title": "Apex Studio ERLCX publishing draft v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["data", "revision"],
+  "properties": {
+    "revision": { "type": "integer", "minimum": 0 },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "description", "tags", "youtubeUrl", "media", "liveries", "markdownBlocks"],
+      "properties": {
+        "title": { "type": "string" }, "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "youtubeUrl": { "type": ["string", "null"] },
+        "media": { "type": "array", "items": { "$ref": "#/$defs/media" } },
+        "liveries": { "type": "array", "items": { "$ref": "#/$defs/livery" } },
+        "markdownBlocks": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/markdownBlock" } }
+      }
+    }
+  },
+  "$defs": {
+    "markdownBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "text", "imageUrl", "altText", "linkUrl", "inviteUrl", "mediaHash"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "kind": { "enum": ["text", "image", "invite"] },
+        "text": { "type": "string", "maxLength": 20000 },
+        "imageUrl": { "anyOf": [{ "const": "" }, { "type": "string", "maxLength": 2048, "format": "uri", "pattern": "^https://" }] },
+        "altText": { "type": "string", "maxLength": 500 },
+        "linkUrl": { "anyOf": [{ "const": "" }, { "type": "string", "maxLength": 2048, "format": "uri", "pattern": "^https://" }] },
+        "inviteUrl": { "anyOf": [{ "const": "" }, { "type": "string", "maxLength": 2048, "format": "uri", "pattern": "^https://" }] },
+        "mediaHash": { "anyOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{64}$" }] }
+      }
+    },
+    "media": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hash", "name"],
+      "properties": { "hash": { "type": "string" }, "name": { "type": "string" } }
+    },
+    "livery": {
+      "type": "object", "additionalProperties": false,
+      "required": ["vehicle", "primaryColor", "secondaryColor", "opacity", "sides"],
+      "properties": {
+        "source": { "$ref": "#/$defs/source" },
+        "vehicle": { "type": "string" }, "primaryColor": { "type": "string" },
+        "secondaryColor": { "type": ["string", "null"] }, "opacity": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "sides": { "type": "array", "items": { "$ref": "#/$defs/side" } }
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["folderId", "accountId", "hashes"],
+      "properties": {
+        "folderId": { "type": "string" }, "accountId": { "type": "string" },
+        "hashes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "side": {
+      "type": "object", "additionalProperties": false,
+      "required": ["side", "decalId"],
+      "properties": { "side": { "type": "string" }, "decalId": { "type": "string" } }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 [workspace]
-members = ["crates/apex-core", "crates/apex-storage", "apps/desktop/src-tauri"]
-default-members = ["crates/apex-core", "crates/apex-storage"]
+members = ["crates/apex-core", "crates/apex-storage", "crates/apex-application", "apps/desktop/src-tauri", "apps/cli"]
+default-members = ["crates/apex-core", "crates/apex-storage", "crates/apex-application", "apps/cli"]
 resolver = "2"
 
 [workspace.package]

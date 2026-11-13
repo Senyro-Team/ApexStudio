@@ -1,4 +1,5 @@
 use super::CommandError;
+use apex_application::ApplicationServices;
 use apex_core::{Asset, Catalogue, Error, ImportReport, Project, ProjectInput};
 use apex_storage::Workspace;
 use tauri_plugin_dialog::DialogExt;
@@ -19,7 +20,7 @@ pub async fn list_projects(
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<Vec<Project>, CommandError> {
     let workspace = workspace.inner().clone();
-    work(move || workspace.projects()).await
+    work(move || ApplicationServices::new(workspace).projects()).await
 }
 #[tauri::command]
 pub async fn save_project(
@@ -52,7 +53,7 @@ pub async fn save_project(
                 }
             }
         }
-        let project=workspace.save_project(id.as_deref(), fields)?;
+        let project=ApplicationServices::new(workspace.clone()).save_project(id.as_deref(), fields)?;
         if sync.is_some() {
             workspace.configure_project_sync(&project.id,destination.as_ref().map(|d|(d.origin.as_str(),d.instance.as_str(),d.team.as_str())))?;
         }
@@ -66,7 +67,7 @@ pub async fn archive_project(
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<Project, CommandError> {
     let workspace = workspace.inner().clone();
-    work(move || workspace.archive_project(&id, archived)).await
+    work(move || ApplicationServices::new(workspace).archive_project(&id, archived)).await
 }
 #[tauri::command]
 pub async fn delete_archived_project(
@@ -74,7 +75,7 @@ pub async fn delete_archived_project(
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<(), CommandError> {
     let workspace = workspace.inner().clone();
-    work(move || workspace.delete_archived_project(&id)).await
+    work(move || ApplicationServices::new(workspace).delete_archived_project(&id)).await
 }
 #[tauri::command]
 pub async fn list_assets(

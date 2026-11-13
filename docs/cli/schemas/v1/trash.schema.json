@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/trash.schema.json",
+  "title": "Apex Studio trash records v1",
+  "type": "array",
+  "items": {
+    "type": "object", "additionalProperties": false,
+    "required": ["id", "projectId", "projectName", "rootId", "kind", "name", "deletedAt", "files", "folders"],
+    "properties": {
+      "id": { "type": "string" }, "projectId": { "type": "string" },
+      "projectName": { "type": "string" }, "rootId": { "type": "string" },
+      "kind": { "type": "string" }, "name": { "type": "string" },
+      "deletedAt": { "type": "string" }, "files": { "type": "integer", "minimum": 0 },
+      "folders": { "type": "integer", "minimum": 0 }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 use super::{chrome_protocol as protocol, projects::work, CommandError};
 use apex_core::Error;
-use apex_storage::{SalesData, Workspace};
+use apex_storage::{RobloxGroupSale, RobloxRevenuePass, SalesData, Workspace};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -37,6 +37,19 @@ struct StatisticsTransfer {
     state: String,
     message: String,
 }
+struct GroupRevenueTransfer {
+    token: String,
+    session: Option<String>,
+    group_id: String,
+    expires: Instant,
+    state: String,
+    message: String,
+    passes: Vec<RobloxRevenuePass>,
+    sales: Vec<RobloxGroupSale>,
+    coverage_from: Option<String>,
+    coverage_to: Option<String>,
+    summary: Option<Value>,
+}
 #[derive(Default)]
 struct BridgeState {
     config: protocol::ChromeConfig,
@@ -46,6 +59,7 @@ struct BridgeState {
     pending: Option<String>,
     status: BrowserStatus,
     statistics: Option<StatisticsTransfer>,
+    group_revenue: Option<GroupRevenueTransfer>,
     workspace: Option<Workspace>,
 }
 #[derive(Clone, Default)]
@@ -70,6 +84,7 @@ impl BrowserBridge {
         let mut s = self.lock()?;
         s.transfer = None;
         s.statistics = None;
+        s.group_revenue = None;
         s.pending = None;
         s.checked = None;
         s.check = None;
@@ -79,6 +94,20 @@ impl BrowserBridge {
     }
     fn snapshot(&self) -> Result<BrowserStatus, Error> {
         let mut state = self.lock()?;
+        if state
+            .check
+            .as_ref()
+            .is_some_and(|(_, deadline)| Instant::now() > *deadline)
+        {
+            state.check = None;
+            state.status = BrowserStatus {
+                connected: false,
+                state: "failed".into(),
+                step: "Connection check".into(),
+                message: "Chrome did not confirm the connection. Check that the Apex Studio extension is enabled in this browser profile, then try again.".into(),
+                post_id: None,
+            };
+        }
         if state
             .transfer
             .as_ref()
@@ -104,22 +133,145 @@ impl BrowserBridge {
     }
     fn process(&self, r: Value) -> Result<Value, Error> {
         let mut s = self.lock()?;
+        let kind = r["kind"].as_str().unwrap_or("");
+        if r["origin"].as_str() == Some("apex-cli") {
+            drop(s);
+            return match kind {
+                "prepare_post" => self.prepare_cli_post(&r),
+                "refresh_creator_statistics" => {
+                    let workspace = self
+                        .lock()?
+                        .workspace
+                        .clone()
+                        .ok_or_else(|| invalid("Workspace unavailable."))?;
+                    begin_statistics_refresh(self, &workspace)?;
+                    Ok(json!({"ok":true,"state":"running"}))
+                }
+                "creator_statistics_status" => self.creator_statistics_status(),
+                "cancel_creator_statistics" => self.cancel_creator_statistics(),
+                _ => Err(invalid("The CLI request is not allowed.")),
+            };
+        }
         if r["origin"].as_str()
             != Some(format!("chrome-extension://{}/", s.config.extension_id).as_str())
         {
             return Err(invalid("Unapproved extension."));
         }
-        let kind = r["kind"].as_str().unwrap_or("");
         if kind == "check" {
             let Some((token, deadline)) = s.check.take() else {
+                if s.status.state == "checking" {
+                    s.status.state = "failed".into();
+                    s.status.step = "Connection check".into();
+                    s.status.message =
+                        "The browser connection check expired. Try again from Settings.".into();
+                }
                 return Err(invalid("Connection check expired."));
             };
             if r["token"].as_str() != Some(&token) || Instant::now() > deadline {
+                s.status.state = "failed".into();
+                s.status.step = "Connection check".into();
+                s.status.message = "The browser returned an invalid or expired connection check. Try again from Settings.".into();
                 return Err(invalid("Connection check expired."));
             }
             s.checked = Some(Instant::now());
+            s.status.state = "connected".into();
+            s.status.step = "Connected".into();
             s.status.message = "Chrome connection verified.".into();
             return Ok(json!({"ok":true}));
+        }
+        if kind == "group_revenue_claim"
+            || kind == "group_revenue_batch"
+            || kind == "group_revenue_complete"
+            || kind == "group_revenue_error"
+        {
+            let workspace = s.workspace.clone();
+            let transfer = s
+                .group_revenue
+                .as_mut()
+                .ok_or_else(|| invalid("No Roblox Group Revenue refresh is active."))?;
+            if Instant::now() > transfer.expires {
+                transfer.state = "failed".into();
+                transfer.message = "Roblox refresh expired. Start it again.".into();
+                return Err(invalid("Roblox refresh expired."));
+            }
+            if kind == "group_revenue_claim" {
+                if transfer.session.is_some()
+                    || r["token"].as_str() != Some(transfer.token.as_str())
+                {
+                    return Err(invalid("Invalid Roblox refresh token."));
+                }
+                let session = secret();
+                transfer.token.clear();
+                transfer.session = Some(session.clone());
+                return Ok(json!({"session":session,"groupId":transfer.group_id}));
+            }
+            if transfer.session.is_none() || r["session"].as_str() != transfer.session.as_deref() {
+                return Err(invalid("Invalid Roblox refresh session."));
+            }
+            if kind == "group_revenue_error" {
+                transfer.state = "failed".into();
+                transfer.message = match r["reason"].as_str() { Some("unauthorized") => "Roblox login expired or this account cannot view the group sales.", Some("rate_limited") => "Roblox temporarily rate-limited the request. Try again later.", _ => "Roblox did not return a complete, supported response. Existing successful data was kept." }.into();
+                return Ok(json!({"ok":true}));
+            }
+            if kind == "group_revenue_batch" {
+                let passes: Vec<RobloxRevenuePass> = serde_json::from_value(r["passes"].clone())
+                    .map_err(|_| invalid("Invalid Game Pass catalog batch."))?;
+                let sales: Vec<RobloxGroupSale> = serde_json::from_value(r["sales"].clone())
+                    .map_err(|_| invalid("Invalid transaction batch."))?;
+                if passes.len() > 100
+                    || sales.len() > 50
+                    || transfer.passes.len() + passes.len() > 10_000
+                    || transfer.sales.len() + sales.len() > 100_000
+                {
+                    return Err(invalid("Roblox refresh exceeded its safe data limit."));
+                }
+                if passes.iter().any(|pass| pass.group_id != transfer.group_id) {
+                    return Err(invalid("Game Pass batch belongs to another group."));
+                }
+                transfer.passes.extend(passes);
+                transfer.sales.extend(sales);
+                return Ok(json!({"ok":true,"received":transfer.sales.len()}));
+            }
+            if kind == "group_revenue_complete" {
+                let from = r["coverageFrom"].as_str().map(str::to_owned);
+                let to = r["coverageTo"].as_str().map(str::to_owned);
+                let summary = r.get("summary").filter(|v| v.is_object()).cloned();
+                if let Some(summary) = &summary {
+                    if summary.to_string().len() > 8_000 {
+                        return Err(invalid("Roblox group summary was too large."));
+                    }
+                }
+                transfer.coverage_from = from;
+                transfer.coverage_to = to;
+                transfer.summary = summary;
+                let ws = workspace.ok_or_else(|| invalid("Workspace unavailable."))?;
+                let result = ws.apply_roblox_group_api_refresh(
+                    &transfer.group_id,
+                    &transfer.passes,
+                    &transfer.sales,
+                    transfer.coverage_from.as_deref(),
+                    transfer.coverage_to.as_deref(),
+                    transfer.summary.as_ref(),
+                )?;
+                let unsupported = transfer
+                    .summary
+                    .as_ref()
+                    .and_then(|value| value.get("unsupportedTransactions"))
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                transfer.state = "complete".into();
+                transfer.message = if unsupported > 0 {
+                    format!("Roblox catalog refreshed; {unsupported} transactions need CSV review, {} new sales, {} matched.", result.inserted, result.duplicates)
+                } else {
+                    format!(
+                        "Roblox catalog refreshed; {} new sales, {} matched.",
+                        result.inserted, result.duplicates
+                    )
+                };
+                return Ok(
+                    json!({"ok":true,"inserted":result.inserted,"duplicates":result.duplicates}),
+                );
+            }
         }
         if kind == "statistics_claim" || kind == "statistics_submit" || kind == "statistics_error" {
             let workspace = s.workspace.clone();
@@ -247,6 +399,179 @@ impl BrowserBridge {
             _ => Err(invalid("Unsupported bridge request.")),
         }
     }
+
+    fn prepare_cli_post(&self, request: &Value) -> Result<Value, Error> {
+        let id = request["id"]
+            .as_str()
+            .filter(|id| !id.is_empty() && id.len() <= 100)
+            .ok_or_else(|| invalid("Invalid ERLCX draft ID."))?;
+        let revision = request["revision"]
+            .as_u64()
+            .ok_or_else(|| invalid("Invalid ERLCX draft revision."))?;
+        let reviewed = request["reviewed"]
+            .as_bool()
+            .ok_or_else(|| invalid("Source review status is required."))?;
+        let token = secret();
+        let (workspace, config) = {
+            let mut state = self.lock()?;
+            if !state
+                .checked
+                .is_some_and(|checked| checked.elapsed() < Duration::from_secs(300))
+            {
+                return Err(invalid("Verify the Chrome connection in Settings first."));
+            }
+            if state.statistics.as_ref().is_some_and(|transfer| {
+                transfer.state == "running" && Instant::now() < transfer.expires
+            }) || state.pending.is_some()
+                || state.group_revenue.as_ref().is_some_and(|transfer| {
+                    transfer.state == "running" && Instant::now() < transfer.expires
+                })
+                || state
+                    .transfer
+                    .as_ref()
+                    .is_some_and(|transfer| Instant::now() < transfer.expires)
+            {
+                return Err(invalid("Another Chrome operation is already active."));
+            }
+            let workspace = state
+                .workspace
+                .clone()
+                .ok_or_else(|| invalid("Workspace unavailable."))?;
+            state.pending = Some(token.clone());
+            (workspace, state.config.clone())
+        };
+
+        let prepared = (|| {
+            let temp = tempfile::tempdir().map_err(|error| Error::Storage(error.to_string()))?;
+            let bundle_path = temp.path().join("post.apexpublish");
+            workspace.export_post(id, revision, reviewed, &bundle_path)?;
+            let bundle = tempfile::NamedTempFile::new()
+                .map_err(|error| Error::Storage(error.to_string()))?;
+            std::fs::copy(&bundle_path, bundle.path())
+                .map_err(|error| Error::Storage(error.to_string()))?;
+            let size = usize::try_from(
+                bundle
+                    .as_file()
+                    .metadata()
+                    .map_err(|error| Error::Storage(error.to_string()))?
+                    .len(),
+            )
+            .map_err(|error| Error::Storage(error.to_string()))?;
+            Ok::<_, Error>((bundle, size))
+        })();
+
+        let mut state = self.lock()?;
+        if state.pending.as_deref() != Some(token.as_str()) {
+            return Err(invalid("Workspace changed. Start a new browser handoff."));
+        }
+        state.pending = None;
+        let (bundle, size) = match prepared {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                state.status.state = "failed".into();
+                state.status.step = "Bundle preparation".into();
+                state.status.message = error.to_string();
+                return Err(error);
+            }
+        };
+        state.transfer = Some(Transfer {
+            token: token.clone(),
+            session: None,
+            expires: Instant::now() + Duration::from_secs(120),
+            bundle,
+            offset: 0,
+            size,
+            post_id: id.to_owned(),
+            command: "run".into(),
+        });
+        state.status = BrowserStatus {
+            connected: true,
+            state: "running".into(),
+            step: String::new(),
+            message: "Opening Chrome…".into(),
+            post_id: Some(id.to_owned()),
+        };
+        drop(state);
+
+        if let Err(error) = launch(&config, &format!("token={token}")) {
+            if let Ok(mut state) = self.lock() {
+                state.transfer = None;
+                state.status.state = "failed".into();
+                state.status.message = format!("Could not open the configured browser: {error}");
+            }
+            return Err(error);
+        }
+        Ok(json!({"ok":true,"postId":id}))
+    }
+
+    fn creator_statistics_status(&self) -> Result<Value, Error> {
+        let mut state = self.lock()?;
+        let Some(transfer) = state.statistics.as_mut() else {
+            return Ok(json!({"state":"idle","message":""}));
+        };
+        if transfer.state == "running" && Instant::now() > transfer.expires {
+            transfer.state = "failed".into();
+            transfer.message = "Chrome connection timed out. Try again.".into();
+        }
+        Ok(json!({"state":transfer.state,"message":transfer.message}))
+    }
+
+    fn cancel_creator_statistics(&self) -> Result<Value, Error> {
+        let mut state = self.lock()?;
+        let Some(transfer) = state.statistics.as_mut() else {
+            return Ok(json!({"ok":true,"state":"idle"}));
+        };
+        if transfer.state == "running" {
+            transfer.state = "cancelled".into();
+            transfer.message = "Creator statistics refresh cancelled.".into();
+        }
+        Ok(json!({"ok":true,"state":transfer.state}))
+    }
+}
+
+fn begin_statistics_refresh(bridge: &BrowserBridge, workspace: &Workspace) -> Result<(), Error> {
+    let profile_id = workspace
+        .statistics_profile()?
+        .ok_or_else(|| invalid("Set a Roblox user ID in Settings first."))?;
+    let mut state = bridge.lock()?;
+    if !state
+        .checked
+        .is_some_and(|time| time.elapsed() < Duration::from_secs(300))
+    {
+        return Err(invalid("Verify the Chrome connection in Settings first."));
+    }
+    if state.pending.is_some()
+        || state
+            .transfer
+            .as_ref()
+            .is_some_and(|transfer| Instant::now() < transfer.expires)
+        || state.statistics.as_ref().is_some_and(|transfer| {
+            transfer.state == "running" && Instant::now() < transfer.expires
+        })
+        || state.group_revenue.as_ref().is_some_and(|transfer| {
+            transfer.state == "running" && Instant::now() < transfer.expires
+        })
+    {
+        return Err(invalid("A Chrome operation is already active."));
+    }
+    let token = secret();
+    let config = state.config.clone();
+    state.statistics = Some(StatisticsTransfer {
+        token: token.clone(),
+        session: None,
+        profile_id,
+        expires: Instant::now() + Duration::from_secs(120),
+        state: "running".into(),
+        message: "Opening creator dashboard…".into(),
+    });
+    drop(state);
+    if let Err(error) = launch(&config, &format!("statistics={token}")) {
+        if let Ok(mut state) = bridge.lock() {
+            state.statistics = None;
+        }
+        return Err(error);
+    }
+    Ok(())
 }
 #[cfg(windows)]
 fn initial_pipe(name: &str) -> Result<tokio::net::windows::named_pipe::NamedPipeServer, Error> {
@@ -294,7 +619,7 @@ pub fn setup(app: &tauri::AppHandle, workspace: Workspace) -> Result<(), Error> 
                 .ok();
             let bridge = bridge.clone();
             tauri::async_runtime::spawn(async move {
-                let _ = tokio::time::timeout(Duration::from_secs(10), async move {
+                let _ = tokio::time::timeout(Duration::from_secs(60), async move {
                     let length = pipe.read_u32_le().await? as usize;
                     if length == 0 || length > 16 * 1024 {
                         return Err(std::io::Error::other("Invalid request size."));
@@ -409,6 +734,10 @@ pub fn save_chrome_settings(
     if state.transfer.is_some()
         || state.pending.is_some()
         || state
+            .group_revenue
+            .as_ref()
+            .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
+        || state
             .statistics
             .as_ref()
             .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
@@ -483,7 +812,19 @@ pub fn check_browser(bridge: tauri::State<'_, BrowserBridge>) -> Result<(), Comm
     let token = secret();
     state.check = Some((token.clone(), Instant::now() + Duration::from_secs(60)));
     state.checked = None;
-    launch(&state.config, &format!("check={token}"))?;
+    state.status = BrowserStatus {
+        connected: false,
+        state: "checking".into(),
+        step: "Connection check".into(),
+        message: "Waiting for the Chrome extension to confirm the connection…".into(),
+        post_id: None,
+    };
+    if let Err(error) = launch(&state.config, &format!("check={token}")) {
+        state.check = None;
+        state.status.state = "failed".into();
+        state.status.message = format!("Could not open the configured browser: {error}");
+        return Err(error.into());
+    }
     Ok(())
 }
 
@@ -492,6 +833,94 @@ pub fn check_browser(bridge: tauri::State<'_, BrowserBridge>) -> Result<(), Comm
 pub struct StatisticsBrowserStatus {
     state: String,
     message: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupRevenueBrowserStatus {
+    state: String,
+    message: String,
+}
+
+#[tauri::command]
+pub fn group_revenue_browser_status(
+    bridge: tauri::State<'_, BrowserBridge>,
+) -> Result<GroupRevenueBrowserStatus, CommandError> {
+    let mut state = bridge.lock()?;
+    let transfer = state.group_revenue.as_mut();
+    if let Some(t) = transfer {
+        if t.state == "running" && Instant::now() > t.expires {
+            t.state = "failed".into();
+            t.message = "Roblox refresh expired. Start it again.".into();
+        }
+        return Ok(GroupRevenueBrowserStatus {
+            state: t.state.clone(),
+            message: t.message.clone(),
+        });
+    }
+    Ok(GroupRevenueBrowserStatus {
+        state: "idle".into(),
+        message: String::new(),
+    })
+}
+
+#[tauri::command]
+pub fn start_group_revenue_browser(
+    group_id: String,
+    bridge: tauri::State<'_, BrowserBridge>,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<(), CommandError> {
+    if !workspace
+        .roblox_group_revenue()?
+        .groups
+        .iter()
+        .any(|group| group.group_id == group_id)
+    {
+        return Err(
+            invalid("Save this group and its experiences before refreshing Roblox data.").into(),
+        );
+    }
+    let mut state = bridge.lock()?;
+    if !state
+        .checked
+        .is_some_and(|t| t.elapsed() < Duration::from_secs(300))
+    {
+        return Err(invalid("Verify the Chrome connection in Settings first.").into());
+    }
+    if state.transfer.is_some()
+        || state.pending.is_some()
+        || state
+            .statistics
+            .as_ref()
+            .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
+        || state
+            .group_revenue
+            .as_ref()
+            .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
+    {
+        return Err(invalid("Another Chrome operation is already active.").into());
+    }
+    let token = secret();
+    let config = state.config.clone();
+    state.group_revenue = Some(GroupRevenueTransfer {
+        token: token.clone(),
+        session: None,
+        group_id,
+        expires: Instant::now() + Duration::from_secs(20 * 60),
+        state: "running".into(),
+        message: "Reading Roblox group data…".into(),
+        passes: Vec::new(),
+        sales: Vec::new(),
+        coverage_from: None,
+        coverage_to: None,
+        summary: None,
+    });
+    drop(state);
+    if let Err(error) = launch(&config, &format!("group-revenue={token}")) {
+        bridge.lock()?.group_revenue = None;
+        return Err(error.into());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -520,44 +949,7 @@ pub fn start_statistics_browser(
     bridge: tauri::State<'_, BrowserBridge>,
     workspace: tauri::State<'_, Workspace>,
 ) -> Result<(), CommandError> {
-    let id = workspace
-        .statistics_profile()?
-        .ok_or_else(|| invalid("Set a Roblox user ID in Settings first."))?;
-    let mut state = bridge.lock()?;
-    if !state
-        .checked
-        .is_some_and(|t| t.elapsed() < Duration::from_secs(300))
-    {
-        return Err(invalid("Verify the Chrome connection in Settings first.").into());
-    }
-    if state.pending.is_some()
-        || state
-            .transfer
-            .as_ref()
-            .is_some_and(|t| Instant::now() < t.expires)
-        || state
-            .statistics
-            .as_ref()
-            .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
-    {
-        return Err(invalid("A Chrome operation is already active.").into());
-    }
-    let token = secret();
-    let config = state.config.clone();
-    state.statistics = Some(StatisticsTransfer {
-        token: token.clone(),
-        session: None,
-        profile_id: id,
-        expires: Instant::now() + Duration::from_secs(120),
-        state: "running".into(),
-        message: "Opening creator dashboard…".into(),
-    });
-    drop(state);
-    if let Err(e) = launch(&config, &format!("statistics={token}")) {
-        bridge.lock()?.statistics = None;
-        return Err(e.into());
-    }
-    Ok(())
+    begin_statistics_refresh(&bridge, &workspace).map_err(Into::into)
 }
 #[tauri::command]
 pub async fn prepare_browser(
@@ -584,6 +976,10 @@ pub async fn prepare_browser(
                 .as_ref()
                 .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
                 || state.pending.is_some()
+                || state
+                    .group_revenue
+                    .as_ref()
+                    .is_some_and(|t| t.state == "running" && Instant::now() < t.expires)
                 || state
                     .transfer
                     .as_ref()
@@ -737,6 +1133,27 @@ mod tests {
         assert_eq!(b.snapshot().unwrap().state, "expired");
     }
     #[test]
+    fn cli_bridge_origin_can_only_request_a_checked_post_handoff() {
+        let b = BrowserBridge::default();
+        let forbidden = json!({"origin":"apex-cli","kind":"claim"});
+        assert!(b.process(forbidden).is_err());
+
+        let prepare = json!({
+            "origin":"apex-cli",
+            "kind":"prepare_post",
+            "id":"draft-1",
+            "revision":1,
+            "reviewed":false
+        });
+        assert!(b.process(prepare.clone()).is_err());
+        {
+            let mut state = b.lock().unwrap();
+            state.checked = Some(Instant::now());
+        }
+        assert!(b.process(prepare).is_err());
+        assert!(b.lock().unwrap().pending.is_none());
+    }
+    #[test]
     fn check_is_bound_to_an_expiring_challenge() {
         let b = fixture();
         b.lock().unwrap().check = Some(("nonce".into(), Instant::now() + Duration::from_secs(60)));
@@ -787,5 +1204,40 @@ mod tests {
             ws.statistics_sales("123").unwrap().unwrap().data.net_robux,
             70
         );
+    }
+
+    #[test]
+    fn cli_statistics_status_and_cancel_are_allowlisted_and_do_not_expose_session_data() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = Workspace::open(directory.path()).unwrap();
+        workspace.set_statistics_profile("123").unwrap();
+        let bridge = BrowserBridge::default();
+        {
+            let mut state = bridge.lock().unwrap();
+            state.workspace = Some(workspace);
+            state.statistics = Some(StatisticsTransfer {
+                token: "private-token".into(),
+                session: Some("private-session".into()),
+                profile_id: "123".into(),
+                expires: Instant::now() + Duration::from_secs(60),
+                state: "running".into(),
+                message: "Reading creator dashboard".into(),
+            });
+        }
+        let status = bridge
+            .process(json!({"origin":"apex-cli","kind":"creator_statistics_status"}))
+            .unwrap();
+        assert_eq!(status["state"], "running");
+        assert_eq!(status["message"], "Reading creator dashboard");
+        assert!(!status.to_string().contains("private-token"));
+        assert!(!status.to_string().contains("private-session"));
+
+        let cancelled = bridge
+            .process(json!({"origin":"apex-cli","kind":"cancel_creator_statistics"}))
+            .unwrap();
+        assert_eq!(cancelled["state"], "cancelled");
+        assert!(bridge
+            .process(json!({"origin":"apex-cli","kind":"statistics_submit"}))
+            .is_err());
     }
 }

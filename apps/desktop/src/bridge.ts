@@ -26,6 +26,12 @@ export interface RobloxRevenueGroup {
   name: string;
   experienceIds: string[];
   passMappings: Record<string, string>;
+  selectedPassIds: string[];
+  apiUpdatedAt?: string | null;
+  apiCoverageFrom?: string | null;
+  apiCoverageTo?: string | null;
+  apiSummary?: Record<string, number> | null;
+  apiStatus?: string | null;
   updatedAt?: string | null;
   lastImportAt?: string | null;
 }
@@ -40,11 +46,15 @@ export interface RobloxGroupSale {
   price: number;
   revenue: number;
   importBatchId: string;
+  externalTransactionId?: string | null;
+  source?: "csv" | "api";
+  dedupeConfidence?: "transaction_id" | "exact_fields" | "ambiguous";
   importedAt?: string | null;
 }
 export interface RobloxGroupRevenueData {
   groups: RobloxRevenueGroup[];
   sales: RobloxGroupSale[];
+  passes: { groupId: string; assetId: string; universeId: string; name: string; source: string }[];
 }
 export const robloxGroupRevenue = () => invoke<RobloxGroupRevenueData>("roblox_group_revenue");
 export const saveRobloxRevenueGroup = (group: RobloxRevenueGroup) =>
@@ -58,6 +68,10 @@ export const importRobloxGroupSales = (
 });
 export const removeRobloxGroupRevenue = (groupId: string) =>
   invoke<RobloxGroupRevenueData>("remove_roblox_group_revenue", { groupId });
+export const startGroupRevenueBrowser = (groupId: string) =>
+  invoke<void>("start_group_revenue_browser", { groupId });
+export const groupRevenueBrowserStatus = () =>
+  invoke<{ state: string; message: string }>("group_revenue_browser_status");
 
 export interface SyncServerInfo {
   product: string;
@@ -95,10 +109,69 @@ export interface SyncInvitation {
   role: SyncInvitationRole;
   expiresInSeconds: number;
 }
+export interface SyncServiceAvailability {
+  projectSync: boolean;
+  imageHosting: boolean;
+  inviteTracking: boolean;
+  imageHostingReachable?: boolean | null;
+  inviteTrackingReachable?: boolean | null;
+}
+export interface HostedImage {
+  id: string;
+  name: string;
+  clientId?: string | null;
+  imageUrl: string;
+  hash: string;
+  altText: string;
+  defaultLinkUrl: string | null;
+  ownerScope: "personal" | "team";
+  createdAt: string;
+  reused: boolean;
+}
+export interface HostedImages {
+  images: HostedImage[];
+  errors: Array<{ clientId?: string | null; name?: string; error?: string }>;
+}
+export interface InviteCampaign {
+  id: string;
+  title: string;
+  category: "livery" | "social" | "other";
+  notes: string;
+  channelId: string | null;
+  code: string | null;
+  inviteUrl: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+  maxUses: number;
+  totalUses: number;
+  isActive: boolean;
+  trackedJoins: number;
+}
+export interface InviteCampaignInput {
+  title: string;
+  category: "livery" | "social" | "other";
+  notes: string;
+  channelId: string;
+  maxAgeDays: number;
+  maxUses: number;
+}
 export const syncCheckServer = (serverUrl: string) =>
   invoke<SyncServerInfo>("sync_check_server", { serverUrl });
 export const syncConnectionStatus = (serverUrl: string) =>
   invoke<SyncConnectionStatus>("sync_connection_status", { serverUrl });
+export const syncServiceAvailability = (serverUrl: string, teamId: string) =>
+  invoke<SyncServiceAvailability>("sync_service_availability", { serverUrl, teamId });
+export const syncImageLibrary = (serverUrl: string, teamId: string) =>
+  invoke<HostedImages>("sync_image_library", { serverUrl, teamId });
+export const syncListInviteCampaigns = (serverUrl: string, teamId: string) =>
+  invoke<InviteCampaign[]>("sync_list_invite_campaigns", { serverUrl, teamId });
+export const syncCreateInviteCampaign = (
+  serverUrl: string, teamId: string, requestId: string, input: InviteCampaignInput,
+) => invoke<InviteCampaign>("sync_create_invite_campaign", { serverUrl, teamId, requestId, input });
+export const syncUploadLibraryImages = (serverUrl: string, teamId: string, itemIds: string[], scope: "personal" | "team") =>
+  invoke<HostedImages>("sync_upload_library_images", { serverUrl, teamId, itemIds, scope });
+export const syncSetLibraryImageScope = (serverUrl: string, teamId: string, itemId: string, scope: "personal" | "team") =>
+  invoke<MediaLibraryItem>("sync_set_library_image_scope", { serverUrl, teamId, itemId, scope });
 export const syncSignIn = (serverUrl: string, email: string, password: string) =>
   invoke<SyncConnectionStatus>("sync_sign_in", { serverUrl, email, password });
 export const syncAcceptInvitation = (
@@ -219,6 +292,53 @@ export const deleteArchivedProject = (id: string) =>
   invoke<void>("delete_archived_project", { id });
 export const listAssets = (projectId: string | null) =>
   invoke<Asset[]>("list_assets", { projectId });
+export interface MediaLibraryItem {
+  id: string;
+  hash: string | null;
+  name: string;
+  altText: string;
+  imageUrl: string;
+  defaultLinkUrl: string | null;
+  folder: string;
+  tags: string[];
+  overlayVersionGroup: string | null;
+  overlayVersion: number | null;
+  overlayTarget: "erlcx" | "execlab" | null;
+  ownerScope: "personal" | "team";
+  teamId: string | null;
+  providerImageId: string | null;
+  isRemote?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  preview: string | null;
+}
+export const mediaLibrary = () => invoke<MediaLibraryItem[]>("media_library");
+export const pickMediaLibraryImage = () =>
+  invoke<MediaLibraryItem | null>("pick_media_library_image");
+export const addMediaLibraryAsset = (projectId: string, assetId: string) =>
+  invoke<MediaLibraryItem>("add_media_library_asset", { projectId, assetId });
+export const addMediaLibraryUrl = (
+  name: string,
+  altText: string,
+  imageUrl: string,
+  defaultLinkUrl: string,
+  folder: string,
+  tags: string[],
+) => invoke<MediaLibraryItem>("add_media_library_url", {
+  name, altText, imageUrl, defaultLinkUrl: defaultLinkUrl || null, folder, tags,
+});
+export const updateMediaLibraryItem = (item: MediaLibraryItem) =>
+  invoke<MediaLibraryItem>("update_media_library_item", {
+    id: item.id,
+    name: item.name,
+    altText: item.altText,
+    imageUrl: item.imageUrl,
+    defaultLinkUrl: item.defaultLinkUrl,
+    folder: item.folder,
+    tags: item.tags,
+  });
+export const deleteMediaLibraryItem = (id: string) =>
+  invoke<void>("delete_media_library_item", { id });
 export const importAssets = (
   projectId: string,
   folderId: string | null = null,
@@ -415,7 +535,30 @@ export interface PublishingData {
   youtubeUrl: string | null;
   media: PublishingImage[];
   liveries: PublishingLivery[];
+  markdownBlocks?: MarkdownBlock[];
 }
+export interface MarkdownBlock {
+  id: string;
+  kind: "text" | "image" | "invite";
+  text: string;
+  imageUrl: string;
+  altText: string;
+  linkUrl: string;
+  inviteUrl: string;
+  mediaHash: string | null;
+}
+export interface MarkdownPreset {
+  id: string;
+  name: string;
+  block: MarkdownBlock;
+  createdAt: string;
+  updatedAt: string;
+}
+export const listMarkdownPresets = () => invoke<MarkdownPreset[]>("list_markdown_presets");
+export const saveMarkdownPreset = (name: string, block: MarkdownBlock) =>
+  invoke<MarkdownPreset>("save_markdown_preset", { name, block });
+export const deleteMarkdownPreset = (id: string) =>
+  invoke<void>("delete_markdown_preset", { id });
 export interface PublishingDraft {
   data: PublishingData;
   revision: number;
@@ -620,6 +763,45 @@ export const releasePostImages = (id: string) =>
   invoke<void>("release_post_images", { id });
 export const exportPost = (id: string, revision: number, reviewed: boolean) =>
   invoke<boolean>("export_post", { id, revision, reviewed });
+export interface OverlayTemplate {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  layersJson: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface OverlayPreviewOutput {
+  name: string;
+  dataUrl: string;
+  sourceHash: string;
+  width: number;
+  height: number;
+  compositionJson: string;
+}
+export const listOverlayTemplates = () =>
+  invoke<OverlayTemplate[]>("list_overlay_templates");
+export const overlayImageData = (hash: string, width: number, height: number) =>
+  invoke<string>("overlay_image_data", { hash, width, height });
+export const saveOverlayTemplate = (template: {
+  id?: string;
+  name: string;
+  width: number;
+  height: number;
+  layersJson: string;
+}) => invoke<OverlayTemplate>("save_overlay_template", template);
+export const deleteOverlayTemplate = (id: string) =>
+  invoke<void>("delete_overlay_template", { id });
+export const importOverlayPreviews = (
+  postId: string | null,
+  projectId: string | null,
+  images: OverlayPreviewOutput[],
+) => invoke<PublishingPreview[]>("import_overlay_previews", {
+  postId,
+  projectId,
+  images,
+});
 export interface ChromeConfig {
   chromePath: string;
   userDataDir: string;

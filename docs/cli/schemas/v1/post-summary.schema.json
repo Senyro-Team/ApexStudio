@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/post-summary.schema.json",
+  "title": "Apex Studio ERLCX post summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "updatedAt", "revision", "liveries"],
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "updatedAt": { "type": "string" },
+    "revision": { "type": "integer", "minimum": 0 },
+    "liveries": { "type": "integer", "minimum": 0 }
+  }
+}

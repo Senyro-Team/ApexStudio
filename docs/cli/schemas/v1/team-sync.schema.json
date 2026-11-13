@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apexdesigns.studio/schemas/cli/v1/team-sync.schema.json",
+  "title": "Apex Studio Team Sync v1 schemas",
+  "$defs": {
+    "serverInfo": {
+      "type": "object", "additionalProperties": false,
+      "required": ["product", "apiVersion", "serverVersion", "serverInstanceId", "origin"],
+      "properties": {
+        "product": { "type": "string" }, "apiVersion": { "type": "string" },
+        "serverVersion": { "type": "string" }, "serverInstanceId": { "type": "string" },
+        "origin": { "type": "string" }
+      }
+    },
+    "team": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "role"],
+      "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "role": { "type": "string" } }
+    },
+    "user": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "email", "displayName", "teams"],
+      "properties": {
+        "id": { "type": "string" }, "email": { "type": "string" },
+        "displayName": { "type": "string" }, "teams": { "type": "array", "items": { "$ref": "#/$defs/team" } }
+      }
+    },
+    "connectionStatus": {
+      "type": "object", "additionalProperties": false,
+      "required": ["server", "user", "sessionExpired", "savedSessionForDifferentServer"],
+      "properties": {
+        "server": { "$ref": "#/$defs/serverInfo" }, "user": { "anyOf": [{ "$ref": "#/$defs/user" }, { "type": "null" }] },
+        "sessionExpired": { "type": "boolean" }, "savedSessionForDifferentServer": { "type": "boolean" }
+      }
+    },
+    "teamMember": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "email", "displayName", "role"],
+      "properties": {
+        "id": { "type": "string" }, "email": { "type": "string" },
+        "displayName": { "type": "string" }, "role": { "type": "string" }
+      }
+    },
+    "invitation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["invitationToken", "role", "expiresInSeconds"],
+      "properties": {
+        "invitationToken": { "type": "string" }, "role": { "type": "string" },
+        "expiresInSeconds": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "projectSync": {
+      "type": "object", "additionalProperties": false,
+      "required": ["projectId", "origin", "serverInstance", "teamId", "enabled", "receivedFromTeam", "localHash", "revision", "cursor", "message", "syncedAt"],
+      "properties": {
+        "projectId": { "type": "string" }, "origin": { "type": "string" },
+        "serverInstance": { "type": "string" }, "teamId": { "type": "string" },
+        "enabled": { "type": "boolean" }, "receivedFromTeam": { "type": "boolean" },
+        "localHash": { "type": ["string", "null"] }, "revision": { "type": "integer" },
+        "cursor": { "type": "integer" }, "message": { "type": "string" },
+        "syncedAt": { "type": ["string", "null"] }
+      }
+    },
+    "syncPreview": {
+      "type": "object", "additionalProperties": false,
+      "required": ["team", "remoteProjects", "linkedProjects"],
+      "properties": {
+        "team": { "$ref": "#/$defs/team" },
+        "remoteProjects": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false, "required": ["id", "name"],
+            "properties": { "id": { "type": "string" }, "name": { "type": "string" } }
+          }
+        },
+        "linkedProjects": { "type": "array", "items": { "$ref": "#/$defs/projectSync" } }
+      }
+    },
+    "sharedDecalCode": {
+      "type": "object", "additionalProperties": false,
+      "required": ["contentHash", "decalAssetId"],
+      "properties": {
+        "contentHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "decalAssetId": { "type": ["string", "null"] }
+      }
+    },
+    "syncEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["projectId", "projectName", "status", "message"],
+      "properties": {
+        "projectId": { "type": "string" }, "projectName": { "type": "string" },
+        "status": { "type": "string" }, "message": { "type": "string" }
+      }
+    },
+    "syncReport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["uploaded", "downloaded", "checked", "upToDate", "sharedLocal", "remoteProjects", "errors", "entries"],
+      "properties": {
+        "uploaded": { "type": "integer", "minimum": 0 }, "downloaded": { "type": "integer", "minimum": 0 },
+        "checked": { "type": "integer", "minimum": 0 }, "upToDate": { "type": "integer", "minimum": 0 },
+        "sharedLocal": { "type": "integer", "minimum": 0 }, "remoteProjects": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "array", "items": { "type": "string" } },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/syncEntry" } }
+      }
+    }
+  }
+}

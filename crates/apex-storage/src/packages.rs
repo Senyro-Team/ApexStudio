@@ -306,6 +306,12 @@ fn checked(path: &Path) -> Result<Checked, Error> {
             "shared_decal_codes",
             "roblox_group_revenue_groups",
             "roblox_group_revenue_sales",
+            "roblox_group_revenue_passes",
+            "media_library",
+            "post_markdown_media",
+            "overlay_templates",
+            "markdown_presets",
+            "overlay_render_versions",
         ]);
         let mut stmt=db.prepare("SELECT name,type FROM sqlite_master WHERE type IN ('table','view','trigger') AND name NOT LIKE 'sqlite_%'").map_err(storage)?;
         let schema = stmt
@@ -721,6 +727,31 @@ mod tests {
         let document = serde_json::json!({"type":"doc","content":[{"type":"image","attrs":{"src":format!("apex-image:{hash}")}}]});
         ws.save_note(&n.id, n.revision, "Notes", &document, "image")
             .unwrap();
+        ws.add_media_library_url(
+            "Reusable banner",
+            "A reusable banner",
+            "https://images.example/banner.png",
+            Some("https://example.com"),
+            "Banners",
+            &["apex".into()],
+        )
+        .unwrap();
+        ws.save_overlay_template(None, "Neutral template", 1920, 1080, "[]")
+            .unwrap();
+        ws.save_markdown_preset(
+            "Join link",
+            &apex_core::MarkdownBlock {
+                id: "preset-source".into(),
+                kind: apex_core::MarkdownBlockKind::Invite,
+                text: "Join our server".into(),
+                image_url: String::new(),
+                alt_text: String::new(),
+                link_url: String::new(),
+                invite_url: "https://discord.gg/example".into(),
+                media_hash: None,
+            },
+        )
+        .unwrap();
         let package = dir.path().join("project.apexstd");
         ws.export_project(&p.id, true, true, &package).unwrap();
         let other = Workspace::open(dir.path().join("two")).unwrap();
@@ -750,6 +781,12 @@ mod tests {
             .note_image(&n.id, &hash)
             .unwrap()
             .starts_with("data:image/png;base64,"));
+        assert_eq!(restored.media_library().unwrap()[0].name, "Reusable banner");
+        assert_eq!(
+            restored.overlay_templates().unwrap()[0].name,
+            "Neutral template"
+        );
+        assert_eq!(restored.markdown_presets().unwrap()[0].name, "Join link");
     }
     #[test]
     fn corrupt_files_are_rejected_before_records_are_imported() {

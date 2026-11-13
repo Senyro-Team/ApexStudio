@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
-import { autoSyncEnabled, setAutoSyncEnabled, subscribeAutoSync } from "./teamSyncPreferences";
-import { Check, CircleAlert, Copy, LogOut, RefreshCw, Server, Trash2, UserPlus, Users } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Check, CircleAlert, Copy, ImagePlus, Link2, LogOut, RefreshCw, Server, Trash2, UserPlus, Users } from "lucide-react";
 import AppSelect from "./AppSelect";
 import { readTeamSyncLog, recordTeamSyncError, recordTeamSyncReport, syncSummary } from "./teamSyncLog";
 import {
@@ -15,10 +14,12 @@ import {
   syncProjects,
   syncListMembers,
   syncRemoveMember,
+  syncServiceAvailability,
   type SyncConnectionStatus,
   type SyncInvitation,
   type SyncInvitationRole,
   type SyncTeamMember,
+  type SyncServiceAvailability,
 } from "./bridge";
 
 const SERVER_URL_KEY = "apex-studio.team-sync.server-url";
@@ -58,13 +59,10 @@ export default function TeamSyncSettings({
   const [membersError, setMembersError] = useState("");
   const [removingMember, setRemovingMember] = useState("");
   const [membersRefresh, setMembersRefresh] = useState(0);
+  const [serviceAvailability, setServiceAvailability] = useState<SyncServiceAvailability | null>(null);
+  const [servicesBusy, setServicesBusy] = useState(false);
+  const [servicesError, setServicesError] = useState("");
   const [syncLog, setSyncLog] = useState(() => readTeamSyncLog(initialUrl.current, ""));
-  const automaticSync = useSyncExternalStore(subscribeAutoSync, autoSyncEnabled, () => true);
-  useEffect(() => {
-    const failed = (event: Event) => setError(String((event as CustomEvent).detail));
-    window.addEventListener("apex-project-sync-error", failed);
-    return () => window.removeEventListener("apex-project-sync-error", failed);
-  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [invitationToken, setInvitationToken] = useState("");
@@ -167,7 +165,7 @@ export default function TeamSyncSettings({
     } catch {
       // The selected team remains available for this session.
     }
-    window.dispatchEvent(new Event("apex-project-sync-request"));
+    window.dispatchEvent(new Event("apex-sync-destination-changed"));
   }
 
   function checkServer(event: FormEvent) {
@@ -182,6 +180,34 @@ export default function TeamSyncSettings({
   const connectedUser = connection?.user;
   const selectedTeam = connectedUser?.teams.find((team) => team.id === activeTeam);
   const canInvite = selectedTeam?.role === "owner" || selectedTeam?.role === "admin";
+  const serviceState = (
+    configured: boolean | undefined,
+    reachable: boolean | null | undefined,
+    unconfigured: string,
+  ) => {
+    if (servicesBusy) return "Checking…";
+    if (servicesError) return "Status unavailable";
+    if (configured === undefined) return "Not checked";
+    if (!configured) return unconfigured;
+    if (reachable === false) return "Unreachable";
+    return reachable === true ? "Online" : "Configured";
+  };
+
+  useEffect(() => {
+    if (!connectedUser || !selectedTeam) {
+      setServiceAvailability(null);
+      setServicesError("");
+      return;
+    }
+    let active = true;
+    setServicesBusy(true);
+    setServicesError("");
+    void syncServiceAvailability(serverUrl, selectedTeam.id)
+      .then((availability) => { if (active) setServiceAvailability(availability); })
+      .catch((reason) => { if (active) setServicesError(errorText(reason)); })
+      .finally(() => { if (active) setServicesBusy(false); });
+    return () => { active = false; };
+  }, [connectedUser?.id, selectedTeam?.id, serverUrl]);
 
   function canRemoveMember(member: SyncTeamMember) {
     if (!selectedTeam || member.role === "owner" || member.id === connectedUser?.id) return false;
@@ -275,7 +301,7 @@ export default function TeamSyncSettings({
   }
 
   return (
-    <section className="team-sync-settings" id="settings-team-sync">
+    <section className="team-sync-settings" id="server-team-sync">
       <h2>Team sync</h2>
       <p className="field-hint">
         Connect this workspace to a team server. The address is saved on this
@@ -409,19 +435,18 @@ export default function TeamSyncSettings({
               This account is not a member of a team on this server.
             </p>
           )}
+          {selectedTeam && <section className="server-services" aria-labelledby="server-services-title">
+            <div className="server-services-heading"><div><h3 id="server-services-title">Optional services</h3><p className="field-hint">Each service can be enabled independently by this team’s server.</p></div><button className="icon-button" aria-label="Refresh service availability" type="button" disabled={servicesBusy} onClick={() => { setServicesError(""); setServicesBusy(true); void syncServiceAvailability(serverUrl, selectedTeam.id).then(setServiceAvailability).catch((reason) => setServicesError(errorText(reason))).finally(() => setServicesBusy(false)); }}><RefreshCw size={16} className={servicesBusy ? "team-sync-spinning" : undefined} /></button></div>
+            {servicesError && <p className="team-sync-message team-sync-error" role="alert">{servicesError}</p>}
+            <div className="server-service-grid">
+              <article><Server size={18} aria-hidden="true" /><div><strong>Project sync</strong><span>{serviceState(serviceAvailability?.projectSync, true, "Unavailable")}</span><p>Team project synchronization remains active.</p></div></article>
+              <article><ImagePlus size={18} aria-hidden="true" /><div><strong>Image Hosting</strong><span>{serviceState(serviceAvailability?.imageHosting, serviceAvailability?.imageHostingReachable, "Not configured")}</span><p>{serviceAvailability?.imageHosting && serviceAvailability.imageHostingReachable !== false && !servicesError ? "Upload selected images from Assets → Image Library. Uploaded URLs are public." : "Images stay local; you can still paste URLs from any image host."}</p></div></article>
+              <article><Link2 size={18} aria-hidden="true" /><div><strong>Invite Tracking</strong><span>{serviceState(serviceAvailability?.inviteTracking, serviceAvailability?.inviteTrackingReachable, "Not configured")}</span><p>{serviceAvailability?.inviteTracking && serviceAvailability.inviteTrackingReachable !== false && !servicesError ? "Create tracked invite campaigns from the ERLCX post composer." : "Existing Discord invite URLs can be added manually to ERLCX Markdown."}</p></div></article>
+            </div>
+          </section>}
           {selectedTeam && <section className="project-sync-options" aria-label="Team project synchronization">
             <h3>Project synchronization</h3>
-            <label className="check-label">
-              <input type="checkbox" checked={automaticSync} onChange={(event) => {
-                try {
-                  setAutoSyncEnabled(event.target.checked);
-                  setNotice(event.target.checked ? "Automatic synchronization enabled." : "Automatic synchronization disabled. Use Sync projects now to synchronize manually.");
-                } catch { setError("The automatic sync setting could not be saved on this device."); }
-              }} />
-              Automatically synchronize projects
-            </label>
-            <p className="field-hint">Sync saved changes shortly after editing and check for team updates every 2 seconds.</p>
-            <p className="field-hint">Shared projects download automatically. Choose “Synchronize with team server” when creating a project or in its Details to share it.</p>
+            <p className="field-hint">Projects transfer only when you select “Sync projects now”. Linking a project does not upload or download its contents.</p>
             <button className="secondary" type="button" disabled={busy || syncBusy} onClick={() => {
               setSyncBusy(true); setError(""); setNotice("");
               void syncProjects(serverUrl, selectedTeam.id).then((report) => {
@@ -441,7 +466,7 @@ export default function TeamSyncSettings({
                 <li key={`${item.at}-${index}`}>
                   <div className="team-sync-log-heading">
                     <time dateTime={item.at}>{new Date(item.at).toLocaleString()}</time>
-                    <span>{item.source === "manual" ? "Manual" : "Automatic"}</span>
+                    <span>{item.source === "manual" ? "Manual" : "Automatic (legacy)"}</span>
                   </div>
                   <p>{item.summary}</p>
                   {item.error && <p className="team-sync-log-error">{item.error}</p>}

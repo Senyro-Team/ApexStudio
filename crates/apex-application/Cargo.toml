@@ -1,0 +1,33 @@
+[package]
+name = "apex-application"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+apex-core = { path = "../apex-core" }
+apex-storage = { path = "../apex-storage" }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+futures-util = "0.3"
+httpdate = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+pulldown-cmark = "0.13.6"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart"] }
+serde.workspace = true
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+tokio = { version = "1", features = ["rt", "sync", "time"] }
+uuid = "1"
+zeroize = "1"
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["io-util", "net", "rt", "time"] }
+
+[lints]
+workspace = true

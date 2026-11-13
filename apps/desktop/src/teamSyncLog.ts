@@ -23,7 +23,7 @@ export function syncSummary(report: SyncReport) {
     return `${skipped} project${skipped === 1 ? "" : "s"} need attention · ${report.remoteProjects ?? 0} team project${report.remoteProjects === 1 ? "" : "s"} available`;
   }
   if (report.sharedLocal === 0 && report.remoteProjects === 0) {
-    return "No shared projects yet. Enable “Synchronize with team server” for a project.";
+    return "No shared projects yet. Enable “Synchronize with team server” for a project, then choose Sync projects now.";
   }
   if ((report.remoteProjects ?? 0) > 0 && report.checked === 0) {
     return `${report.remoteProjects} team project${report.remoteProjects === 1 ? "" : "s"} found, but none were synchronized. See the sync log for details.`;
@@ -50,7 +50,6 @@ function writeTeamSyncLog(serverUrl: string, teamId: string, item: TeamSyncLogIt
   if (!serverUrl || !teamId) return;
   try {
     const previous = readTeamSyncLog(serverUrl, teamId);
-    if (item.source === "automatic" && previous[0]?.source === "automatic" && previous[0]?.summary === item.summary && previous[0]?.error === item.error) return;
     localStorage.setItem(key(serverUrl, teamId), JSON.stringify([item, ...previous].slice(0, MAX_ITEMS)));
     window.dispatchEvent(new CustomEvent("apex-team-sync-log", { detail: { serverUrl, teamId } }));
   } catch {
@@ -58,14 +57,13 @@ function writeTeamSyncLog(serverUrl: string, teamId: string, item: TeamSyncLogIt
   }
 }
 
-export function recordTeamSyncReport(serverUrl: string, teamId: string, source: TeamSyncLogItem["source"], report: SyncReport) {
-  if (source === "automatic" && !report.uploaded && !report.downloaded && !report.errors.length && !report.entries?.some((entry) => entry.status === "skipped")) return;
+export function recordTeamSyncReport(serverUrl: string, teamId: string, source: "manual", report: SyncReport) {
   writeTeamSyncLog(serverUrl, teamId, {
     at: new Date().toISOString(), source, summary: syncSummary(report), entries: report.entries ?? [], error: "",
   });
 }
 
-export function recordTeamSyncError(serverUrl: string, teamId: string, source: TeamSyncLogItem["source"], error: string) {
+export function recordTeamSyncError(serverUrl: string, teamId: string, source: "manual", error: string) {
   writeTeamSyncLog(serverUrl, teamId, {
     at: new Date().toISOString(), source, summary: "Synchronization failed", entries: [], error,
   });

@@ -1,8 +1,77 @@
-use super::{storage, Workspace};
-use apex_core::{Error, PublishingDraft, PublishingImage, PublishingInput, PublishingPreview};
+use super::{storage, GeneratedPreview, Workspace};
+use apex_core::{
+    Error, PublishingDraft, PublishingImage, PublishingInput, PublishingLivery, PublishingPreview,
+    PublishingSide,
+};
 use rusqlite::{params, OptionalExtension};
-use serde::Serialize;
-use std::path::{Path, PathBuf};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::{
+    collections::HashSet,
+    fs,
+    io::{Read, Write},
+    path::{Path, PathBuf},
+};
+
+const PUBLISH_BUNDLE_MAX_IMAGE: u64 = 20 * 1024 * 1024;
+const PUBLISH_BUNDLE_MAX_TOTAL: u64 = PUBLISH_BUNDLE_MAX_IMAGE * 10 + 256 * 1024;
+
+fn is_canonical_utc_timestamp(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 24
+        && [4, 7].iter().all(|i| bytes[*i] == b'-')
+        && bytes[10] == b'T'
+        && [13, 16].iter().all(|i| bytes[*i] == b':')
+        && bytes[19] == b'.'
+        && bytes[23] == b'Z'
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(i, b)| [4, 7, 10, 13, 16, 19, 23].contains(&i) || b.is_ascii_digit())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PublicPostBundle {
+    version: u8,
+    kind: String,
+    target_origin: String,
+    export_id: String,
+    generated_at: String,
+    title: String,
+    description: String,
+    tags: Vec<String>,
+    youtube_url: Value,
+    liveries: Vec<PublicPostLivery>,
+    media: Vec<PublicPostImage>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PublicPostLivery {
+    vehicle: String,
+    primary_color: String,
+    secondary_color: Option<String>,
+    opacity: u8,
+    sides: Vec<PublicPostSide>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PublicPostSide {
+    side: String,
+    decal_id: String,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PublicPostImage {
+    path: String,
+    hash: String,
+    name: String,
+    size: u64,
+}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PostSummary {
@@ -65,6 +134,223 @@ impl Workspace {
             .map_err(storage)?;
         Ok(id)
     }
+
+    /// Import a strict, public ERLCX bundle into a new local draft.
+    /// The archive is validated before any post record is created.
+    pub fn import_post_bundle(&self, source: &Path) -> Result<String, Error> {
+        let metadata = fs::symlink_metadata(source).map_err(storage)?;
+        if !metadata.file_type().is_file()
+            || metadata.len() < 22
+            || metadata.len() > PUBLISH_BUNDLE_MAX_TOTAL
+        {
+            return Err(Error::InvalidContent(
+                "Select a regular publishing bundle under the size limit.".into(),
+            ));
+        }
+
+        let file = fs::File::open(source).map_err(storage)?;
+        let mut archive = zip::ZipArchive::new(file).map_err(storage)?;
+        if !(3..=11).contains(&archive.len()) {
+            return Err(Error::InvalidContent(
+                "The publishing bundle must contain a manifest and 2-10 preview images.".into(),
+            ));
+        }
+
+        let mut entries = std::collections::HashMap::new();
+        let mut seen_names = HashSet::new();
+        let mut total_size = 0u64;
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index).map_err(storage)?;
+            let name = entry.name().to_owned();
+            if !seen_names.insert(name.clone())
+                || entry.compression() != zip::CompressionMethod::Stored
+                || entry.size() != entry.compressed_size()
+            {
+                return Err(Error::InvalidContent(
+                    "The publishing bundle contains unsupported or duplicate entries.".into(),
+                ));
+            }
+            let max_size = if name == "public.json" {
+                256 * 1024
+            } else {
+                PUBLISH_BUNDLE_MAX_IMAGE
+            };
+            if entry.size() > max_size {
+                return Err(Error::InvalidContent(
+                    "The publishing bundle contains an oversized file.".into(),
+                ));
+            }
+            total_size = total_size.checked_add(entry.size()).ok_or_else(|| {
+                Error::InvalidContent("The publishing bundle is too large.".into())
+            })?;
+            if total_size > PUBLISH_BUNDLE_MAX_TOTAL {
+                return Err(Error::InvalidContent(
+                    "The publishing bundle is too large.".into(),
+                ));
+            }
+            let mut bytes = Vec::with_capacity(entry.size() as usize);
+            entry.read_to_end(&mut bytes).map_err(storage)?;
+            if bytes.len() as u64 != entry.size() {
+                return Err(Error::InvalidContent(
+                    "A publishing bundle entry has an invalid size.".into(),
+                ));
+            }
+            entries.insert(name, bytes);
+        }
+
+        let manifest_bytes = entries
+            .remove("public.json")
+            .ok_or_else(|| Error::InvalidContent("The publishing manifest is missing.".into()))?;
+        let manifest: PublicPostBundle =
+            serde_json::from_slice(&manifest_bytes).map_err(storage)?;
+        if manifest.version != 1
+            || manifest.kind != "apex-publish"
+            || manifest.target_origin != "https://erlcx.com"
+            || manifest.export_id.is_empty()
+            || manifest.export_id.len() > 100
+            || !manifest
+                .export_id
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || c == b'-')
+            || !is_canonical_utc_timestamp(&manifest.generated_at)
+            || !(2..=10).contains(&manifest.media.len())
+            || !(1..=20).contains(&manifest.liveries.len())
+        {
+            return Err(Error::InvalidContent(
+                "Unsupported publishing bundle or invalid manifest.".into(),
+            ));
+        }
+
+        let expected_files = manifest.media.len() + 1;
+        if expected_files != archive.len() {
+            return Err(Error::InvalidContent(
+                "The publishing bundle contains unexpected files.".into(),
+            ));
+        }
+
+        let youtube_url = match manifest.youtube_url {
+            Value::Null => None,
+            Value::String(url) => Some(url),
+            _ => {
+                return Err(Error::InvalidContent(
+                    "Invalid YouTube URL in publishing bundle.".into(),
+                ));
+            }
+        };
+        let data = PublishingInput {
+            title: manifest.title,
+            description: manifest.description,
+            tags: manifest.tags,
+            youtube_url,
+            media: manifest
+                .media
+                .iter()
+                .map(|image| PublishingImage {
+                    hash: image.hash.clone(),
+                    name: image.name.clone(),
+                })
+                .collect(),
+            liveries: manifest
+                .liveries
+                .into_iter()
+                .map(|livery| PublishingLivery {
+                    source: None,
+                    vehicle: livery.vehicle,
+                    primary_color: livery.primary_color,
+                    secondary_color: livery.secondary_color,
+                    opacity: livery.opacity,
+                    sides: livery
+                        .sides
+                        .into_iter()
+                        .map(|side| PublishingSide {
+                            side: side.side,
+                            decal_id: side.decal_id,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            markdown_blocks: Vec::new(),
+        };
+        data.validate(true)?;
+
+        let staging = tempfile::tempdir_in(self.root.join("staging")).map_err(storage)?;
+        let mut seen_hashes = HashSet::new();
+        let mut validated_images = Vec::with_capacity(manifest.media.len());
+        for image in manifest.media {
+            if image.path != format!("media/{}.png", image.hash)
+                || image.hash.len() != 64
+                || !image
+                    .hash
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                || !seen_hashes.insert(image.hash.clone())
+                || image.name.is_empty()
+                || image.name.len() > 255
+                || image
+                    .name
+                    .chars()
+                    .any(|c| c.is_control() || c == '/' || c == '\\')
+                || image.size == 0
+                || image.size > PUBLISH_BUNDLE_MAX_IMAGE
+            {
+                return Err(Error::InvalidContent(
+                    "The publishing bundle contains an invalid image reference.".into(),
+                ));
+            }
+            let bytes = entries.remove(&image.path).ok_or_else(|| {
+                Error::InvalidContent("A publishing preview image is missing.".into())
+            })?;
+            if bytes.len() as u64 != image.size
+                || format!("{:x}", Sha256::digest(&bytes)) != image.hash
+            {
+                return Err(Error::InvalidContent(
+                    "A publishing preview image failed its integrity check.".into(),
+                ));
+            }
+            let staged_path = staging.path().join(format!("{}.png", image.hash));
+            fs::write(&staged_path, &bytes).map_err(storage)?;
+            super::validate_texture(&staged_path)?;
+            validated_images.push((image.name, image.hash, staged_path));
+        }
+        if !entries.is_empty() {
+            return Err(Error::InvalidContent(
+                "The publishing bundle contains unexpected files.".into(),
+            ));
+        }
+
+        for (name, expected_hash, path) in validated_images {
+            let hash = self.import_file(&path)?;
+            if hash != expected_hash {
+                return Err(Error::InvalidContent(
+                    "A publishing preview image changed during import.".into(),
+                ));
+            }
+            if !data
+                .media
+                .iter()
+                .any(|candidate| candidate.hash == hash && candidate.name == name)
+            {
+                return Err(Error::InvalidContent(
+                    "The publishing manifest changed during import.".into(),
+                ));
+            }
+        }
+
+        let id = self.create_post()?;
+        let save_result = (|| {
+            let draft = self.post(&id)?;
+            self.save_post(&id, draft.revision, data)
+        })();
+        match save_result {
+            Ok(_) => Ok(id),
+            Err(error) => {
+                if let Ok(connection) = self.connection() {
+                    let _ = connection.execute("DELETE FROM posts WHERE id=?1", [&id]);
+                }
+                Err(error)
+            }
+        }
+    }
     pub fn save_post(
         &self,
         id: &str,
@@ -90,6 +376,20 @@ impl Workspace {
             tx.execute(
                 "INSERT INTO post_media VALUES(?1,?2,?3,?4)",
                 params![id, m.hash, m.name, i as i64],
+            )
+            .map_err(storage)?;
+        }
+        tx.execute("DELETE FROM post_markdown_media WHERE post_id=?1", [id])
+            .map_err(storage)?;
+        let markdown_hashes: std::collections::HashSet<&str> = data
+            .markdown_blocks
+            .iter()
+            .filter_map(|block| block.media_hash.as_deref())
+            .collect();
+        for hash in markdown_hashes {
+            tx.execute(
+                "INSERT INTO post_markdown_media(post_id,hash) VALUES(?1,?2)",
+                params![id, hash],
             )
             .map_err(storage)?;
         }
@@ -171,6 +471,130 @@ impl Workspace {
         }
         self.publishing_previews(&images)
     }
+
+    pub fn add_generated_previews(
+        &self,
+        owner: Option<&str>,
+        generated: &[GeneratedPreview],
+    ) -> Result<Vec<PublishingPreview>, Error> {
+        let gate = self.content_gate();
+        let _guard = gate.lock();
+        if generated.is_empty() || generated.len() > 10 {
+            return Err(Error::InvalidContent(
+                "Export between one and ten overlay previews at a time.".into(),
+            ));
+        }
+        let mut images = Vec::with_capacity(generated.len());
+        for image in generated {
+            let safe_name = image.name.trim();
+            if safe_name.is_empty()
+                || safe_name.chars().count() > 160
+                || safe_name
+                    .chars()
+                    .any(|character| character.is_control() || matches!(character, '/' | '\\'))
+            {
+                return Err(Error::InvalidContent(
+                    "Overlay preview name is invalid.".into(),
+                ));
+            }
+            if image.bytes.len() > 40 * 1024 * 1024 {
+                return Err(Error::InvalidContent(
+                    "An overlay preview exceeds 40 MB.".into(),
+                ));
+            }
+            if image.source_hash.len() != 64
+                || !image
+                    .source_hash
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit())
+                || image.width != 1920
+                || !matches!(image.height, 1080 | 1200)
+                || image.composition_json.len() > 512 * 1024
+                || serde_json::from_str::<serde_json::Value>(&image.composition_json).is_err()
+            {
+                return Err(Error::InvalidContent(
+                    "Overlay version metadata is invalid.".into(),
+                ));
+            }
+            let target = if image.height == 1080 {
+                "erlcx"
+            } else {
+                "execlab"
+            };
+            let group_material = format!("{}:{}x{}", image.source_hash, image.width, image.height);
+            let group_id = format!("{:x}", Sha256::digest(group_material.as_bytes()));
+            let temporary = self
+                .root
+                .join("staging")
+                .join(format!("{}.png", uuid::Uuid::now_v7()));
+            let write_result = (|| {
+                let mut file = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&temporary)
+                    .map_err(storage)?;
+                file.write_all(&image.bytes).map_err(storage)?;
+                file.sync_all().map_err(storage)?;
+                let dimensions = super::validate_png_dimensions(&temporary)?;
+                if dimensions != (image.width, image.height) {
+                    return Err(Error::InvalidContent(
+                        "Overlay preview dimensions do not match the selected platform.".into(),
+                    ));
+                }
+                self.import_file(&temporary)
+            })();
+            let _ = fs::remove_file(&temporary);
+            let hash = write_result?;
+            if let Some(owner) = owner {
+                self.pin_content(owner, std::slice::from_ref(&hash))?;
+            }
+            let mut db = self.connection()?;
+            let tx = db
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .map_err(storage)?;
+            let existing_version: Option<i64> = tx
+                .query_row(
+                    "SELECT version FROM overlay_render_versions WHERE version_group_id=?1 AND hash=?2",
+                    params![group_id, hash],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(storage)?;
+            if existing_version.is_none() {
+                let next_version: i64 = tx
+                    .query_row(
+                        "SELECT COALESCE(MAX(version),0)+1 FROM overlay_render_versions WHERE version_group_id=?1",
+                        [&group_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(storage)?;
+                tx.execute(
+                        "INSERT INTO overlay_render_versions(version_group_id,version,hash,name,target,composition_json) VALUES(?1,?2,?3,?4,?5,?6)",
+                        params![group_id, next_version, hash, safe_name, target, image.composition_json],
+                    )
+                    .map_err(storage)?;
+            }
+            tx.commit().map_err(storage)?;
+            if self.existing_hash_item(&hash)?.is_none() {
+                self.insert_media_item(
+                    Some(&hash),
+                    crate::MediaLibraryMetadata {
+                        name: safe_name,
+                        alt_text: safe_name,
+                        image_url: "",
+                        default_link_url: None,
+                        folder: "Generated overlays",
+                        tags: &[target.to_owned()],
+                    },
+                )?;
+            }
+            images.push(PublishingImage {
+                hash,
+                name: safe_name.to_owned(),
+            });
+        }
+        self.publishing_previews(&images)
+    }
     pub fn post_sources(&self, id: &str) -> Result<Vec<PostSourceStatus>, Error> {
         let draft = self.post(id)?;
         Ok(draft
@@ -237,6 +661,100 @@ impl Workspace {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    fn generated_overlay(color: u8, composition: &str) -> GeneratedPreview {
+        let image = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            1920,
+            1080,
+            image::Rgb([color, 20, 30]),
+        ));
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+        GeneratedPreview {
+            name: "Preview.png".into(),
+            bytes: bytes.into_inner(),
+            source_hash: "a".repeat(64),
+            width: 1920,
+            height: 1080,
+            composition_json: serde_json::json!({"text": composition}).to_string(),
+        }
+    }
+
+    #[test]
+    fn generated_overlays_reuse_identical_pixels_version_changes_and_preserve_post_snapshots() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path().join("ws")).unwrap();
+        let first = generated_overlay(10, "Original");
+        let first_hash = ws
+            .add_generated_previews(None, std::slice::from_ref(&first))
+            .unwrap()[0]
+            .hash
+            .clone();
+
+        let post_id = ws.create_post().unwrap();
+        let mut draft = ws.post(&post_id).unwrap();
+        draft.data.title = "Overlay snapshot".into();
+        draft.data.media.push(PublishingImage {
+            hash: first_hash.clone(),
+            name: "Preview.png".into(),
+        });
+        ws.save_post(&post_id, draft.revision, draft.data).unwrap();
+
+        let repeated_hash = ws
+            .add_generated_previews(None, std::slice::from_ref(&first))
+            .unwrap()[0]
+            .hash
+            .clone();
+        assert_eq!(repeated_hash, first_hash);
+
+        let changed = generated_overlay(11, "Updated");
+        let changed_hash = ws.add_generated_previews(None, &[changed]).unwrap()[0]
+            .hash
+            .clone();
+        assert_ne!(changed_hash, first_hash);
+
+        let versions: Vec<(i64, String)> = ws
+            .connection()
+            .unwrap()
+            .prepare("SELECT version,hash FROM overlay_render_versions ORDER BY version")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(versions, vec![(1, first_hash.clone()), (2, changed_hash)]);
+        assert_eq!(ws.post(&post_id).unwrap().data.media[0].hash, first_hash);
+        assert_eq!(ws.media_library().unwrap().len(), 2);
+
+        let backup = dir.path().join("overlay-backup.apexbackup");
+        ws.backup(&backup).unwrap();
+        let restored = Workspace::open(dir.path().join("restored")).unwrap();
+        restored.restore_backup(&backup).unwrap();
+        assert_eq!(restored.media_library().unwrap().len(), 2);
+        assert_eq!(
+            restored.post(&post_id).unwrap().data.media[0].hash,
+            first_hash
+        );
+        let version_count: i64 = restored
+            .connection()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM overlay_render_versions", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version_count, 2);
+    }
+
+    #[test]
+    fn generated_overlay_metadata_must_match_actual_png_dimensions() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path().join("ws")).unwrap();
+        let mut mismatched = generated_overlay(10, "Wrong target");
+        mismatched.height = 1200;
+        assert!(ws.add_generated_previews(None, &[mismatched]).is_err());
+        assert!(ws.media_library().unwrap().is_empty());
+    }
+
     #[test]
     fn deleted_sources_keep_post_media_and_require_explicit_snapshot_review() {
         let dir = tempfile::tempdir().unwrap();
@@ -423,7 +941,7 @@ mod tests {
         ws.save_publishing(&p.id, 0, d).unwrap();
         ws.connection()
             .unwrap()
-            .execute_batch("DROP TABLE post_media;DROP TABLE posts;DROP TABLE project_sync;ALTER TABLE upload_jobs DROP COLUMN passes_required;ALTER TABLE managed_files DROP COLUMN local_available;PRAGMA user_version=8;")
+            .execute_batch("DROP TABLE post_markdown_media;DROP TABLE post_media;DROP TABLE posts;DROP TABLE project_sync;DROP TABLE shared_decal_codes;DROP TABLE roblox_group_revenue_passes;DROP TABLE roblox_group_revenue_sales;DROP TABLE roblox_group_revenue_groups;DROP TABLE media_library;DROP TABLE overlay_templates;DROP TABLE markdown_presets;DROP TABLE overlay_render_versions;DROP TABLE statistics_snapshots;DROP TABLE statistics_sales;ALTER TABLE upload_jobs DROP COLUMN passes_required;ALTER TABLE managed_files DROP COLUMN local_available;PRAGMA user_version=8;")
             .unwrap();
         let reopened = Workspace::open(dir.path().join("ws")).unwrap();
         assert_eq!(reopened.post(&p.id).unwrap().data.title, "Old post");

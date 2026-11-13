@@ -60,6 +60,10 @@ Chunked uploads support blobs up to 512 MiB and expire after 24 hours. The compl
 
 ## Deployment and current limitations
 
+### Optional service gateway
+
+`GET /api/v1/teams/{team_id}/services` reports whether optional Image Hosting and Invite Tracking are configured and, when configured, whether their read-only health endpoints respond successfully. A failed health check does not disable the other capabilities. Invite Tracking is disabled unless both `APEX_INVITE_TRACKER_URL` and `APEX_INVITE_TRACKER_KEY` are set on the Sync Server. The gateway forwards to the separately hosted Tracker using a server-held service key and asserted user/team IDs; credentials are never sent to Apex Studio. `GET /api/v1/teams/{team_id}/invite-campaigns` lists only campaigns scoped to that team. `POST` on the same route requires a write-capable role and a UUID `Idempotency-Key`; retrying the same request key returns the existing campaign. The Tracker must have its matching `APEX_SERVICE_KEY` set and its Apex campaign migration deployed. This service is optional and is not part of project synchronization.
+
 Use HTTPS at the public origin. Cloudflare Tunnel only transports requests; it does not replace server authentication. Keep the bootstrap token at least 32 characters, use it once to create the initial Owner, then remove it from the deployment environment and restart the API. Keep database and blob volumes together and back them up consistently.
 
 The desktop Settings surface checks a server, signs in, creates and accepts invitation codes, performs one-time first-team setup, and displays account/team membership. Session tokens are stored in Windows Credential Manager and bound to both the normalized server origin and its stable instance ID. The active team selection is a local device preference. Desktop project sync uses a versioned apexSnapshot object inside the root project record, with existing project-scoped blob endpoints. Local-only bindings store the server instance, team, revision and change cursor. See PROJECT-SYNC.md for opt-in, conflict and size behavior.

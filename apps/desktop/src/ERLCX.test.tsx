@@ -68,6 +68,16 @@ vi.mock("./bridge", () => ({
   savePost: vi.fn(),
   exportPost: vi.fn(),
   prepareBrowser: vi.fn(),
+  listMarkdownPresets: vi.fn().mockResolvedValue([]),
+  mediaLibrary: vi.fn().mockResolvedValue([]),
+  listAssets: vi.fn().mockResolvedValue([]),
+  syncServiceAvailability: vi.fn().mockResolvedValue({
+    projectSync: true,
+    imageHosting: false,
+    inviteTracking: false,
+  }),
+  syncListInviteCampaigns: vi.fn().mockResolvedValue([]),
+  syncImageLibrary: vi.fn().mockResolvedValue({ images: [], errors: [] }),
   errorMessage: (e: Error) => e.message,
 }));
 const empty = {
@@ -83,6 +93,7 @@ const empty = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   vi.mocked(bridge.postDraft).mockResolvedValue({
     data: structuredClone(empty),
     revision: 1,
@@ -106,7 +117,10 @@ beforeEach(() => {
     ],
   }));
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 it("retries loading liveries after a workspace error without discarding the draft", async () => {
   vi.mocked(bridge.robloxLiveries).mockRejectedValueOnce(
     new Error("locking protocol"),
