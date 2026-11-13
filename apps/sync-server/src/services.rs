@@ -473,11 +473,19 @@ mod tests {
         body::{to_bytes, Body},
         extract::{Extension, Path, Query, Request, State},
         http::StatusCode,
-        response::IntoResponse,
+        response::{IntoResponse, Response},
         Json,
     };
     use sqlx::postgres::PgPoolOptions;
-    use std::{env, path::PathBuf, sync::Arc};
+    use std::{
+        env,
+        io::{Read, Write},
+        net::TcpListener,
+        path::PathBuf,
+        sync::Arc,
+        thread,
+        time::Duration,
+    };
     use url::Url;
     use uuid::Uuid;
 
@@ -632,6 +640,114 @@ mod tests {
             .header("idempotency-key", Uuid::now_v7().to_string())
             .body(Body::from("{}"))
             .expect("valid test request")
+    }
+
+    fn mock_service(body: &'static str) -> (super::ServiceEndpoint, thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("mock service should bind");
+        let address = listener
+            .local_addr()
+            .expect("mock service should have an address");
+        let worker = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("gateway should connect");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("mock socket timeout should be set");
+            let mut buffer = [0; 8192];
+            let length = stream
+                .read(&mut buffer)
+                .expect("request should be readable");
+            let request = String::from_utf8_lossy(&buffer[..length]).into_owned();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nx-provider-private: do-not-forward\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("mock response should be writable");
+            request
+        });
+        (
+            super::ServiceEndpoint {
+                origin: Url::parse(&format!("http://{address}"))
+                    .expect("mock origin should be valid"),
+                key: zeroize::Zeroizing::new("service-key-never-exposed-1234567890".to_owned()),
+            },
+            worker,
+        )
+    }
+
+    fn assert_scoped_gateway_request(request: &str, path: &str, user_id: Uuid, team_id: Uuid) {
+        let request = request.to_ascii_lowercase();
+        assert!(request.starts_with(&format!("get {path} http/1.1")));
+        assert!(request.contains("x-apex-service-key: service-key-never-exposed-1234567890"));
+        assert!(request.contains(&format!("x-apex-user-id: {user_id}")));
+        assert!(request.contains(&format!("x-apex-team-id: {team_id}")));
+    }
+
+    async fn assert_provider_response_is_sanitized(response: Response, body: &str) {
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("x-apex-service-key").is_none());
+        assert!(response.headers().get("x-provider-private").is_none());
+        let bytes = to_bytes(response.into_body(), 1024)
+            .await
+            .expect("small provider response");
+        assert_eq!(bytes, body.as_bytes());
+        assert!(!String::from_utf8_lossy(&bytes).contains("service-key-never-exposed"));
+    }
+
+    #[tokio::test]
+    async fn read_gateways_forward_scoped_identity_and_keep_service_secrets_private() {
+        let Some(mut fixture) = membership_fixture().await else {
+            return;
+        };
+        let user_id = fixture.owner_id;
+        let team_id = fixture.team_id;
+        let (image_provider, image_worker) = mock_service(r#"{"items":[]}"#);
+        let (invite_tracker, invite_worker) = mock_service(r#"{"campaigns":[]}"#);
+        fixture.state.services = ServiceConfig {
+            image_provider: Some(image_provider),
+            invite_tracker: Some(invite_tracker),
+        };
+
+        let image_response = match list_images(
+            State(fixture.state.clone()),
+            Extension(AuthUser { id: user_id }),
+            Path(team_id),
+            Query(ImageQuery {
+                scope: "team".to_owned(),
+            }),
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(_) => panic!("authorized image listing should be proxied"),
+        };
+        assert_provider_response_is_sanitized(image_response, r#"{"items":[]}"#).await;
+        let image_request = image_worker
+            .join()
+            .expect("mock image provider thread should finish");
+        assert_scoped_gateway_request(
+            &image_request,
+            "/api/service/images?scope=team",
+            user_id,
+            team_id,
+        );
+
+        let invite_response = match list_invite_campaigns(
+            State(fixture.state),
+            Extension(AuthUser { id: user_id }),
+            Path(team_id),
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(_) => panic!("authorized invite listing should be proxied"),
+        };
+        assert_provider_response_is_sanitized(invite_response, r#"{"campaigns":[]}"#).await;
+        let invite_request = invite_worker
+            .join()
+            .expect("mock invite tracker thread should finish");
+        assert_scoped_gateway_request(&invite_request, "/api/service/campaigns", user_id, team_id);
     }
 
     #[tokio::test]
