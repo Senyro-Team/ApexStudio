@@ -84,12 +84,14 @@ pub async fn update_media_library_item(
     work(move || {
         ws.update_media_library_item(
             &id,
-            &name,
-            &alt_text,
-            &image_url,
-            default_link_url.as_deref(),
-            &folder,
-            &tags,
+            apex_storage::MediaLibraryMetadata {
+                name: &name,
+                alt_text: &alt_text,
+                image_url: &image_url,
+                default_link_url: default_link_url.as_deref(),
+                folder: &folder,
+                tags: &tags,
+            },
         )
     })
     .await

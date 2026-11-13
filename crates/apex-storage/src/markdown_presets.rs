@@ -87,15 +87,14 @@ impl Workspace {
                     ));
                 }
             }
-            MarkdownBlockKind::Invite => {
+            MarkdownBlockKind::Invite
                 if !valid_https_url(&block.invite_url)
                     || block.text.trim().is_empty()
-                    || block.text.chars().count() > 300
-                {
-                    return Err(invalid(
-                        "Invite blocks need an HTTPS URL and a label under 300 characters.",
-                    ));
-                }
+                    || block.text.chars().count() > 300 =>
+            {
+                return Err(invalid(
+                    "Invite blocks need an HTTPS URL and a label under 300 characters.",
+                ))
             }
             _ => {}
         }

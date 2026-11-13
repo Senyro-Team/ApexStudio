@@ -1900,7 +1900,7 @@ fn statistics_summary_value(
     let rating_average =
         (!ratings.is_empty()).then(|| ratings.iter().sum::<f64>() / ratings.len() as f64);
     let mut ranked_posts = posts.iter().collect::<Vec<_>>();
-    ranked_posts.sort_by(|left, right| right.views.cmp(&left.views));
+    ranked_posts.sort_by_key(|post| std::cmp::Reverse(post.views));
     let changes = |select: fn(&StatisticsPost) -> Option<u64>| {
         previous.and_then(|previous| {
             Some(format!(
@@ -3511,7 +3511,7 @@ fn run_asset_command(
                     skipped += 1;
                 }
             }
-            sources.sort_by(|left, right| left.1.to_lowercase().cmp(&right.1.to_lowercase()));
+            sources.sort_by_key(|source| source.1.to_lowercase());
             if sources.is_empty() || sources.len() > 100 {
                 return Err(CliError {
                     code: "invalid_livery_folder".into(),
@@ -3736,7 +3736,7 @@ fn run_asset_command(
 
 fn print_asset_board(board: &AssetBoard) {
     let mut folders: Vec<_> = board.folders.iter().collect();
-    folders.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    folders.sort_by_key(|folder| folder.name.to_lowercase());
     let folder_path = |id: Option<&str>| -> String {
         let mut parts = Vec::new();
         let mut current = id;
@@ -4505,7 +4505,7 @@ enum TuiWorkerEvent {
     Finished(Result<QueueSnapshot, String>),
     StatisticsFinished(Result<Vec<StatisticsSnapshot>, String>),
     CreatorSalesFinished(Result<Option<apex_application::SalesSnapshot>, String>),
-    TeamSyncRefreshed(Result<TeamSyncDashboardData, String>),
+    TeamSyncRefreshed(Result<Box<TeamSyncDashboardData>, String>),
     TeamSyncFinished(Result<apex_application::team_sync::project::SyncReport, String>),
     TeamSyncBindingFinished(Result<(String, bool), String>),
     TeamSyncResolved(Result<(String, bool), String>),
@@ -4569,7 +4569,7 @@ fn start_tui_team_sync_refresh(
                         })
                     })
                 });
-            let _ = events.send(TuiWorkerEvent::TeamSyncRefreshed(result));
+            let _ = events.send(TuiWorkerEvent::TeamSyncRefreshed(result.map(Box::new)));
         })
         .map_err(|error| Error::Storage(format!("Could not start Team Sync refresh: {error}")))
 }
@@ -7578,7 +7578,7 @@ fn asset_rows(board: Option<&AssetBoard>) -> Vec<(String, String)> {
             ),
         ));
     }
-    rows.sort_by(|left, right| left.0.to_lowercase().cmp(&right.0.to_lowercase()));
+    rows.sort_by_key(|row| row.0.to_lowercase());
     rows
 }
 
@@ -10197,7 +10197,7 @@ fn statistics_panel_lines(
                 return ("Top posts by views", empty());
             };
             let mut posts = snapshot.posts.iter().collect::<Vec<_>>();
-            posts.sort_by(|left, right| right.views.cmp(&left.views));
+            posts.sort_by_key(|post| std::cmp::Reverse(post.views));
             let mut rows = vec![Line::styled(
                 format!("Latest snapshot · {} posts", posts.len()),
                 Style::default().add_modifier(Modifier::BOLD),
@@ -10248,7 +10248,7 @@ fn statistics_panel_lines(
                             added.push(post);
                         }
                     }
-                    deltas.sort_by(|left, right| right.0.cmp(&left.0));
+                    deltas.sort_by_key(|delta| std::cmp::Reverse(delta.0));
                     let mut rows = vec![Line::raw(format!(
                         "{} → {} · matched posts",
                         previous.collected_at.get(0..10).unwrap_or("previous"),

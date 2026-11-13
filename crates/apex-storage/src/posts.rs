@@ -578,12 +578,14 @@ impl Workspace {
             if self.existing_hash_item(&hash)?.is_none() {
                 self.insert_media_item(
                     Some(&hash),
-                    safe_name,
-                    safe_name,
-                    "",
-                    None,
-                    "Generated overlays",
-                    &[target.to_owned()],
+                    crate::MediaLibraryMetadata {
+                        name: safe_name,
+                        alt_text: safe_name,
+                        image_url: "",
+                        default_link_url: None,
+                        folder: "Generated overlays",
+                        tags: &[target.to_owned()],
+                    },
                 )?;
             }
             images.push(PublishingImage {

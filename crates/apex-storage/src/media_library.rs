@@ -37,6 +37,16 @@ pub struct GeneratedPreview {
     pub composition_json: String,
 }
 
+/// Editable descriptive fields for a local media-library item.
+pub struct MediaLibraryMetadata<'a> {
+    pub name: &'a str,
+    pub alt_text: &'a str,
+    pub image_url: &'a str,
+    pub default_link_url: Option<&'a str>,
+    pub folder: &'a str,
+    pub tags: &'a [String],
+}
+
 fn invalid(message: &str) -> Error {
     Error::InvalidContent(message.into())
 }
@@ -204,13 +214,16 @@ impl Workspace {
     pub(super) fn insert_media_item(
         &self,
         hash: Option<&str>,
-        name: &str,
-        alt_text: &str,
-        image_url: &str,
-        default_link_url: Option<&str>,
-        folder: &str,
-        tags: &[String],
+        metadata: MediaLibraryMetadata<'_>,
     ) -> Result<MediaLibraryItem, Error> {
+        let MediaLibraryMetadata {
+            name,
+            alt_text,
+            image_url,
+            default_link_url,
+            folder,
+            tags,
+        } = metadata;
         validate_name(name)?;
         validate_text(alt_text, 500, "Alt text must be 500 characters or fewer.")?;
         let image_url = validate_url(image_url, hash.is_none())?.unwrap_or_default();
@@ -250,7 +263,17 @@ impl Workspace {
             .file_stem()
             .map(|s| s.to_string_lossy().replace(['_', '-'], " "))
             .unwrap_or_else(|| "Image".into());
-        self.insert_media_item(Some(&hash), &name, &alt, "", None, "", &[])
+        self.insert_media_item(
+            Some(&hash),
+            MediaLibraryMetadata {
+                name: &name,
+                alt_text: &alt,
+                image_url: "",
+                default_link_url: None,
+                folder: "",
+                tags: &[],
+            },
+        )
     }
 
     pub fn add_media_library_asset(
@@ -277,7 +300,17 @@ impl Workspace {
             .file_stem()
             .map(|s| s.to_string_lossy().replace(['_', '-'], " "))
             .unwrap_or_else(|| name.clone());
-        self.insert_media_item(Some(&hash), &name, &alt, "", None, "", &[])
+        self.insert_media_item(
+            Some(&hash),
+            MediaLibraryMetadata {
+                name: &name,
+                alt_text: &alt,
+                image_url: "",
+                default_link_url: None,
+                folder: "",
+                tags: &[],
+            },
+        )
     }
 
     pub fn add_media_library_url(
@@ -291,25 +324,30 @@ impl Workspace {
     ) -> Result<MediaLibraryItem, Error> {
         self.insert_media_item(
             None,
-            name,
-            alt_text,
-            image_url,
-            default_link_url,
-            folder,
-            tags,
+            MediaLibraryMetadata {
+                name,
+                alt_text,
+                image_url,
+                default_link_url,
+                folder,
+                tags,
+            },
         )
     }
 
     pub fn update_media_library_item(
         &self,
         id: &str,
-        name: &str,
-        alt_text: &str,
-        image_url: &str,
-        default_link_url: Option<&str>,
-        folder: &str,
-        tags: &[String],
+        metadata: MediaLibraryMetadata<'_>,
     ) -> Result<MediaLibraryItem, Error> {
+        let MediaLibraryMetadata {
+            name,
+            alt_text,
+            image_url,
+            default_link_url,
+            folder,
+            tags,
+        } = metadata;
         validate_name(name)?;
         validate_text(alt_text, 500, "Alt text must be 500 characters or fewer.")?;
         let (folder, normalized_tags) = validate_folder_tags(folder, tags)?;
