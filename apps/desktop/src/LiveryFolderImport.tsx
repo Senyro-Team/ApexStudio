@@ -16,6 +16,8 @@ type Row = LiveryFolderDraft & {
   query: string;
   slots: (string | null)[];
   cover: number | null;
+  primaryColor: string;
+  secondaryColor: string | null;
   importedId?: string;
   failure?: string;
   excluded: boolean;
@@ -40,6 +42,8 @@ export default function LiveryFolderImport({
         query: "",
         slots: f.draft?.files.map((file) => file.suggestedSlot) ?? [],
         cover: null,
+        primaryColor: "#FFFFFF",
+        secondaryColor: null,
         excluded: false,
       })),
     ),
@@ -157,6 +161,8 @@ export default function LiveryFolderImport({
           null,
           current.name.trim(),
           current.vehicleId,
+          current.primaryColor,
+          current.secondaryColor,
           current.draft.files.map((f, n) => ({
             index: f.index,
             slot: current.slots[n],
@@ -297,6 +303,20 @@ export default function LiveryFolderImport({
                         }
                       />
                     </label>
+                    <fieldset className="form-columns livery-color-fields">
+                      <legend>Livery colors</legend>
+                      <label>
+                        Primary color
+                        <input type="color" aria-label="Batch primary color" value={row.primaryColor} onChange={(e) => update({ primaryColor: e.target.value.toUpperCase() })} />
+                      </label>
+                      <label>
+                        Secondary color
+                        <span className="inline-color-control">
+                          <input type="checkbox" aria-label="Use batch secondary color" checked={row.secondaryColor !== null} onChange={(e) => update({ secondaryColor: e.target.checked ? "#FFFFFF" : null })} />
+                          {row.secondaryColor !== null && <input type="color" aria-label="Batch secondary color" value={row.secondaryColor} onChange={(e) => update({ secondaryColor: e.target.value.toUpperCase() })} />}
+                        </span>
+                      </label>
+                    </fieldset>
                     {row.query.trim() && !row.vehicleId && (
                       <ul
                         className="batch-vehicle-results"

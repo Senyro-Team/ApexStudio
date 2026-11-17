@@ -48,12 +48,14 @@ mod tests {
         let vehicle = apex_core::vehicle_catalogue().unwrap().vehicles.remove(0);
         let png = temp.path().join("Left1.png");
         image::RgbImage::new(2, 2).save(&png).unwrap();
-        a.import_livery(
+        a.import_livery_with_colors(
             &project.id,
             Some(&parent.id),
             None,
             "Patrol",
             &vehicle.id,
+            "#123456",
+            Some("#ABCDEF"),
             &[(png.clone(), "Left1.png".into(), Some("Left 1".into()))],
             Some(0),
         )
@@ -62,6 +64,14 @@ mod tests {
         a.attach_note_image(&note.id, &png).unwrap();
         a.configure_project_sync(&project.id, Some(DEST)).unwrap();
         let before = a.project_snapshot(&project.id).unwrap();
+        assert_eq!(before.version, 2);
+        let mut legacy = before.clone();
+        legacy.version = 1;
+        for folder in &mut legacy.tables[2] {
+            folder.truncate(8);
+        }
+        assert!(legacy.validate().is_ok());
+        assert_eq!(legacy.fingerprint().unwrap(), before.fingerprint().unwrap());
         assert_eq!(
             before.fingerprint().unwrap(),
             a.project_snapshot(&project.id)
@@ -75,6 +85,14 @@ mod tests {
         }
         b.apply_project_snapshot(&before, None, DEST, 2).unwrap();
         assert_eq!(before, b.project_snapshot(&project.id).unwrap());
+        let synced_livery = b
+            .folders(&project.id)
+            .unwrap()
+            .into_iter()
+            .find(|folder| folder.kind == "livery")
+            .unwrap();
+        assert_eq!(synced_livery.primary_color, "#123456");
+        assert_eq!(synced_livery.secondary_color.as_deref(), Some("#ABCDEF"));
         assert!(b.project_sync(&project.id).unwrap().unwrap().enabled);
         assert!(
             !a.project_sync(&project.id)
@@ -187,7 +205,7 @@ const TABLES: &[(&str, &str, &str)] = &[
     ),
     (
         "asset_folders",
-        "id,project_id,parent_id,name,kind,vehicle_id,cover_hash,trash_id",
+        "id,project_id,parent_id,name,kind,vehicle_id,cover_hash,trash_id,primary_color,secondary_color",
         "project_id=?1",
     ),
     (
@@ -255,7 +273,7 @@ pub struct ProjectSnapshot {
 }
 impl ProjectSnapshot {
     pub fn validate(&self) -> Result<(), Error> {
-        if self.version != 1
+        if !matches!(self.version, 1 | 2)
             || self.tables.len() != TABLES.len()
             || self.tables.iter().map(Vec::len).sum::<usize>() > 30_000
             || self.blobs.len() > 10_000
@@ -277,12 +295,21 @@ impl ProjectSnapshot {
                 "Unsupported project sync snapshot.".into(),
             ));
         }
+        let folder_column_count = if self.version == 1 { 8 } else { 10 };
+        if self.tables[2]
+            .iter()
+            .any(|row| row.len() != folder_column_count)
+        {
+            return Err(Error::InvalidContent(
+                "Unsupported project sync folder record.".into(),
+            ));
+        }
         Ok(())
     }
     pub fn fingerprint(&self) -> Result<String, Error> {
         // Delivery policy is transport metadata and must not turn an otherwise
         // unchanged pre-policy snapshot into a user-edit conflict.
-        let mut canonical = self.clone();
+        let mut canonical = self.with_current_schema()?;
         canonical
             .blobs
             .iter_mut()
@@ -291,6 +318,21 @@ impl ProjectSnapshot {
             "{:x}",
             Sha256::digest(serde_json::to_vec(&canonical).map_err(storage)?)
         ))
+    }
+    fn with_current_schema(&self) -> Result<Self, Error> {
+        let mut canonical = self.clone();
+        if canonical.version == 1 {
+            let folders = canonical
+                .tables
+                .get_mut(2)
+                .ok_or_else(|| Error::InvalidContent("Invalid project sync snapshot.".into()))?;
+            for folder in folders {
+                folder.push(Value::String("#FFFFFF".into()));
+                folder.push(Value::Null);
+            }
+            canonical.version = 2;
+        }
+        Ok(canonical)
     }
     pub fn classify_server_only_liveries(&mut self) {
         let mut livery_folders = std::collections::HashSet::new();
@@ -419,7 +461,7 @@ fn snapshot(db: &Connection, id: &str) -> Result<ProjectSnapshot, Error> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(storage)?;
     Ok(ProjectSnapshot {
-        version: 1,
+        version: 2,
         project_id: id.into(),
         tables,
         blobs,
@@ -738,6 +780,8 @@ impl Workspace {
         revision: i64,
     ) -> Result<(), Error> {
         incoming.validate()?;
+        let current_snapshot = incoming.with_current_schema()?;
+        let incoming = &current_snapshot;
         for blob in &incoming.blobs {
             if !blob.remote_only
                 && std::fs::metadata(self.sync_blob_path(&blob.hash)?)

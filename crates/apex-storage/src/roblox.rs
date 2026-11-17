@@ -170,6 +170,8 @@ pub struct LiveryUploads {
     pub folder_id: String,
     pub name: String,
     pub vehicle: String,
+    pub primary_color: String,
+    pub secondary_color: Option<String>,
     pub account_id: String,
     pub textures: Vec<UploadTexture>,
 }
@@ -219,6 +221,8 @@ impl Workspace {
             folder_id: f.id,
             name: f.name,
             vehicle,
+            primary_color: f.primary_color,
+            secondary_color: f.secondary_color,
             account_id: account.into(),
             textures,
         })

@@ -23,6 +23,8 @@ const livery: LiveryUploads = {
   accountId: "123",
   name: "EMS",
   vehicle: "Ambulance",
+  primaryColor: "#FFFFFF",
+  secondaryColor: null,
   textures: [
     texture("Left 10", "110"),
     texture("Left 2", "102"),

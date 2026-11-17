@@ -9,6 +9,7 @@ import {
   saveFolder,
   copyAssetItem,
   moveAsset,
+  setLiveryColors,
   assetVersions,
   assignAssetSlot,
   type Project,
@@ -26,6 +27,7 @@ vi.mock("./bridge", () => ({
   moveAsset: vi.fn(),
   restoreAssetVersion: vi.fn(),
   setFolderCover: vi.fn(),
+  setLiveryColors: vi.fn(),
   importAssets: vi.fn(),
   saveAssetCopy: vi.fn(),
   errorMessage: (e: unknown) => (e instanceof Error ? e.message : "Failed"),
@@ -113,6 +115,8 @@ it("requires correction of duplicate slots and keeps the reviewed assignments in
     null,
     "Patrol",
     "car",
+    "#FFFFFF",
+    null,
     [
       { index: 0, slot: "Left 1" },
       { index: 1, slot: "Right 1" },
@@ -130,6 +134,8 @@ it("saves a new folder with its selected project and parent", async () => {
     kind: "folder",
     vehicleId: null,
     coverHash: null,
+    primaryColor: "#FFFFFF",
+    secondaryColor: null,
     preview: null,
   });
   render(
@@ -144,6 +150,41 @@ it("saves a new folder with its selected project and parent", async () => {
   await user.type(screen.getByLabelText("Folder name"), "References");
   await user.click(screen.getByRole("button", { name: "Save folder" }));
   expect(saveFolder).toHaveBeenCalledWith("project", null, null, "References");
+});
+it("saves editable livery colors after the livery folder has been created", async () => {
+  const user = userEvent.setup();
+  const liveryFolder = {
+    id: "livery",
+    projectId: "project",
+    parentId: null,
+    name: "Patrol",
+    kind: "livery" as const,
+    vehicleId: "car",
+    coverHash: null,
+    primaryColor: "#FFFFFF",
+    secondaryColor: null,
+    preview: null,
+  };
+  vi.mocked(assetBoard).mockResolvedValue({ assets: [], folders: [liveryFolder], placements: [] });
+  render(
+    <AssetBrowser
+      project={project}
+      catalogue={catalogue}
+      onBusy={() => {}}
+      onChange={() => {}}
+    />,
+  );
+  await user.dblClick(await screen.findByRole("button", { name: /Patrol Livery/ }));
+  fireEvent.change(screen.getByLabelText("Primary livery color"), {
+    target: { value: "#123456" },
+  });
+  await user.click(screen.getByLabelText("Use secondary livery color"));
+  fireEvent.change(screen.getAllByLabelText("Secondary livery color")[1], {
+    target: { value: "#ABCDEF" },
+  });
+  await user.click(screen.getByRole("button", { name: "Save colors" }));
+  await screen.findByText("Livery colors saved.");
+  expect(setLiveryColors).toHaveBeenCalledWith("livery", "#123456", "#ABCDEF");
 });
 
 it("shows no vehicle suggestions before typing and appends images without losing assignments", async () => {
@@ -198,6 +239,8 @@ it("copies and cuts a folder with keyboard shortcuts, then pastes into the open 
         parentId: null,
         vehicleId: null,
         coverHash: null,
+        primaryColor: "#FFFFFF",
+        secondaryColor: null,
         preview: null,
       },
       {
@@ -208,6 +251,8 @@ it("copies and cuts a folder with keyboard shortcuts, then pastes into the open 
         parentId: null,
         vehicleId: null,
         coverHash: null,
+        primaryColor: "#FFFFFF",
+        secondaryColor: null,
         preview: null,
       },
     ],
@@ -261,6 +306,8 @@ it("allows changing an existing livery file to any side", async () => {
         parentId: null,
         vehicleId: "car",
         coverHash: null,
+        primaryColor: "#FFFFFF",
+        secondaryColor: null,
         preview: null,
       },
     ],
@@ -309,6 +356,8 @@ it("drops a dragged file into a folder without treating it as a copy", async () 
         parentId: null,
         vehicleId: null,
         coverHash: null,
+        primaryColor: "#FFFFFF",
+        secondaryColor: null,
         preview: null,
       },
     ],
@@ -353,6 +402,8 @@ it("keeps selection actions hidden until needed and highlights valid drag-entry 
         parentId: null,
         vehicleId: null,
         coverHash: null,
+        primaryColor: "#FFFFFF",
+        secondaryColor: null,
         preview: null,
       },
       {
@@ -363,6 +414,8 @@ it("keeps selection actions hidden until needed and highlights valid drag-entry 
         parentId: null,
         vehicleId: null,
         coverHash: null,
+        primaryColor: "#FFFFFF",
+        secondaryColor: null,
         preview: null,
       },
     ],

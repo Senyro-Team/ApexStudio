@@ -19,8 +19,8 @@ export function publishingLivery(l: LiveryUploads): PublishingLivery {
     },
     name: l.name,
     vehicle: l.vehicle,
-    primaryColor: "#FFFFFF",
-    secondaryColor: null,
+    primaryColor: l.primaryColor,
+    secondaryColor: l.secondaryColor,
     opacity: 100,
     sides: l.textures.map((t) => ({
       side: t.side,

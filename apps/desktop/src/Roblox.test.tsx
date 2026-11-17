@@ -175,6 +175,8 @@ it("copies several selected liveries with fresh saved decal IDs without uploadin
     accountId: "123",
     name: id === "a" ? "EMS" : "Patrol",
     vehicle: "Vehicle",
+    primaryColor: "#FFFFFF",
+    secondaryColor: null,
     textures: [
       {
         assetId: id,
@@ -225,6 +227,8 @@ it("does not replace the clipboard when no usable saved IDs exist", async () => 
     accountId: "123",
     name: "EMS",
     vehicle: "Vehicle",
+    primaryColor: "#FFFFFF",
+    secondaryColor: null,
     textures: [],
   });
   render(<Roblox focus={{ folderIds: ["a"] }} onSettings={() => {}} />);

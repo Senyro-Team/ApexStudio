@@ -242,6 +242,7 @@ mod tests {
             CREATE INDEX overlay_templates_updated ON overlay_templates(updated_at DESC, name COLLATE NOCASE);
             INSERT INTO overlay_templates(id,name,width,height,layers_json)
                 VALUES('existing-template','Neutral QA Template',1920,1080,'[]');
+            CREATE TABLE asset_folders (id TEXT PRIMARY KEY);
             PRAGMA user_version = 25;",
         )?;
         drop(connection);

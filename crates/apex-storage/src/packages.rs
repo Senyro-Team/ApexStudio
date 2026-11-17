@@ -554,7 +554,7 @@ impl Workspace {
                 }
                 let fid = &folder_ids[&f.id];
                 let parent = f.parent_id.as_ref().map(|p| folder_ids[p].clone());
-                tx.execute("INSERT INTO asset_folders(id,project_id,parent_id,name,kind,vehicle_id,cover_hash)VALUES(?1,?2,?3,?4,?5,?6,?7)",rusqlite::params![fid,id,parent,f.name,f.kind,f.vehicle_id,f.cover_hash]).map_err(storage)?;
+                tx.execute("INSERT INTO asset_folders(id,project_id,parent_id,name,kind,vehicle_id,cover_hash,primary_color,secondary_color)VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",rusqlite::params![fid,id,parent,f.name,f.kind,f.vehicle_id,f.cover_hash,f.primary_color,f.secondary_color]).map_err(storage)?;
                 done.insert(f.id.clone());
             }
             if next.len() == before {

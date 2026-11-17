@@ -83,6 +83,8 @@ it("imports each selected folder separately and retries only failed liveries", a
     null,
     "Patrol A",
     "car",
+    "#FFFFFF",
+    null,
     [{ index: 0, slot: "Left 1" }],
     0,
   );
@@ -136,6 +138,8 @@ it("keeps per-folder edits when navigating and permits skipping a folder with no
     null,
     "Patrol A",
     "car",
+    "#FFFFFF",
+    null,
     [{ index: 0, slot: "Right 1" }],
     null,
   );

@@ -1,4 +1,7 @@
 use serde::{Deserialize, Serialize};
+fn default_primary_color() -> String {
+    "#FFFFFF".into()
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetFolder {
@@ -9,6 +12,10 @@ pub struct AssetFolder {
     pub kind: String,
     pub vehicle_id: Option<String>,
     pub cover_hash: Option<String>,
+    #[serde(default = "default_primary_color")]
+    pub primary_color: String,
+    #[serde(default)]
+    pub secondary_color: Option<String>,
     #[serde(default)]
     pub preview: Option<String>,
 }

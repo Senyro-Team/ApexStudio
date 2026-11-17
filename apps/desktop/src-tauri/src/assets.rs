@@ -517,6 +517,17 @@ pub async fn set_folder_cover(
     })
     .await
 }
+
+#[tauri::command]
+pub async fn set_livery_colors(
+    folder_id: String,
+    primary_color: String,
+    secondary_color: Option<String>,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<(), CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || ws.set_livery_colors(&folder_id, &primary_color, secondary_color.as_deref())).await
+}
 #[tauri::command]
 pub async fn prepare_livery(
     project_id: String,
@@ -606,6 +617,8 @@ pub async fn commit_livery(
     existing_id: Option<String>,
     name: String,
     vehicle_id: String,
+    primary_color: String,
+    secondary_color: Option<String>,
     assignments: Vec<Assignment>,
     cover_index: Option<usize>,
     app: tauri::AppHandle,
@@ -645,22 +658,26 @@ pub async fn commit_livery(
                 .enumerate()
                 .map(|(i, (_, name, slot))| (prepared[i].clone(), name.clone(), slot.clone()))
                 .collect::<Vec<_>>();
-            ws.import_prepared_livery(
+            ws.import_prepared_livery_with_colors(
                 &project,
                 parent_id.as_deref(),
                 existing_id.as_deref(),
                 &name,
                 &vehicle_id,
+                &primary_color,
+                secondary_color.as_deref(),
                 &files,
                 cover_index,
             )?
         } else {
-            ws.import_livery(
+            ws.import_livery_with_colors(
                 &project,
                 parent_id.as_deref(),
                 existing_id.as_deref(),
                 &name,
                 &vehicle_id,
+                &primary_color,
+                secondary_color.as_deref(),
                 &files,
                 cover_index,
             )?

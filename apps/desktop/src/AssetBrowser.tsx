@@ -27,6 +27,7 @@ import {
   assetVersions,
   restoreAssetVersion,
   setFolderCover,
+  setLiveryColors,
   prepareLivery,
   commitLivery,
   cancelLivery,
@@ -113,6 +114,8 @@ export default function AssetBrowser({
     [vehicleQuery, setVehicleQuery] = useState(""),
     [slots, setSlots] = useState<(string | null)[]>([]),
     [cover, setCover] = useState<number | null>(null),
+    [primaryColor, setPrimaryColor] = useState("#FFFFFF"),
+    [secondaryColor, setSecondaryColor] = useState<string | null>(null),
     [moveTo, setMoveTo] = useState<string | null>(null);
   const [explorerSelection, setExplorerSelection] = useState<Item | null>(null);
   const [clipboard, setClipboard] = useState<Clipboard | null>(null);
@@ -169,6 +172,15 @@ export default function AssetBrowser({
     asset = assets.get(selected ?? ""),
     placement = placements.get(selected ?? ""),
     vehicle = catalogue?.vehicles.find((v) => v.id === vehicleId);
+  useEffect(() => {
+    if (folder?.kind === "livery") {
+      setPrimaryColor(folder.primaryColor);
+      setSecondaryColor(folder.secondaryColor);
+    } else {
+      setPrimaryColor("#FFFFFF");
+      setSecondaryColor(null);
+    }
+  }, [folder?.id, folder?.primaryColor, folder?.secondaryColor]);
   useEffect(() => {
     browserRef.current?.focus({ preventScroll: true });
   }, [folderId]);
@@ -314,6 +326,8 @@ export default function AssetBrowser({
         setDraft(d);
         setLiveryName(folder?.kind === "livery" ? folder.name : "");
         setVehicleId(folder?.kind === "livery" ? folder.vehicleId || "" : "");
+        setPrimaryColor(folder?.kind === "livery" ? folder.primaryColor : "#FFFFFF");
+        setSecondaryColor(folder?.kind === "livery" ? folder.secondaryColor : null);
         setSlots(d.files.map((f) => f.suggestedSlot));
         setCover(null);
         setVehicleQuery(
@@ -448,6 +462,8 @@ export default function AssetBrowser({
         folder?.kind === "livery" ? folder.id : null,
         liveryName,
         vehicleId,
+        primaryColor,
+        secondaryColor,
         draft.files.map((f, i) => ({ index: f.index, slot: slots[i] })),
         cover,
       );
@@ -698,11 +714,27 @@ export default function AssetBrowser({
         </div>
       )}
       {folder?.kind === "livery" && !draft && (
-        <p className="field-hint">
-          {catalogue?.vehicles.find((v) => v.id === folder.vehicleId)?.name ??
-            "Stored vehicle"}{" "}
-          · {catalogue?.vehicles.find((v) => v.id === folder.vehicleId)?.team}
-        </p>
+        <div className="livery-color-settings">
+          <p className="field-hint">
+            {catalogue?.vehicles.find((v) => v.id === folder.vehicleId)?.name ??
+              "Stored vehicle"}{" "}
+            · {catalogue?.vehicles.find((v) => v.id === folder.vehicleId)?.team}
+          </p>
+          <div className="form-columns">
+            <label>
+              Primary livery color
+              <input type="color" aria-label="Primary livery color" value={primaryColor} disabled={busy || project.archived} onChange={(e) => setPrimaryColor(e.target.value.toUpperCase())} />
+            </label>
+            <label>
+              <span>Secondary livery color</span>
+              <span className="inline-color-control">
+                <input type="checkbox" aria-label="Use secondary livery color" checked={secondaryColor !== null} disabled={busy || project.archived} onChange={(e) => setSecondaryColor(e.target.checked ? "#FFFFFF" : null)} />
+                {secondaryColor !== null && <input type="color" aria-label="Secondary livery color" value={secondaryColor} disabled={busy || project.archived} onChange={(e) => setSecondaryColor(e.target.value.toUpperCase())} />}
+              </span>
+            </label>
+          </div>
+          <button className="secondary" disabled={busy || project.archived || (primaryColor === folder.primaryColor && secondaryColor === folder.secondaryColor)} onClick={() => void act(() => setLiveryColors(folder.id, primaryColor, secondaryColor), "Livery colors saved.")}>Save colors</button>
+        </div>
       )}
       {folderForm && (
         <form
@@ -786,6 +818,20 @@ export default function AssetBrowser({
               />
             </label>
           </div>
+          <fieldset className="form-columns livery-color-fields" disabled={busy}>
+            <legend>Livery colors</legend>
+            <label>
+              Primary color
+              <input type="color" aria-label="Import primary color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value.toUpperCase())} />
+            </label>
+            <label>
+              Secondary color
+              <span className="inline-color-control">
+                <input type="checkbox" aria-label="Use secondary import color" checked={secondaryColor !== null} onChange={(e) => setSecondaryColor(e.target.checked ? "#FFFFFF" : null)} />
+                {secondaryColor !== null && <input type="color" aria-label="Import secondary color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value.toUpperCase())} />}
+              </span>
+            </label>
+          </fieldset>
           <div className="vehicle-picker">
             <label>
               Vehicle

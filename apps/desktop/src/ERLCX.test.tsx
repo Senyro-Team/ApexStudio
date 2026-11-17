@@ -107,6 +107,8 @@ beforeEach(() => {
     accountId: "123",
     name: id,
     vehicle: "Car",
+    primaryColor: "#FFFFFF",
+    secondaryColor: null,
     textures: [
       {
         assetId: "asset",

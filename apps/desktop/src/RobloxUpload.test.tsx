@@ -21,6 +21,8 @@ const plan: LiveryUploads = {
   folderId: "f",
   name: "Patrol",
   vehicle: "Vehicle",
+  primaryColor: "#AABBCC",
+  secondaryColor: "#112233",
   accountId: "123",
   textures: [
     {
@@ -60,6 +62,8 @@ it("includes selected decal IDs and rejects moderated textures", () => {
   };
   expect(readyForPublishing(uploaded)).toBe(true);
   expect(publishingLivery(uploaded).name).toBe("Patrol");
+  expect(publishingLivery(uploaded).primaryColor).toBe("#AABBCC");
+  expect(publishingLivery(uploaded).secondaryColor).toBe("#112233");
   expect(publishingLivery(uploaded).sides).toEqual([
     { side: "Left 1", decalId: "456" },
   ]);

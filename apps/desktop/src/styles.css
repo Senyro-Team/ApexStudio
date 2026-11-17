@@ -1564,6 +1564,43 @@ textarea:focus-visible {
   grid-template-columns: 1fr 1fr;
   gap: 28px;
 }
+.livery-color-fields {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px 16px;
+  margin: 10px 0 20px;
+  min-width: 0;
+}
+.livery-color-fields legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.livery-color-fields input[type="color"],
+.livery-color-settings input[type="color"] {
+  display: block;
+  width: 64px;
+  height: 38px;
+  padding: 3px;
+  margin-top: 8px;
+}
+.inline-color-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.inline-color-control input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.livery-color-settings {
+  display: grid;
+  gap: 8px;
+  max-width: 620px;
+  margin-bottom: 20px;
+}
 .optional {
   font-weight: 400;
   color: var(--muted);

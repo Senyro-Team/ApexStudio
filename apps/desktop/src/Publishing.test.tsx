@@ -235,6 +235,8 @@ it("loads decal IDs from a selected livery instead of requiring manual code entr
         kind: "livery",
         vehicleId: "v",
         coverHash: null,
+        primaryColor: "#FFFFFF",
+        secondaryColor: null,
         preview: null,
       },
     ],
@@ -243,6 +245,8 @@ it("loads decal IDs from a selected livery instead of requiring manual code entr
     folderId: "f",
     name: "Patrol livery",
     vehicle: "Vehicle",
+    primaryColor: "#FFFFFF",
+    secondaryColor: null,
     accountId: "123",
     textures: [
       {
@@ -313,6 +317,8 @@ it("asks before uploading a missing livery and lets the user skip just that live
         kind: "livery",
         vehicleId: "v",
         coverHash: null,
+        primaryColor: "#FFFFFF",
+        secondaryColor: null,
         preview: null,
       },
     ],
@@ -321,6 +327,8 @@ it("asks before uploading a missing livery and lets the user skip just that live
     folderId: "f",
     name: "Patrol livery",
     vehicle: "Vehicle",
+    primaryColor: "#FFFFFF",
+    secondaryColor: null,
     accountId: "123",
     textures: [
       {

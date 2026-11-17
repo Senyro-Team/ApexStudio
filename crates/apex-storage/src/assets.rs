@@ -23,6 +23,17 @@ pub fn validate_folder_name(name: &str) -> Result<(), Error> {
     }
     Ok(())
 }
+fn validate_livery_colors(primary: &str, secondary: Option<&str>) -> Result<(), Error> {
+    let valid = |value: &str| {
+        value.len() == 7
+            && value.starts_with('#')
+            && value[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+    };
+    if !valid(primary) || secondary.is_some_and(|color| !valid(color)) {
+        return Err(bad("Use six-digit hexadecimal livery colors."));
+    }
+    Ok(())
+}
 impl Workspace {
     pub fn editable_project(&self, id: &str) -> Result<(), Error> {
         let archived = self
@@ -41,7 +52,7 @@ impl Workspace {
     }
     pub fn folders(&self, project: &str) -> Result<Vec<AssetFolder>, Error> {
         let db = self.connection()?;
-        let mut s=db.prepare("SELECT id,project_id,parent_id,name,kind,vehicle_id,cover_hash FROM asset_folders WHERE project_id=?1 AND trash_id IS NULL ORDER BY name COLLATE NOCASE").map_err(storage)?;
+        let mut s=db.prepare("SELECT id,project_id,parent_id,name,kind,vehicle_id,cover_hash,primary_color,secondary_color FROM asset_folders WHERE project_id=?1 AND trash_id IS NULL ORDER BY name COLLATE NOCASE").map_err(storage)?;
         let result = s
             .query_map([project], |r| {
                 Ok(AssetFolder {
@@ -52,6 +63,8 @@ impl Workspace {
                     kind: r.get(4)?,
                     vehicle_id: r.get(5)?,
                     cover_hash: r.get(6)?,
+                    primary_color: r.get(7)?,
+                    secondary_color: r.get(8)?,
                     preview: None,
                 })
             })
@@ -68,7 +81,7 @@ impl Workspace {
         result
     }
     pub fn folder(&self, id: &str) -> Result<AssetFolder, Error> {
-        let mut f=self.connection()?.query_row("SELECT id,project_id,parent_id,name,kind,vehicle_id,cover_hash FROM asset_folders WHERE id=?1 AND trash_id IS NULL",[id],|r|Ok(AssetFolder{id:r.get(0)?,project_id:r.get(1)?,parent_id:r.get(2)?,name:r.get(3)?,kind:r.get(4)?,vehicle_id:r.get(5)?,cover_hash:r.get(6)?,preview:None})).optional().map_err(storage)?.ok_or(Error::NotFound)?;
+        let mut f=self.connection()?.query_row("SELECT id,project_id,parent_id,name,kind,vehicle_id,cover_hash,primary_color,secondary_color FROM asset_folders WHERE id=?1 AND trash_id IS NULL",[id],|r|Ok(AssetFolder{id:r.get(0)?,project_id:r.get(1)?,parent_id:r.get(2)?,name:r.get(3)?,kind:r.get(4)?,vehicle_id:r.get(5)?,cover_hash:r.get(6)?,primary_color:r.get(7)?,secondary_color:r.get(8)?,preview:None})).optional().map_err(storage)?.ok_or(Error::NotFound)?;
         f.preview = f
             .cover_hash
             .as_deref()
@@ -282,7 +295,7 @@ impl Workspace {
                 } else {
                     f.parent_id.as_ref().and_then(|p| mapping.get(p).cloned())
                 };
-                tx.execute("INSERT INTO asset_folders(id,project_id,parent_id,name,kind,vehicle_id,cover_hash) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![new_id,project,parent,if f.id==id {&name} else {&f.name},f.kind,f.vehicle_id,f.cover_hash]).map_err(storage)?;
+                tx.execute("INSERT INTO asset_folders(id,project_id,parent_id,name,kind,vehicle_id,cover_hash,primary_color,secondary_color) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",params![new_id,project,parent,if f.id==id {&name} else {&f.name},f.kind,f.vehicle_id,f.cover_hash,f.primary_color,f.secondary_color]).map_err(storage)?;
                 mapping.insert(f.id.clone(), new_id);
             }
         } else if !board.assets.iter().any(|a| a.id == id) {
@@ -483,11 +496,55 @@ impl Workspace {
         files: &[(PathBuf, String, Option<String>)],
         cover: Option<usize>,
     ) -> Result<String, Error> {
+        let (primary_color, secondary_color) = if let Some(existing) = existing {
+            let folder = self.folder(existing)?;
+            (folder.primary_color, folder.secondary_color)
+        } else {
+            ("#FFFFFF".to_owned(), None)
+        };
+        self.import_livery_with_colors(
+            project,
+            parent,
+            existing,
+            name,
+            vehicle,
+            &primary_color,
+            secondary_color.as_deref(),
+            files,
+            cover,
+        )
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Reviewed livery metadata and files are committed together."
+    )]
+    pub fn import_livery_with_colors(
+        &self,
+        project: &str,
+        parent: Option<&str>,
+        existing: Option<&str>,
+        name: &str,
+        vehicle: &str,
+        primary_color: &str,
+        secondary_color: Option<&str>,
+        files: &[(PathBuf, String, Option<String>)],
+        cover: Option<usize>,
+    ) -> Result<String, Error> {
         let prepared = files
             .iter()
             .map(|(path, name, slot)| Ok((self.prepare_texture(path)?, name.clone(), slot.clone())))
             .collect::<Result<Vec<_>, Error>>()?;
-        self.import_prepared_livery(project, parent, existing, name, vehicle, &prepared, cover)
+        self.import_prepared_livery_with_colors(
+            project,
+            parent,
+            existing,
+            name,
+            vehicle,
+            primary_color,
+            secondary_color,
+            &prepared,
+            cover,
+        )
     }
     #[expect(
         clippy::too_many_arguments,
@@ -503,10 +560,45 @@ impl Workspace {
         files: &[(crate::PreparedTexture, String, Option<String>)],
         cover: Option<usize>,
     ) -> Result<String, Error> {
+        let (primary_color, secondary_color) = if let Some(existing) = existing {
+            let folder = self.folder(existing)?;
+            (folder.primary_color, folder.secondary_color)
+        } else {
+            ("#FFFFFF".to_owned(), None)
+        };
+        self.import_prepared_livery_with_colors(
+            project,
+            parent,
+            existing,
+            name,
+            vehicle,
+            &primary_color,
+            secondary_color.as_deref(),
+            files,
+            cover,
+        )
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "One atomic reviewed livery import."
+    )]
+    pub fn import_prepared_livery_with_colors(
+        &self,
+        project: &str,
+        parent: Option<&str>,
+        existing: Option<&str>,
+        name: &str,
+        vehicle: &str,
+        primary_color: &str,
+        secondary_color: Option<&str>,
+        files: &[(crate::PreparedTexture, String, Option<String>)],
+        cover: Option<usize>,
+    ) -> Result<String, Error> {
         let gate = self.content_gate();
         let _content = gate.lock();
         self.editable_project(project)?;
         validate_folder_name(name)?;
+        validate_livery_colors(primary_color, secondary_color)?;
         self.validate_parent(project, parent)?;
         if !apex_core::vehicle_catalogue()?
             .vehicles
@@ -557,7 +649,13 @@ impl Workspace {
             return Err(Error::Archived);
         }
         if existing.is_none() {
-            tx.execute("INSERT INTO asset_folders(id,project_id,parent_id,name,kind,vehicle_id)VALUES(?1,?2,?3,?4,'livery',?5)",params![id,project,parent,name.trim(),vehicle]).map_err(storage)?;
+            tx.execute("INSERT INTO asset_folders(id,project_id,parent_id,name,kind,vehicle_id,primary_color,secondary_color)VALUES(?1,?2,?3,?4,'livery',?5,?6,?7)",params![id,project,parent,name.trim(),vehicle,primary_color,secondary_color]).map_err(storage)?;
+        } else {
+            tx.execute(
+                "UPDATE asset_folders SET primary_color=?1,secondary_color=?2 WHERE id=?3",
+                params![primary_color, secondary_color, id],
+            )
+            .map_err(storage)?;
         }
         if let Some(index) = cover {
             tx.execute(
@@ -603,6 +701,33 @@ impl Workspace {
         .map_err(storage)?;
         tx.commit().map_err(storage)?;
         Ok(id)
+    }
+    pub fn set_livery_colors(
+        &self,
+        folder_id: &str,
+        primary_color: &str,
+        secondary_color: Option<&str>,
+    ) -> Result<(), Error> {
+        validate_livery_colors(primary_color, secondary_color)?;
+        let folder = self.folder(folder_id)?;
+        if folder.kind != "livery" {
+            return Err(bad("Choose a livery folder."));
+        }
+        self.editable_project(&folder.project_id)?;
+        let mut db = self.connection()?;
+        let tx = db.transaction().map_err(storage)?;
+        tx.execute(
+            "UPDATE asset_folders SET primary_color=?1,secondary_color=?2 WHERE id=?3",
+            params![primary_color, secondary_color, folder_id],
+        )
+        .map_err(storage)?;
+        tx.execute(
+            "UPDATE projects SET updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1",
+            [&folder.project_id],
+        )
+        .map_err(storage)?;
+        tx.commit().map_err(storage)?;
+        Ok(())
     }
 }
 fn valid_slot(slot: &str) -> bool {
@@ -701,12 +826,14 @@ mod tests {
             Some("Left 1".into()),
         )];
         let a = ws
-            .import_livery(
+            .import_livery_with_colors(
                 &p.id,
                 Some(&root.id),
                 None,
                 "Patrol",
                 &vehicle.id,
+                "#123456",
+                Some("#ABCDEF"),
                 &files,
                 Some(0),
             )
@@ -750,6 +877,11 @@ mod tests {
             None,
         )
         .unwrap();
+        assert_eq!(ws.folder(&a).unwrap().primary_color, "#123456");
+        assert_eq!(
+            ws.folder(&a).unwrap().secondary_color.as_deref(),
+            Some("#ABCDEF")
+        );
         assert_eq!(ws.versions(&aid).unwrap().len(), 2);
         let old = ws
             .versions(&aid)
@@ -783,6 +915,11 @@ mod tests {
             .folders
             .iter()
             .any(|f| f.cover_hash.as_deref() == Some(&first)));
+        assert!(state.folders.iter().any(|f| {
+            f.name == "Patrol"
+                && f.primary_color == "#123456"
+                && f.secondary_color.as_deref() == Some("#ABCDEF")
+        }));
         assert!(state
             .assets
             .iter()
@@ -792,6 +929,11 @@ mod tests {
         let restored = Workspace::open(dir.path().join("restored")).unwrap();
         restored.restore_backup(&backup).unwrap();
         assert_eq!(restored.board(&p.id).unwrap().folders.len(), 4);
+        assert_eq!(restored.folder(&a).unwrap().primary_color, "#123456");
+        assert_eq!(
+            restored.folder(&a).unwrap().secondary_color.as_deref(),
+            Some("#ABCDEF")
+        );
         assert_eq!(restored.versions(&aid).unwrap().len(), 2);
     }
     #[test]

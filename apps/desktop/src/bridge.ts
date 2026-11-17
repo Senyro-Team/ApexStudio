@@ -445,6 +445,8 @@ export interface AssetFolder {
   kind: "folder" | "livery";
   vehicleId: string | null;
   coverHash: string | null;
+  primaryColor: string;
+  secondaryColor: string | null;
   preview: string | null;
 }
 export interface Placement {
@@ -484,6 +486,11 @@ export const restoreAssetVersion = (id: string, versionId: string) =>
   invoke<void>("restore_asset_version", { id, versionId });
 export const setFolderCover = (id: string) =>
   invoke<boolean>("set_folder_cover", { id });
+export const setLiveryColors = (
+  folderId: string,
+  primaryColor: string,
+  secondaryColor: string | null,
+) => invoke<void>("set_livery_colors", { folderId, primaryColor, secondaryColor });
 export const prepareLivery = (projectId: string, token: string | null = null) =>
   invoke<LiveryDraft | null>("prepare_livery", { projectId, token });
 export const commitLivery = (
@@ -492,6 +499,8 @@ export const commitLivery = (
   existingId: string | null,
   name: string,
   vehicleId: string,
+  primaryColor: string,
+  secondaryColor: string | null,
   assignments: { index: number; slot: string | null }[],
   coverIndex: number | null,
 ) =>
@@ -501,6 +510,8 @@ export const commitLivery = (
     existingId,
     name,
     vehicleId,
+    primaryColor,
+    secondaryColor,
     assignments,
     coverIndex,
   });
@@ -600,6 +611,8 @@ export interface LiveryUploads {
   folderId: string;
   name: string;
   vehicle: string;
+  primaryColor: string;
+  secondaryColor: string | null;
   accountId: string;
   textures: {
     assetId: string;

@@ -436,6 +436,7 @@ pub fn run() {
             assets::asset_versions,
             assets::restore_asset_version,
             assets::set_folder_cover,
+            assets::set_livery_colors,
             assets::livery_preparations,
             assets::prepare_livery,
             assets::prepare_livery_folders,
