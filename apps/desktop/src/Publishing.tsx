@@ -771,8 +771,6 @@ export default function Publishing({
             ? {
                 ...next,
                 name: l.name || next.name,
-                primaryColor: l.primaryColor,
-                secondaryColor: l.secondaryColor,
                 opacity: l.opacity,
               }
             : l,

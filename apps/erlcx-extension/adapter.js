@@ -88,7 +88,13 @@ export async function fillCurrentStep(bundle, options = {}) {
         );
       return result;
     }
-    async function setField(e, value, name, defaults = []) {
+    async function setField(
+      e,
+      value,
+      name,
+      defaults = [],
+      replaceExisting = false,
+    ) {
       if (!e || e.disabled || e.readOnly) {
         result.attention.push(name + ": field unavailable");
         return false;
@@ -102,7 +108,12 @@ export async function fillCurrentStep(bundle, options = {}) {
         result.skipped.push(name + ": already matches");
         return true;
       }
-      if (before && !defaults.includes(before) && !options.replace) {
+      if (
+        before &&
+        !defaults.includes(before) &&
+        !options.replace &&
+        !replaceExisting
+      ) {
         result.attention.push(name + ": existing value left unchanged");
         return false;
       }
@@ -295,7 +306,7 @@ export async function fillCurrentStep(bundle, options = {}) {
         async function colour(index, value, name, defaults) {
           const direct = inputs('input[type="color"]', root);
           if (direct[index])
-            return setField(direct[index], value, name, defaults);
+            return setField(direct[index], value, name, defaults, true);
           const triggers = inputs("button", root).filter((b) =>
             /^#[a-f0-9]{6}$/i.test(normal(b.textContent)),
           );
@@ -308,13 +319,6 @@ export async function fillCurrentStep(bundle, options = {}) {
           if (before === value.toLowerCase()) {
             result.skipped.push(name + ": already matches");
             return true;
-          }
-          if (
-            !defaults.map((v) => v.toLowerCase()).includes(before) &&
-            !options.replace
-          ) {
-            result.attention.push(name + ": existing value left unchanged");
-            return false;
           }
           trigger.click();
           await pause();
@@ -335,6 +339,7 @@ export async function fillCurrentStep(bundle, options = {}) {
             value.toLowerCase(),
             name,
             defaults.map((v) => v.toLowerCase()),
+            true,
           );
           if (trigger.isConnected) trigger.click();
           await pause();
