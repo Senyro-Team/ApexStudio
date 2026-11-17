@@ -48,6 +48,8 @@ pub struct PublishingImage {
 pub struct PublishingLivery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<PublishingSource>,
+    #[serde(default)]
+    pub name: String,
     pub vehicle: String,
     pub primary_color: String,
     pub secondary_color: Option<String>,
@@ -200,14 +202,16 @@ impl PublishingInput {
             let color = |v: &str| {
                 v.len() == 7 && v.starts_with('#') && v[1..].bytes().all(|b| b.is_ascii_hexdigit())
             };
-            if l.vehicle.chars().count() > 120
+            if l.name.chars().count() > 120
+                || l.name.chars().any(char::is_control)
+                || l.vehicle.chars().count() > 120
                 || !color(&l.primary_color)
                 || l.secondary_color.as_deref().is_some_and(|c| !color(c))
                 || l.opacity > 100
                 || l.sides.len() > 100
             {
                 return Err(invalid(
-                    "Check vehicle name, colours, opacity (0-100) and side count.",
+                    "Check livery name, vehicle, colours, opacity (0-100) and side count.",
                 ));
             }
             let mut sides = std::collections::HashSet::new();
@@ -228,9 +232,11 @@ impl PublishingInput {
                     return Err(invalid("Enter a side and decal ID for each code row."));
                 }
             }
-            if complete && (l.vehicle.trim().is_empty() || l.sides.is_empty()) {
+            if complete
+                && (l.name.trim().is_empty() || l.vehicle.trim().is_empty() || l.sides.is_empty())
+            {
                 return Err(invalid(
-                    "Each livery needs a vehicle and at least one side code.",
+                    "Each livery needs a name, vehicle and at least one side code.",
                 ));
             }
         }

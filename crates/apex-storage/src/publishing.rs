@@ -20,10 +20,18 @@ impl Workspace {
             .optional()
             .map_err(storage)?;
         match row {
-            Some((data, revision)) => Ok(PublishingDraft {
-                data: serde_json::from_str(&data).map_err(storage)?,
-                revision: u64::try_from(revision).map_err(storage)?,
-            }),
+            Some((data, revision)) => {
+                let mut data: PublishingInput = serde_json::from_str(&data).map_err(storage)?;
+                for livery in &mut data.liveries {
+                    if livery.name.trim().is_empty() {
+                        livery.name.clone_from(&livery.vehicle);
+                    }
+                }
+                Ok(PublishingDraft {
+                    data,
+                    revision: u64::try_from(revision).map_err(storage)?,
+                })
+            }
             None => Ok(PublishingDraft {
                 data: PublishingInput::default(),
                 revision: 0,
@@ -198,7 +206,7 @@ impl Workspace {
                 r.get(0)
             })
             .map_err(storage)?;
-        let liveries: Vec<_> = data.liveries.iter().map(|l| serde_json::json!({"vehicle":l.vehicle,"primaryColor":l.primary_color,"secondaryColor":l.secondary_color,"opacity":l.opacity,"sides":l.sides})).collect();
+        let liveries: Vec<_> = data.liveries.iter().map(|l| serde_json::json!({"name":l.name,"vehicle":l.vehicle,"primaryColor":l.primary_color,"secondaryColor":l.secondary_color,"opacity":l.opacity,"sides":l.sides})).collect();
         let manifest = serde_json::json!({"version":1,"kind":"apex-publish","targetOrigin":"https://erlcx.com","exportId":uuid::Uuid::now_v7().to_string(),"generatedAt":generated_at,"title":data.title,"description":data.description,"tags":data.tags,"youtubeUrl":data.youtube_url,"liveries":liveries,"media":media});
         let parent = destination.parent().ok_or(Error::NotFound)?;
         let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(storage)?;
@@ -255,6 +263,7 @@ mod tests {
         d.data.description = "Public description".into();
         d.data.liveries.push(PublishingLivery {
             source: None,
+            name: "Patrol".into(),
             vehicle: "Vehicle".into(),
             primary_color: "#FFFFFF".into(),
             secondary_color: None,
@@ -273,6 +282,7 @@ mod tests {
         assert_eq!(imported.data.title, "Public title");
         assert_eq!(imported.data.media.len(), 2);
         assert_eq!(imported.data.liveries.len(), 1);
+        assert_eq!(imported.data.liveries[0].name, "Patrol");
         assert!(imported.data.liveries[0].source.is_none());
         assert_eq!(imported.data.liveries[0].sides[0].decal_id, "12345");
         let mut zip = zip::ZipArchive::new(fs::File::open(export).unwrap()).unwrap();

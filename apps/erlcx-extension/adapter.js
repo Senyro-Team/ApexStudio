@@ -2,6 +2,12 @@
 export async function fillCurrentStep(bundle, options = {}) {
   const result = { step: "Unknown", filled: [], skipped: [], attention: [] };
   const normal = (s) => (s ?? "").replace(/\s+/g, " ").trim();
+  const vehicleLabel = (l) => {
+    const name = normal(l.name), vehicle = normal(l.vehicle);
+    return name && name.toLowerCase() !== vehicle.toLowerCase()
+      ? `${name} — ${vehicle}`
+      : vehicle;
+  };
   if (
     location.origin !== "https://erlcx.com" ||
     !/^\/upload\/?$/.test(location.pathname) ||
@@ -269,7 +275,7 @@ export async function fillCurrentStep(bundle, options = {}) {
       for (let i = 0; i < bundle.liveries.length; i++) {
         const l = bundle.liveries[i],
           field = vehicles()[i];
-        if (!(await setField(field, l.vehicle, `Vehicle ${i + 1}`))) continue;
+        if (!(await setField(field, vehicleLabel(l), `Vehicle ${i + 1}`))) continue;
         let root = field.parentElement;
         while (
           root &&

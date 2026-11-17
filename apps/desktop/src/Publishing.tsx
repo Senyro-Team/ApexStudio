@@ -53,10 +53,19 @@ import {
   type MarkdownPreset,
   type OverlayPreviewOutput,
 } from "./bridge";
-const steps = ["Liveries", "Details", "Previews", "Markdown", "Review"] as const;
+const steps = ["Liveries", "Details", "Previews", "Review"] as const;
+type PublishingSection = (typeof steps)[number] | "Links & Markdown";
 const PENDING_INVITE_REQUESTS_KEY = "apex-studio.pending-invite-requests.v1";
 
 type PendingInviteRequest = { id: string; scope: string; payloadHash: string };
+
+function liveryLabel(livery: PublishingLivery, fallback: string) {
+  const name = livery.name.trim();
+  const vehicle = livery.vehicle.trim();
+  return name && vehicle && name.toLowerCase() !== vehicle.toLowerCase()
+    ? `${name} — ${vehicle}`
+    : name || vehicle || fallback;
+}
 
 function readPendingInviteRequests(): PendingInviteRequest[] {
   try {
@@ -216,7 +225,7 @@ export default function Publishing({
   const [pendingFolder, setPendingFolder] = useState<string | null>(null);
   const [saved, setSaved] = useState<PublishingDraft | null>(null),
     [data, setData] = useState<PublishingData | null>(null),
-    [step, setStep] = useState<(typeof steps)[number]>("Liveries"),
+    [step, setStep] = useState<PublishingSection>("Liveries"),
     [busy, setBusy] = useState(false),
     [dirty, setDirty] = useState(false),
     [error, setError] = useState(""),
@@ -244,6 +253,7 @@ export default function Publishing({
   const [savingMarkdownBlockId, setSavingMarkdownBlockId] = useState("");
   const [markdownPresetName, setMarkdownPresetName] = useState("");
   const [imageHostingAvailable, setImageHostingAvailable] = useState(false);
+  const imageHostingCheck = useRef<Promise<boolean> | null>(null);
   const [inviteTrackingAvailable, setInviteTrackingAvailable] = useState(false);
   const [serverServiceNotices, setServerServiceNotices] = useState<string[]>([]);
   const [inviteCampaignBusy, setInviteCampaignBusy] = useState(false);
@@ -271,7 +281,11 @@ export default function Publishing({
       if (active) setProjectImages(assets.filter((asset) => asset.name.toLowerCase().endsWith(".png")));
     }).catch(() => {});
     if (serverUrl && teamId) {
-      void syncServiceAvailability(serverUrl, teamId).then(async (availability) => {
+      const availabilityRequest = syncServiceAvailability(serverUrl, teamId);
+      imageHostingCheck.current = availabilityRequest
+        .then((availability) => availability.imageHosting && availability.imageHostingReachable !== false)
+        .catch(() => false);
+      void availabilityRequest.then(async (availability) => {
         if (!active) return;
         const inviteTrackingReady = availability.inviteTracking
           && availability.inviteTrackingReachable !== false;
@@ -553,7 +567,7 @@ export default function Publishing({
   function addLibraryImage() {
     const item = libraryItems.find((candidate) => candidate.id === libraryChoice);
     if (!item) return;
-    updateMarkdown([...markdownBlocks, { id: crypto.randomUUID(), kind: "image", text: "", imageUrl: item.imageUrl, altText: item.altText || item.name, linkUrl: item.defaultLinkUrl ?? "", inviteUrl: "", mediaHash: item.hash }]);
+    void insertMarkdownImage(item);
     setLibraryChoice("");
   }
   async function addLocalLibraryImage() {
@@ -561,8 +575,7 @@ export default function Publishing({
       const item = await pickMediaLibraryImage();
       if (!item) return;
       setLibraryItems((items) => [item, ...items.filter((existing) => existing.id !== item.id)]);
-      setLibraryChoice(item.id);
-      if (!item.imageUrl) setNotice("Image added to the library. Add its public URL after uploading it where you choose.");
+      await insertMarkdownImage(item);
     } catch (e) { setError(errorMessage(e)); }
   }
   async function addProjectLibraryImage() {
@@ -571,25 +584,39 @@ export default function Publishing({
     try {
       const item = await addMediaLibraryAsset(asset.projectId, asset.id);
       setLibraryItems((items) => [item, ...items.filter((existing) => existing.id !== item.id)]);
-      setMarkdownImage(item);
+      await insertMarkdownImage(item);
       setProjectImageChoice("");
     } catch (e) { setError(errorMessage(e)); }
   }
-  async function uploadMarkdownImages() {
+  async function insertMarkdownImage(item: MediaLibraryItem) {
+    if (markdownBlocks.length >= 100) return;
+    const block: MarkdownBlock = { id: crypto.randomUUID(), kind: "image", text: "", imageUrl: item.imageUrl, altText: item.altText || item.name, linkUrl: item.defaultLinkUrl ?? "", inviteUrl: "", mediaHash: item.hash };
+    updateMarkdown([...markdownBlocks, block]);
+    const serverConfigured = Boolean(
+      window.localStorage.getItem("apex-studio.team-sync.server-url")
+      && window.localStorage.getItem("apex-studio.team-sync.active-team"),
+    );
+    const hostingReady = imageHostingAvailable || (serverConfigured && await (imageHostingCheck.current ?? Promise.resolve(false)));
+    if (!block.imageUrl && item.hash && !item.providerImageId && !item.isRemote && hostingReady) {
+      await uploadMarkdownImages([item], block);
+    } else if (!block.imageUrl) {
+      setNotice("Image added to the library. Add a public URL or connect Image Hosting to upload it.");
+    }
+  }
+  async function uploadMarkdownImages(pendingOverride?: MediaLibraryItem[], appendedBlock?: MarkdownBlock) {
     const serverUrl = window.localStorage.getItem("apex-studio.team-sync.server-url") ?? "";
     const teamId = window.localStorage.getItem("apex-studio.team-sync.active-team") ?? "";
-    if (!serverUrl || !teamId || !imageHostingAvailable) {
+    if (!serverUrl || !teamId) {
       setError("Image Hosting is not available. Add a public image URL manually or configure Image Hosting in Server.");
       return;
     }
     const missingHashes = new Set(markdownBlocks
       .filter((block) => block.kind === "image" && !block.imageUrl.trim() && block.mediaHash)
       .map((block) => block.mediaHash as string));
-    const pending = libraryItems.filter((item) =>
+    const pending = (pendingOverride ?? libraryItems.filter((item) =>
       item.hash && missingHashes.has(item.hash) && !item.providerImageId && !item.isRemote,
-    ).slice(0, 10);
+    )).filter((item, index, all) => item.hash && !item.providerImageId && !item.isRemote && all.findIndex((candidate) => candidate.hash === item.hash) === index).slice(0, 10);
     if (!pending.length) return;
-    if (!window.confirm(`Upload ${pending.length} local image${pending.length === 1 ? "" : "s"} to your personal Image Hosting space? Their public URLs will be saved into this draft. Continue?`)) return;
 
     setBusy(true);
     setError("");
@@ -615,7 +642,8 @@ export default function Publishing({
           teamId: null,
         } : item;
       }));
-      const updatedBlocks = markdownBlocks.map((block) => {
+      const blocksToUpdate = appendedBlock ? [...markdownBlocks, appendedBlock] : markdownBlocks;
+      const updatedBlocks = blocksToUpdate.map((block) => {
         if (block.kind !== "image" || block.imageUrl.trim() || !block.mediaHash) return block;
         const local = pending.find((item) => item.hash === block.mediaHash);
         const uploaded = local ? byClientId.get(local.id) : undefined;
@@ -633,9 +661,6 @@ export default function Publishing({
     } finally {
       setBusy(false);
     }
-  }
-  function setMarkdownImage(item: MediaLibraryItem) {
-    updateMarkdown([...markdownBlocks, { id: crypto.randomUUID(), kind: "image", text: "", imageUrl: item.imageUrl, altText: item.altText || item.name, linkUrl: item.defaultLinkUrl ?? "", inviteUrl: "", mediaHash: item.hash }]);
   }
   function changeLivery(patch: Partial<PublishingLivery>) {
     if (!data) return;
@@ -745,6 +770,7 @@ export default function Publishing({
           i === existing
             ? {
                 ...next,
+                name: l.name || next.name,
                 primaryColor: l.primaryColor,
                 secondaryColor: l.secondaryColor,
                 opacity: l.opacity,
@@ -801,10 +827,11 @@ export default function Publishing({
     ...(data.media.length < 2 ? ["Previews: choose at least two images."] : []),
     ...(!data.liveries.length ? ["Add at least one livery."] : []),
     ...data.liveries.flatMap((l, i) =>
+      !l.name.trim() ||
       !l.vehicle.trim() ||
       !l.sides.length ||
       l.sides.some((s) => !s.side || !/^[1-9][0-9]{0,19}$/.test(s.decalId))
-        ? [`Livery ${i + 1}: enter a vehicle, sides and numeric decal IDs.`]
+        ? [`Livery ${i + 1}: enter a livery name, vehicle, sides and numeric decal IDs.`]
         : [],
     ),
   ];
@@ -843,6 +870,17 @@ export default function Publishing({
           </button>
         ))}
       </nav>
+      <div className="publishing-editor-shortcuts">
+        <button
+          type="button"
+          className="text-button"
+          aria-current={step === "Links & Markdown" ? "page" : undefined}
+          onClick={() => setStep("Links & Markdown")}
+          disabled={busy}
+        >
+          Open Links &amp; Markdown editor
+        </button>
+      </div>
       {step === "Details" && (
         <div className="publishing-fields">
           <label>
@@ -1099,6 +1137,7 @@ export default function Publishing({
               disabled={locked || data.liveries.length >= 20}
               onClick={() => {
                 includeLivery({
+                  name: "",
                   vehicle: "",
                   primaryColor: "#FFFFFF",
                   secondaryColor: null,
@@ -1120,12 +1159,21 @@ export default function Publishing({
                     aria-pressed={activeLivery === i}
                     onClick={() => setActiveLivery(i)}
                   >
-                    {l.vehicle || `Livery ${i + 1}`}
+                    {liveryLabel(l, `Livery ${i + 1}`)}
                   </button>
                 ))}
               </div>
               {current && (
                 <div className="publishing-fields">
+                  <label htmlFor="publishing-livery-name-input">Livery name</label>
+                  <input
+                    id="publishing-livery-name-input"
+                    aria-label="Livery name"
+                    maxLength={120}
+                    value={current.name}
+                    disabled={locked}
+                    onChange={(e) => changeLivery({ name: e.target.value })}
+                  />
                   {current.source && (
                     <div className="publishing-source">
                       <span>Roblox decal IDs linked to this livery.</span>
@@ -1356,17 +1404,17 @@ export default function Publishing({
           )}
         </section>
       )}
-      {step === "Markdown" && (
+      {step === "Links & Markdown" && (
         <section className="publishing-markdown">
           <div className="publishing-markdown-heading">
-            <div><h2>Post Markdown</h2><p className="field-hint">Build reusable text, linked images and invite links. Local images need a public URL before they can be copied.</p></div>
+            <div><h2>Links &amp; Markdown editor</h2><p className="field-hint">Compose reusable text, linked images and invite links, then copy the finished Markdown. Local PNGs upload automatically when Image Hosting is connected.</p></div>
             <button className="primary" type="button" disabled={locked} onClick={() => void copyMarkdown()}><Copy size={16} /> Copy Markdown</button>
           </div>
           <div className="publishing-markdown-toolbar">
             <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => addMarkdown("text")}>Add text</button>
             <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => addMarkdown("image")}>Add image URL</button>
             <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => addMarkdown("invite")}>Add invite link</button>
-            <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => void addLocalLibraryImage()}>Add local PNG</button>
+            <button className="secondary" type="button" disabled={locked || markdownBlocks.length >= 100} onClick={() => void addLocalLibraryImage()}>Upload local PNG</button>
             {projectImages.length > 0 && <><select aria-label="Choose a project image" value={projectImageChoice} disabled={locked} onChange={(event) => setProjectImageChoice(event.target.value)}><option value="">Choose project image</option>{projectImages.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !projectImageChoice || markdownBlocks.length >= 100} onClick={() => void addProjectLibraryImage()}>Add project image</button></>}
             {libraryItems.length > 0 && <><select aria-label="Choose an image from Image Library" value={libraryChoice} disabled={locked} onChange={(event) => setLibraryChoice(event.target.value)}><option value="">Choose library image</option>{libraryItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="secondary" type="button" disabled={locked || !libraryChoice || markdownBlocks.length >= 100} onClick={addLibraryImage}>Add library image</button></>}
             {imageHostingAvailable && <button className="secondary" type="button" disabled={locked || !markdownBlocks.some((block) => block.kind === "image" && !block.imageUrl.trim() && block.mediaHash && libraryItems.some((item) => item.hash === block.mediaHash && item.hash && !item.providerImageId && !item.isRemote))} onClick={() => void uploadMarkdownImages()}><Upload size={15} /> Upload missing images</button>}
@@ -1448,8 +1496,7 @@ export default function Publishing({
             {data.liveries.map((l, i) => (
               <details key={i}>
                 <summary>
-                  {l.vehicle || `Livery ${i + 1}`} · {l.sides.length}{" "}
-                  {l.sides.length === 1 ? "texture" : "textures"}
+                  {`${liveryLabel(l, `Livery ${i + 1}`)} · ${l.sides.length} ${l.sides.length === 1 ? "texture" : "textures"}`}
                 </summary>
                 {l.sides.map((s, j) => (
                   <p key={j}>

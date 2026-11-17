@@ -59,6 +59,7 @@ it("includes selected decal IDs and rejects moderated textures", () => {
     message: "",
   };
   expect(readyForPublishing(uploaded)).toBe(true);
+  expect(publishingLivery(uploaded).name).toBe("Patrol");
   expect(publishingLivery(uploaded).sides).toEqual([
     { side: "Left 1", decalId: "456" },
   ]);

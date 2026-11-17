@@ -1,6 +1,12 @@
 // Serialized into the ERLCX isolated world. Deliberately has no publication action.
 export function wizardState(bundle, advance = false) {
   const normal = (s) => (s ?? "").replace(/\s+/g, " ").trim();
+  const vehicleLabel = (l) => {
+    const name = normal(l.name), vehicle = normal(l.vehicle);
+    return name && name.toLowerCase() !== vehicle.toLowerCase()
+      ? `${name} — ${vehicle}`
+      : vehicle;
+  };
   const visible = (e) =>
     e &&
     !e.closest("[hidden]") &&
@@ -91,7 +97,7 @@ export function wizardState(bundle, advance = false) {
     const ids = fields('input[placeholder="Decal ID"]');
     ready =
       v.length === bundle.liveries.length &&
-      v.every((e, i) => e.value === bundle.liveries[i].vehicle) &&
+      v.every((e, i) => e.value === vehicleLabel(bundle.liveries[i])) &&
       ids.length === bundle.liveries.reduce((n, l) => n + l.sides.length, 0) &&
       ids.every(
         (e, i) =>

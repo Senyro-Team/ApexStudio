@@ -89,6 +89,7 @@ mod tests {
                     account_id: "123".into(),
                     hashes: vec![hash.clone()],
                 }),
+                name: "Patrol".into(),
                 vehicle: vehicle.name,
                 primary_color: "#FFFFFF".into(),
                 secondary_color: None,

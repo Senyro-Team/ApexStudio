@@ -22,6 +22,7 @@ vi.mock("./bridge", () => ({
       },
     ]),
   createPost: vi.fn().mockResolvedValue("new"),
+  deletePost: vi.fn().mockResolvedValue(undefined),
   listProjects: vi.fn().mockResolvedValue([
     { id: "p", name: "Project One" },
     { id: "q", name: "Project Two" },
@@ -127,7 +128,7 @@ it("retries loading liveries after a workspace error without discarding the draf
   );
   render(<ERLCX onBusy={() => {}} onOpenRoblox={() => {}} />);
   await userEvent.click(
-    await screen.findByRole("button", { name: /Test draft/ }),
+    await screen.findByRole("button", { name: "Open draft: Test draft" }),
   );
   await userEvent.click(
     await screen.findByRole("button", { name: "Retry loading liveries" }),
@@ -141,7 +142,7 @@ it("retries loading liveries after a workspace error without discarding the draf
 it("selects liveries across projects, saves missing IDs and blocks browser/export", async () => {
   render(<ERLCX onBusy={() => {}} onOpenRoblox={() => {}} />);
   await userEvent.click(
-    await screen.findByRole("button", { name: /Test draft/ }),
+    await screen.findByRole("button", { name: "Open draft: Test draft" }),
   );
   await userEvent.click(
     await screen.findByRole("button", { name: "Select all filtered" }),
@@ -190,6 +191,7 @@ it("requires explicit review of a missing source without rewriting saved IDs", a
     ...structuredClone(empty),
     liveries: [
       {
+        name: "Saved livery",
         vehicle: "Saved Car",
         primaryColor: "#FFFFFF",
         secondaryColor: null,
@@ -209,7 +211,7 @@ it("requires explicit review of a missing source without rewriting saved IDs", a
   ]);
   render(<ERLCX onBusy={() => {}} onOpenRoblox={() => {}} />);
   await userEvent.click(
-    await screen.findByRole("button", { name: /Test draft/ }),
+    await screen.findByRole("button", { name: "Open draft: Test draft" }),
   );
   await userEvent.click(await screen.findByRole("button", { name: "Review" }));
   const prepare = await screen.findByRole("button", {
@@ -220,4 +222,20 @@ it("requires explicit review of a missing source without rewriting saved IDs", a
   expect((prepare as HTMLButtonElement).disabled).toBe(false);
   expect(bridge.savePost).not.toHaveBeenCalled();
   expect(screen.getByText("Frontplate 1 — 456")).toBeTruthy();
+});
+
+it("asks before deleting a saved draft and refreshes the list", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  vi.mocked(bridge.listPosts)
+    .mockResolvedValueOnce([
+      { id: "post", title: "Test draft", updatedAt: "2026-10-28T12:00:00Z", liveries: 0, revision: 1 },
+    ])
+    .mockResolvedValueOnce([]);
+  render(<ERLCX onBusy={() => {}} onOpenRoblox={() => {}} />);
+  const remove = await screen.findByRole("button", { name: "Delete draft: Test draft" });
+  await userEvent.click(remove);
+  expect(confirm).toHaveBeenCalledWith("Delete “Test draft”? This removes the saved ERLCX draft.");
+  await waitFor(() => expect(bridge.deletePost).toHaveBeenCalledWith("post", 1));
+  expect(await screen.findByText("No saved drafts.")).toBeTruthy();
+  confirm.mockRestore();
 });

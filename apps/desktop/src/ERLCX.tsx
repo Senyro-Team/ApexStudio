@@ -1,8 +1,9 @@
 import { useEffect, useState, lazy, Suspense } from "react";
-import { ArrowUpRight, FilePenLine } from "lucide-react";
+import { ArrowUpRight, FilePenLine, Trash2 } from "lucide-react";
 import {
   listPosts,
   createPost,
+  deletePost,
   listProjects,
   vehicleCatalogue,
   errorMessage,
@@ -42,6 +43,20 @@ export default function ERLCX({
     setBusy(true);
     try {
       setId(await createPost());
+      await load();
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove(r: PostSummary) {
+    const title = r.title || "Untitled post";
+    if (!window.confirm(`Delete “${title}”? This removes the saved ERLCX draft.`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await deletePost(r.id, r.revision);
       await load();
     } catch (e) {
       setError(errorMessage(e));
@@ -94,18 +109,34 @@ export default function ERLCX({
         <ul className="post-draft-list">
           {rows.map((r) => (
             <li key={r.id}>
-              <button className="post-draft-row" onClick={() => setId(r.id)}>
-                <span className="post-draft-icon" aria-hidden="true"><FilePenLine size={22} /></span>
-                <span className="post-draft-copy">
-                  <strong>{r.title || "Untitled post"}</strong>
-                  <small>
-                    <span>{r.liveries} {r.liveries === 1 ? "livery" : "liveries"}</span>
-                    <span aria-hidden="true">·</span>
-                    <time dateTime={r.updatedAt}>{new Date(r.updatedAt).toLocaleString()}</time>
-                  </small>
-                </span>
-                <span className="post-draft-open">Open <ArrowUpRight size={17} aria-hidden="true" /></span>
-              </button>
+              <div className="post-draft-row">
+                <button
+                  className="post-draft-open-row"
+                  onClick={() => setId(r.id)}
+                  disabled={busy}
+                  aria-label={`Open draft: ${r.title || "Untitled post"}`}
+                >
+                  <span className="post-draft-icon" aria-hidden="true"><FilePenLine size={22} /></span>
+                  <span className="post-draft-copy">
+                    <strong>{r.title || "Untitled post"}</strong>
+                    <small>
+                      <span>{r.liveries} {r.liveries === 1 ? "livery" : "liveries"}</span>
+                      <span aria-hidden="true">·</span>
+                      <time dateTime={r.updatedAt}>{new Date(r.updatedAt).toLocaleString()}</time>
+                    </small>
+                  </span>
+                  <span className="post-draft-open">Open <ArrowUpRight size={17} aria-hidden="true" /></span>
+                </button>
+                <button
+                  className="post-draft-delete secondary"
+                  type="button"
+                  disabled={busy}
+                  aria-label={`Delete draft: ${r.title || "Untitled post"}`}
+                  onClick={() => void remove(r)}
+                >
+                  <Trash2 size={17} aria-hidden="true" />
+                </button>
+              </div>
             </li>
           ))}
           {!rows.length && <li>No saved drafts.</li>}

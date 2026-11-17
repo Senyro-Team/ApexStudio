@@ -180,6 +180,7 @@ it("exports a complete saved draft but blocks exporting unsaved edits", async ()
       ],
       liveries: [
         {
+          name: "Patrol",
           vehicle: "Vehicle",
           primaryColor: "#FFFFFF",
           secondaryColor: null,
@@ -203,7 +204,7 @@ it("exports a complete saved draft but blocks exporting unsaved edits", async ()
   const codes = screen.getByText("View livery codes (1)");
   expect(codes.closest("details")?.open).toBe(false);
   await user.click(codes);
-  const vehicleCodes = screen.getByText("Vehicle · 1 texture");
+  const vehicleCodes = screen.getByText("Patrol — Vehicle · 1 texture");
   expect(vehicleCodes.closest("details")?.open).toBe(false);
   await user.click(vehicleCodes);
   expect(screen.getByText("Left 1 — 12345")).toBeTruthy();
@@ -290,6 +291,7 @@ it("loads decal IDs from a selected livery instead of requiring manual code entr
     expect.objectContaining({
       liveries: [
         expect.objectContaining({
+          name: "Patrol livery",
           source: { folderId: "f", accountId: "123", hashes: ["a".repeat(64)] },
           sides: [{ side: "Left 1", decalId: "456" }],
         }),
@@ -380,7 +382,7 @@ it("shows local library images in the composer without waiting for optional serv
   }));
 
   render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
-  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
   const librarySelect = await screen.findByRole("combobox", { name: "Choose an image from Image Library" });
   expect(Array.from((librarySelect as HTMLSelectElement).options).map((option) => option.textContent)).toContain("Local banner");
   expect(syncServiceAvailability).toHaveBeenCalledWith("https://team.example", "team-1");
@@ -416,7 +418,7 @@ it("loads local composer images while project assets are still loading", async (
   vi.mocked(listAssets).mockImplementation(() => new Promise(() => {}));
 
   render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
-  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
   const librarySelect = await screen.findByRole("combobox", { name: "Choose an image from Image Library" });
   expect(Array.from((librarySelect as HTMLSelectElement).options).map((option) => option.textContent)).toContain("Local banner");
 });
@@ -473,7 +475,7 @@ it("keeps a fast team-library response when the local media query finishes later
   render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
   await vi.waitFor(() => expect(syncImageLibrary).toHaveBeenCalled());
   finishLocal([localImage]);
-  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
   const librarySelect = await screen.findByRole("combobox", { name: "Choose an image from Image Library" });
   const availableImages = Array.from((librarySelect as HTMLSelectElement).options).map((option) => option.textContent);
   expect(availableImages).toContain("Local banner");
@@ -485,7 +487,7 @@ it("creates and copies manual post Markdown while optional services are disconne
   const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
   render(<Publishing project={project} catalogue={catalogue} onEditingChange={() => {}} />);
 
-  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
   await user.click(screen.getByRole("button", { name: "Add text" }));
   await user.type(screen.getByLabelText("Markdown text"), "**Latest release**");
   await user.click(screen.getByRole("button", { name: "Add image URL" }));
@@ -513,7 +515,7 @@ it("does not copy empty or unsafe manual invite links", async () => {
   const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
   render(<Publishing project={project} catalogue={catalogue} onEditingChange={() => {}} />);
 
-  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
   await user.click(screen.getByRole("button", { name: "Add text" }));
   await user.type(screen.getByLabelText("Markdown text"), "Keep this announcement intact");
   await user.click(screen.getByRole("button", { name: "Add invite link" }));
@@ -530,7 +532,7 @@ it("blocks a partial copy when an image click-through URL is invalid", async () 
   const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
   render(<Publishing project={project} catalogue={catalogue} onEditingChange={() => {}} />);
 
-  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
   await user.click(screen.getByRole("button", { name: "Add image URL" }));
   await user.type(screen.getByLabelText("Alt text"), "Banner");
   await user.type(screen.getByLabelText("Public image URL"), "https://images.example/banner.png");
@@ -541,9 +543,69 @@ it("blocks a partial copy when an image click-through URL is invalid", async () 
   expect(clipboard).not.toHaveBeenCalled();
 });
 
+it("offers immediate hosted upload for a newly inserted local image when Image Hosting is connected", async () => {
+  const user = userEvent.setup();
+  const confirmSpy = vi.spyOn(window, "confirm");
+  const image: MediaLibraryItem = {
+    id: "local-banner",
+    hash: "f".repeat(64),
+    name: "Banner.png",
+    altText: "Studio banner",
+    imageUrl: "",
+    defaultLinkUrl: null,
+    folder: "",
+    tags: [],
+    overlayVersionGroup: null,
+    overlayVersion: null,
+    overlayTarget: null,
+    ownerScope: "personal",
+    teamId: null,
+    providerImageId: null,
+    createdAt: "2026-11-10T00:00:00Z",
+    updatedAt: "2026-11-10T00:00:00Z",
+    preview: null,
+  };
+  window.localStorage.setItem("apex-studio.team-sync.server-url", "https://team.example");
+  window.localStorage.setItem("apex-studio.team-sync.active-team", "team-1");
+  vi.mocked(mediaLibrary).mockResolvedValue([image]);
+  vi.mocked(syncServiceAvailability).mockResolvedValue({
+    projectSync: true,
+    imageHosting: true,
+    inviteTracking: false,
+    imageHostingReachable: true,
+  });
+  vi.mocked(syncUploadLibraryImages).mockResolvedValue({
+    images: [{
+      id: "hosted-banner",
+      name: image.name,
+      clientId: image.id,
+      imageUrl: "https://images.example/banner.png",
+      hash: image.hash!,
+      altText: image.altText,
+      defaultLinkUrl: null,
+      ownerScope: "personal",
+      createdAt: image.createdAt,
+      reused: false,
+    }],
+    errors: [],
+  });
+
+  render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
+  await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
+  await waitFor(() => expect(syncImageLibrary).toHaveBeenCalled());
+  expect(screen.queryByRole("button", { name: "Markdown" })).toBeNull();
+  await user.selectOptions(await screen.findByRole("combobox", { name: "Choose an image from Image Library" }), image.id);
+  await user.click(screen.getByRole("button", { name: "Add library image" }));
+
+  const imageUrl = await screen.findByLabelText("Public image URL") as HTMLInputElement;
+  await waitFor(() => expect(imageUrl.value).toBe("https://images.example/banner.png"));
+  expect(confirmSpy).not.toHaveBeenCalled();
+  expect(syncUploadLibraryImages).toHaveBeenCalledWith("https://team.example", "team-1", [image.id], "personal");
+});
+
 it("reuses an uploaded image URL when only its Markdown destination changes", async () => {
   const user = userEvent.setup();
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  const confirmSpy = vi.spyOn(window, "confirm");
   const image: MediaLibraryItem = {
     id: "local-banner",
     hash: "f".repeat(64),
@@ -588,14 +650,14 @@ it("reuses an uploaded image URL when only its Markdown destination changes", as
   });
 
   render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
-  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
+  await waitFor(() => expect(syncImageLibrary).toHaveBeenCalled());
   await user.selectOptions(await screen.findByRole("combobox", { name: "Choose an image from Image Library" }), image.id);
   await user.click(screen.getByRole("button", { name: "Add library image" }));
-  await user.click(screen.getByRole("button", { name: "Upload missing images" }));
   const imageUrl = await screen.findByLabelText("Public image URL") as HTMLInputElement;
   await waitFor(() => expect(imageUrl.value).toBe("https://images.example/banner.png"));
   expect(syncUploadLibraryImages).toHaveBeenCalledTimes(1);
-  expect(confirm).toHaveBeenCalledOnce();
+  expect(confirmSpy).not.toHaveBeenCalled();
 
   await user.type(screen.getByLabelText("Click-through URL (optional)"), "https://erlcx.com/groups/123");
   expect(imageUrl.value).toBe("https://images.example/banner.png");
@@ -635,7 +697,7 @@ it("reuses the same invite idempotency key after an ambiguous failure and remoun
     <Publishing project={project} catalogue={null} onEditingChange={() => {}} />,
   );
   const fillInviteForm = async () => {
-    await user.click(await screen.findByRole("button", { name: "Markdown" }));
+    await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
     await user.type(await screen.findByLabelText("Campaign title"), "Emergency campaign");
     await user.type(screen.getByLabelText("Discord channel ID"), "12345678901234567");
     await user.click(screen.getByRole("button", { name: "Create invite and add link" }));
@@ -672,7 +734,7 @@ it("shows tracked campaign loading failures and allows a manual retry", async ()
     .mockResolvedValueOnce([]);
 
   render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
-  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
   expect((await screen.findByRole("alert")).textContent).toContain(
     "Could not load tracked campaigns: Server temporarily unavailable",
   );
@@ -715,7 +777,7 @@ it("keeps manual Markdown available when optional server services are unreachabl
   });
 
   render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
-  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
   expect(await screen.findByText("Image Hosting is unavailable; add public image URLs manually. Invite Tracking is unavailable; add invite URLs manually.")).toBeTruthy();
 
   await user.selectOptions(
@@ -741,7 +803,7 @@ it("shows manual URL fallbacks when optional service availability cannot be chec
   vi.mocked(syncServiceAvailability).mockRejectedValue(new Error("Server is offline"));
 
   render(<Publishing project={project} catalogue={null} onEditingChange={() => {}} />);
-  await user.click(await screen.findByRole("button", { name: "Markdown" }));
+  await user.click(await screen.findByRole("button", { name: "Open Links & Markdown editor" }));
 
   expect(await screen.findByText("Could not check optional server services; manual image URLs and invite URLs remain available.")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Add invite link" })).toBeTruthy();

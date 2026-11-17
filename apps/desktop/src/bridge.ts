@@ -522,6 +522,7 @@ export interface PublishingImage {
 }
 export interface PublishingLivery {
   source?: { folderId: string; accountId: string; hashes: string[] };
+  name: string;
   vehicle: string;
   primaryColor: string;
   secondaryColor: string | null;
@@ -749,6 +750,8 @@ export interface PostSourceStatus {
 }
 export const listPosts = () => invoke<PostSummary[]>("list_posts");
 export const createPost = () => invoke<string>("create_post");
+export const deletePost = (id: string, revision: number) =>
+  invoke<void>("delete_post", { id, revision });
 export const postDraft = (id: string) =>
   invoke<PublishingDraft>("post_draft", { id });
 export const savePost = (id: string, revision: number, data: PublishingData) =>

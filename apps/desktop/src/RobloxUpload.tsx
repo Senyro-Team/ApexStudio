@@ -17,6 +17,7 @@ export function publishingLivery(l: LiveryUploads): PublishingLivery {
       accountId: l.accountId,
       hashes: l.textures.map((t) => t.hash),
     },
+    name: l.name,
     vehicle: l.vehicle,
     primaryColor: "#FFFFFF",
     secondaryColor: null,

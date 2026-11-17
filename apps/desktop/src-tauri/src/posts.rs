@@ -113,6 +113,15 @@ pub async fn create_post(workspace: tauri::State<'_, Workspace>) -> Result<Strin
     work(move || ws.create_post()).await
 }
 #[tauri::command]
+pub async fn delete_post(
+    id: String,
+    revision: u64,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<(), CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || ws.delete_post(&id, revision)).await
+}
+#[tauri::command]
 pub async fn post_draft(
     id: String,
     workspace: tauri::State<'_, Workspace>,

@@ -341,6 +341,7 @@ pub fn run() {
             posts::save_markdown_preset,
             posts::delete_markdown_preset,
             posts::create_post,
+            posts::delete_post,
             posts::post_draft,
             posts::save_post,
             posts::post_sources,

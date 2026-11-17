@@ -50,6 +50,8 @@ struct PublicPostBundle {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PublicPostLivery {
+    #[serde(default)]
+    name: String,
     vehicle: String,
     primary_color: String,
     secondary_color: Option<String>,
@@ -108,16 +110,35 @@ impl Workspace {
         rows
     }
     pub fn post(&self, id: &str) -> Result<PublishingDraft, Error> {
-        let (json, revision): (String, u32) = self
-            .connection()?
+        let db = self.connection()?;
+        let (json, revision): (String, u32) = db
             .query_row("SELECT data,revision FROM posts WHERE id=?1", [id], |r| {
                 Ok((r.get(0)?, r.get(1)?))
             })
             .optional()
             .map_err(storage)?
             .ok_or(Error::NotFound)?;
+        let mut data: PublishingInput = serde_json::from_str(&json).map_err(storage)?;
+        for livery in &mut data.liveries {
+            if livery.name.trim().is_empty() {
+                if let Some(source) = &livery.source {
+                    livery.name = db
+                        .query_row(
+                            "SELECT name FROM asset_folders WHERE id=?1",
+                            [&source.folder_id],
+                            |row| row.get(0),
+                        )
+                        .optional()
+                        .map_err(storage)?
+                        .unwrap_or_default();
+                }
+                if livery.name.trim().is_empty() {
+                    livery.name.clone_from(&livery.vehicle);
+                }
+            }
+        }
         Ok(PublishingDraft {
-            data: serde_json::from_str(&json).map_err(storage)?,
+            data,
             revision: revision.into(),
         })
     }
@@ -133,6 +154,53 @@ impl Workspace {
             )
             .map_err(storage)?;
         Ok(id)
+    }
+
+    /// Delete a saved ERLCX draft only if the caller is acting on the revision
+    /// it listed. Related snapshot references and any legacy project shadow are
+    /// removed atomically; managed blobs remain subject to the normal shared
+    /// reference lifecycle.
+    pub fn delete_post(&self, id: &str, revision: u64) -> Result<(), Error> {
+        let gate = self.content_gate();
+        let _guard = gate.lock();
+        let mut db = self.connection()?;
+        let tx = db.transaction().map_err(storage)?;
+        let (current_revision, legacy_project): (u32, Option<String>) = tx
+            .query_row(
+                "SELECT revision,legacy_project_id FROM posts WHERE id=?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(storage)?
+            .ok_or(Error::NotFound)?;
+        if u64::from(current_revision) != revision {
+            return Err(Error::Conflict);
+        }
+        tx.execute(
+            "DELETE FROM content_leases WHERE owner=?1",
+            [format!("editor:{id}")],
+        )
+        .map_err(storage)?;
+        tx.execute("DELETE FROM post_markdown_media WHERE post_id=?1", [id])
+            .map_err(storage)?;
+        tx.execute("DELETE FROM post_media WHERE post_id=?1", [id])
+            .map_err(storage)?;
+        tx.execute("DELETE FROM posts WHERE id=?1", [id])
+            .map_err(storage)?;
+        if let Some(project) = legacy_project {
+            tx.execute(
+                "DELETE FROM publishing_media WHERE project_id=?1",
+                [&project],
+            )
+            .map_err(storage)?;
+            tx.execute(
+                "DELETE FROM publishing_drafts WHERE project_id=?1",
+                [&project],
+            )
+            .map_err(storage)?;
+        }
+        tx.commit().map_err(storage)
     }
 
     /// Import a strict, public ERLCX bundle into a new local draft.
@@ -255,6 +323,11 @@ impl Workspace {
                 .into_iter()
                 .map(|livery| PublishingLivery {
                     source: None,
+                    name: if livery.name.trim().is_empty() {
+                        livery.vehicle.clone()
+                    } else {
+                        livery.name
+                    },
                     vehicle: livery.vehicle,
                     primary_color: livery.primary_color,
                     secondary_color: livery.secondary_color,
@@ -826,6 +899,7 @@ mod tests {
                     account_id: "123".into(),
                     hashes: vec![texture.hash.clone()],
                 }),
+                name: "EMS Unit 1".into(),
                 vehicle: vehicle.name,
                 primary_color: "#FFFFFF".into(),
                 secondary_color: None,
@@ -921,6 +995,62 @@ mod tests {
         restored.restore_backup(&path).unwrap();
         assert_eq!(restored.post(&id).unwrap().data.media.len(), 2);
     }
+
+    #[test]
+    fn deleting_global_draft_checks_revision_and_releases_its_references() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path().join("ws")).unwrap();
+        let id = ws.create_post().unwrap();
+        let path = dir.path().join("preview.png");
+        image::RgbImage::from_pixel(2, 2, image::Rgb([8, 16, 32]))
+            .save(&path)
+            .unwrap();
+        let image = ws
+            .add_post_images(&format!("editor:{id}"), &[path])
+            .unwrap()
+            .remove(0);
+        let mut draft = ws.post(&id).unwrap();
+        draft.data.media.push(PublishingImage {
+            hash: image.hash.clone(),
+            name: image.name,
+        });
+        draft.data.markdown_blocks.push(apex_core::MarkdownBlock {
+            id: "image-block".into(),
+            kind: apex_core::MarkdownBlockKind::Image,
+            text: String::new(),
+            image_url: String::new(),
+            alt_text: String::new(),
+            link_url: String::new(),
+            invite_url: String::new(),
+            media_hash: Some(image.hash.clone()),
+        });
+        draft = ws.save_post(&id, draft.revision, draft.data).unwrap();
+        assert!(matches!(
+            ws.delete_post(&id, draft.revision + 1),
+            Err(Error::Conflict)
+        ));
+        assert_eq!(ws.posts().unwrap().len(), 1);
+
+        ws.delete_post(&id, draft.revision).unwrap();
+        assert!(ws.posts().unwrap().is_empty());
+        assert!(matches!(ws.post(&id), Err(Error::NotFound)));
+        let db = ws.connection().unwrap();
+        for (table, column) in [
+            ("post_media", "post_id"),
+            ("post_markdown_media", "post_id"),
+            ("content_leases", "owner"),
+        ] {
+            let sql = format!("SELECT COUNT(*) FROM {table} WHERE {column}=?1");
+            let key = if table == "content_leases" {
+                format!("editor:{id}")
+            } else {
+                id.clone()
+            };
+            let count: u32 = db.query_row(&sql, [key], |row| row.get(0)).unwrap();
+            assert_eq!(count, 0, "{table} still references deleted draft");
+        }
+    }
+
     #[test]
     fn legacy_drafts_migrate_with_media_order_and_snapshots() {
         let dir = tempfile::tempdir().unwrap();

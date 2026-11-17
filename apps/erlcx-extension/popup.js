@@ -38,7 +38,12 @@ function render() {
   }
   for (const livery of m.liveries) {
     const p = document.createElement("p");
-    p.textContent = `${livery.vehicle}: ${livery.sides.map((s) => `${s.side} / ${s.decalId}`).join(", ")}`;
+    const name = (livery.name ?? "").trim();
+    const vehicle = livery.vehicle.trim();
+    const label = name && name.toLowerCase() !== vehicle.toLowerCase()
+      ? `${name} — ${vehicle}`
+      : vehicle;
+    p.textContent = `${label}: ${livery.sides.map((s) => `${s.side} / ${s.decalId}`).join(", ")}`;
     $("codes").append(p);
   }
 }

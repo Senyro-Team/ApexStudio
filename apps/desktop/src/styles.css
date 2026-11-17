@@ -2470,6 +2470,16 @@ button:disabled:hover {
 .publishing-editor {
   max-width: 1000px;
 }
+.publishing-editor-shortcuts {
+  display: flex;
+  justify-content: flex-end;
+  margin: -18px 2px 20px;
+}
+.publishing-editor-shortcuts [aria-current="page"] {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
 .publishing-steps {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3744,11 +3754,41 @@ button:disabled:hover {
   text-align: left;
   box-shadow: var(--elevation-soft);
 }
-.post-draft-row:hover:not(:disabled) {
+.post-draft-open-row {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.post-draft-row:has(.post-draft-open-row:not(:disabled)):hover {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--card-border));
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   box-shadow: 0 18px 36px rgb(0 0 0 / 0.21);
   transform: translateY(-2px);
+}
+.post-draft-open-row:focus-visible,
+.post-draft-delete:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.post-draft-delete {
+  display: inline-grid;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  padding: 0;
+  color: var(--danger, #ff7272);
+}
+.post-draft-delete:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger, #ff7272) 55%, var(--card-border));
+  background: color-mix(in srgb, var(--danger, #ff7272) 12%, var(--surface-raised));
 }
 .post-draft-icon {
   display: grid;
@@ -4860,6 +4900,19 @@ select {
 :root[data-wallpaper="true"] .app .post-draft-open {
   border-color: rgb(255 255 255 / 0.2);
   background: rgb(255 255 255 / 0.11);
+}
+:root[data-wallpaper="true"] .app .post-draft-open-row {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+:root[data-wallpaper="true"] .app .post-draft-open-row:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
 }
 :root[data-wallpaper="true"] .app .publishing-steps {
   border-color: rgb(255 255 255 / 0.25);

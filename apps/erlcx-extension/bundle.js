@@ -107,8 +107,12 @@ export function validateManifest(m) {
     "Invalid livery count.",
   );
   for (const l of m.liveries) {
-    keys(l, ["vehicle", "primaryColor", "secondaryColor", "opacity", "sides"]);
+    keys(l, ["name", "vehicle", "primaryColor", "secondaryColor", "opacity", "sides"]);
     assert(
+      (l.name === undefined ||
+        (typeof l.name === "string" &&
+          l.name.length <= 120 &&
+          !/[\u0000-\u001f]/.test(l.name))) &&
       typeof l.vehicle === "string" &&
         l.vehicle.trim() &&
         l.vehicle.length <= 120 &&
