@@ -2,6 +2,7 @@ import { createHash, webcrypto } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { fillCurrentStep } from "../../erlcx-extension/adapter.js";
+import { wizardState } from "../../erlcx-extension/automation.js";
 import { validateManifest, readBundle } from "../../erlcx-extension/bundle.js";
 const manifest = () => ({
   version: 1,
@@ -128,6 +129,39 @@ it("fills dynamic livery/side rows and colour defaults without clicking submissi
   expect(
     document.querySelectorAll('input[placeholder="Decal ID"]'),
   ).toHaveLength(1);
+});
+it("replaces existing site colours with bundle colours and verifies the Codes step", async () => {
+  fixture(
+    '<section><input placeholder="Vehicle name (e.g., Crown Victoria)" value=""><input type="color" value="#654321"><input type="color" value="#987654"><button title="Remove secondary colour">Remove secondary colour</button><input type="number" value="100"><input placeholder="Side (e.g. Left, Right)" value=""><input placeholder="Decal ID" value=""><button>Add Side</button></section>',
+  );
+  const secondary = document.querySelectorAll('input[type="color"]')[1];
+  document
+    .querySelector('[title="Remove secondary colour"]')
+    .addEventListener("click", () => {
+      secondary.remove();
+      document.querySelector('[title="Remove secondary colour"]').remove();
+    });
+  const d = manifest();
+  d.liveries[0].primaryColor = "#123456";
+  d.liveries[0].secondaryColor = "#ABCDEF";
+  const result = await fillCurrentStep(d);
+  expect(result.attention).toEqual([]);
+  expect([...document.querySelectorAll('input[type="color"]')].map((e) => e.value)).toEqual([
+    "#123456",
+    "#abcdef",
+  ]);
+  expect(wizardState(d).ready).toBe(true);
+
+  d.liveries[0].secondaryColor = null;
+  const noSecondary = await fillCurrentStep(d);
+  expect(noSecondary.attention).toEqual([]);
+  expect(document.querySelectorAll('input[type="color"]')).toHaveLength(1);
+  expect(wizardState(d).ready).toBe(true);
+  expect(
+    click.mock.calls.some(([event]) =>
+      /^(Continue|Save Draft|Publish Post)$/.test(event.target.textContent),
+    ),
+  ).toBe(false);
 });
 it("leaves existing media untouched and rejects wrong origins and unknown layouts", async () => {
   fixture('<p>Images * ( 1 / 10 )</p><input type="file" multiple>');

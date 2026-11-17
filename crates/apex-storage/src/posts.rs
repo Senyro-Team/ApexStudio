@@ -1,9 +1,9 @@
-use super::{storage, GeneratedPreview, Workspace};
+use super::{GeneratedPreview, Workspace, storage};
 use apex_core::{
     Error, PublishingDraft, PublishingImage, PublishingInput, PublishingLivery, PublishingPreview,
     PublishingSide,
 };
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -901,8 +901,8 @@ mod tests {
                 }),
                 name: "EMS Unit 1".into(),
                 vehicle: vehicle.name,
-                primary_color: "#FFFFFF".into(),
-                secondary_color: None,
+                primary_color: "#13579B".into(),
+                secondary_color: Some("#2468AC".into()),
                 opacity: 100,
                 sides: vec![apex_core::PublishingSide {
                     side: "Frontplate 1".into(),
@@ -920,6 +920,16 @@ mod tests {
         let output = dir.path().join("post.apexpublish");
         assert!(ws.export_post(&id, draft.revision, false, &output).is_err());
         ws.export_post(&id, draft.revision, true, &output).unwrap();
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(&output).unwrap()).unwrap();
+        let mut manifest_text = String::new();
+        std::io::Read::read_to_string(
+            &mut archive.by_name("public.json").unwrap(),
+            &mut manifest_text,
+        )
+        .unwrap();
+        let manifest: serde_json::Value = serde_json::from_str(&manifest_text).unwrap();
+        assert_eq!(manifest["liveries"][0]["primaryColor"], "#13579B");
+        assert_eq!(manifest["liveries"][0]["secondaryColor"], "#2468AC");
         assert_eq!(
             ws.post(&id).unwrap().data.liveries[0].sides[0].decal_id,
             "456"

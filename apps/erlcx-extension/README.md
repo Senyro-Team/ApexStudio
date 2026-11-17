@@ -16,6 +16,8 @@ Prepare on ERLCX opens a new upload tab and fills the free livery workflow. Each
 
 The manual fallback remains: Export for ERLCX extension, import the .apexpublish bundle in the popup, then Fill current step and Continue yourself. Existing text is retained unless Replace is selected. Images are never removed or re-uploaded blindly. The popup cannot change the bundle during an active automatic handoff.
 
+Livery primary and secondary colours are part of the saved publishing snapshot and are written to `public.json` in the `.apexpublish` bundle. Including a source livery again or choosing **Refresh Roblox IDs** refreshes those colours along with the decal IDs; later source edits do not silently change an existing draft. When filling Codes, the bundle colours replace existing ERLCX colour fields. If the bundle has no secondary colour, the extension removes an enabled secondary colour before verifying the step.
+
 Undo filled fields is best-effort on the same page: it restores only fields still matching the values Apex wrote. It retains subsequent user edits. Added rows remain for manual review; uploaded images must be removed manually. Reloading the page clears page-side undo state.
 
 ## Privacy and retention

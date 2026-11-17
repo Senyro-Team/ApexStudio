@@ -303,6 +303,80 @@ it("loads decal IDs from a selected livery instead of requiring manual code entr
     }),
   );
 });
+
+it("refreshes the source livery colours along with its Roblox IDs", async () => {
+  const user = userEvent.setup();
+  const stale = {
+    ...empty,
+    liveries: [
+      {
+        source: {
+          folderId: "f",
+          accountId: "123",
+          hashes: ["a".repeat(64)],
+        },
+        name: "Patrol livery",
+        vehicle: "Vehicle",
+        primaryColor: "#FFFFFF",
+        secondaryColor: null,
+        opacity: 100,
+        sides: [{ side: "Left 1", decalId: "old-id" }],
+      },
+    ],
+  };
+  vi.mocked(publishingDraft).mockResolvedValue({ revision: 3, data: stale });
+  vi.mocked(robloxLivery).mockResolvedValue({
+    folderId: "f",
+    name: "Patrol livery",
+    vehicle: "Vehicle",
+    primaryColor: "#123456",
+    secondaryColor: "#ABCDEF",
+    accountId: "123",
+    textures: [
+      {
+        assetId: "a",
+        name: "Left1.png",
+        side: "Left 1",
+        hash: "a".repeat(64),
+        upload: {
+          accountId: "123",
+          hash: "a".repeat(64),
+          assetId: "new-id",
+          state: "uploaded",
+          operation: "operations/test",
+          moderation: "approved",
+          message: "",
+        },
+      },
+    ],
+  });
+  vi.mocked(savePublishing).mockImplementation(async (_, revision, data) => ({
+    revision: revision + 1,
+    data,
+  }));
+  render(
+    <Publishing
+      project={project}
+      catalogue={null}
+      onEditingChange={() => {}}
+    />,
+  );
+  await user.click(await screen.findByRole("button", { name: "Liveries" }));
+  await user.click(await screen.findByRole("button", { name: "Refresh Roblox IDs" }));
+  await waitFor(() => {
+    expect(screen.getByLabelText("Primary colour")).toHaveProperty(
+      "value",
+      "#123456",
+    );
+    expect(
+      document.querySelectorAll<HTMLInputElement>('input[type="color"]')[1],
+    ).toHaveProperty("value", "#abcdef");
+    expect(screen.getByLabelText("Decal ID for row 1")).toHaveProperty(
+      "value",
+      "new-id",
+    );
+  });
+});
 it("asks before uploading a missing livery and lets the user skip just that livery", async () => {
   const user = userEvent.setup();
   vi.mocked(assetBoard).mockResolvedValue({

@@ -1,6 +1,6 @@
-use super::{storage, Workspace};
+use super::{Workspace, storage};
 use apex_core::{Error, PublishingDraft, PublishingImage, PublishingInput, PublishingPreview};
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
@@ -265,8 +265,8 @@ mod tests {
             source: None,
             name: "Patrol".into(),
             vehicle: "Vehicle".into(),
-            primary_color: "#FFFFFF".into(),
-            secondary_color: None,
+            primary_color: "#123456".into(),
+            secondary_color: Some("#ABCDEF".into()),
             opacity: 100,
             sides: vec![PublishingSide {
                 side: "Left 1".into(),
@@ -283,12 +283,26 @@ mod tests {
         assert_eq!(imported.data.media.len(), 2);
         assert_eq!(imported.data.liveries.len(), 1);
         assert_eq!(imported.data.liveries[0].name, "Patrol");
+        assert_eq!(imported.data.liveries[0].primary_color, "#123456");
+        assert_eq!(
+            imported.data.liveries[0].secondary_color.as_deref(),
+            Some("#ABCDEF")
+        );
         assert!(imported.data.liveries[0].source.is_none());
         assert_eq!(imported.data.liveries[0].sides[0].decal_id, "12345");
         let mut zip = zip::ZipArchive::new(fs::File::open(export).unwrap()).unwrap();
         assert_eq!(zip.len(), 3);
         let mut text = String::new();
         std::io::Read::read_to_string(&mut zip.by_name("public.json").unwrap(), &mut text).unwrap();
+        let manifest: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            manifest["liveries"][0]["primaryColor"],
+            serde_json::json!("#123456")
+        );
+        assert_eq!(
+            manifest["liveries"][0]["secondaryColor"],
+            serde_json::json!("#ABCDEF")
+        );
         assert!(!text.contains(&p.id));
         assert!(!text.contains("notes"));
         let package = dir.path().join("project.apexstd");

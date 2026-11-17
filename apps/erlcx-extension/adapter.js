@@ -367,10 +367,19 @@ export async function fillCurrentStep(bundle, options = {}) {
           await colour(1, l.secondaryColor, `Secondary colour ${i + 1}`, [
             "#000000",
           ]);
-        } else if (hasSecondary())
-          result.attention.push(
-            `Livery ${i + 1}: secondary colour is enabled on the site; review manually`,
+        } else if (hasSecondary()) {
+          const removeSecondary = inputs("button", root).find(
+            (b) => b.title === "Remove secondary colour",
           );
+          if (removeSecondary) {
+            removeSecondary.click();
+            await pause();
+          }
+          if (hasSecondary())
+            result.attention.push(
+              `Livery ${i + 1}: could not remove the secondary colour; review manually`,
+            );
+        }
         const opacity = inputs('input[type="number"]', root);
         await setField(
           opacity.length === 1 ? opacity[0] : null,
