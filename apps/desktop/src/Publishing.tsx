@@ -797,6 +797,29 @@ export default function Publishing({
       setBusy(false);
     }
   }
+  async function resetLiveryColorsFromProject() {
+    if (!current?.source || !data) return;
+    setBusy(true);
+    setError("");
+    try {
+      const source = await robloxLivery(current.source.folderId);
+      edit({
+        liveries: data.liveries.map((l, i) =>
+          i === activeLivery
+            ? {
+                ...l,
+                primaryColor: source.primaryColor,
+                secondaryColor: source.secondaryColor,
+              }
+            : l,
+        ),
+      });
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   if (error && !data)
     return (
       <div role="alert" className="error">
@@ -1319,6 +1342,22 @@ export default function Publishing({
                         changeLivery({ secondaryColor: e.target.value })
                       }
                     />
+                  )}
+                  {current.source && (
+                    <div className="publishing-source-colors">
+                      <p className="field-hint">
+                        Project livery colours are the defaults. Changes here
+                        apply to this ERLCX post only.
+                      </p>
+                      <button
+                        className="text-button"
+                        type="button"
+                        disabled={locked}
+                        onClick={() => void resetLiveryColorsFromProject()}
+                      >
+                        Reset to project colours
+                      </button>
+                    </div>
                   )}
                   <div className="publishing-sides">
                     {current.sides.map((s, i) => (

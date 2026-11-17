@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import Publishing from "./Publishing";
 import {
   robloxLivery,
+  robloxLiveries,
+  postDraft,
   publishingDraft,
   assetBoard,
   savePublishing,
@@ -24,6 +26,11 @@ import {
 } from "./bridge";
 vi.mock("./bridge", () => ({
   robloxLivery: vi.fn(),
+  robloxLiveries: vi.fn(),
+  postDraft: vi.fn(),
+  browserStatus: vi.fn().mockResolvedValue(null),
+  postSources: vi.fn().mockResolvedValue([]),
+  releasePostImages: vi.fn().mockResolvedValue(undefined),
   uploadRobloxTexture: vi.fn(),
   publishingDraft: vi.fn(),
   publishingPreviews: vi.fn().mockResolvedValue([]),
@@ -90,6 +97,11 @@ beforeEach(() => {
     revision: 0,
     data: structuredClone(empty),
   });
+  vi.mocked(postDraft).mockResolvedValue({
+    revision: 0,
+    data: structuredClone(empty),
+  });
+  vi.mocked(robloxLiveries).mockResolvedValue([]);
   vi.mocked(assetBoard).mockResolvedValue({
     assets: [],
     folders: [],
@@ -235,8 +247,8 @@ it("loads decal IDs from a selected livery instead of requiring manual code entr
         kind: "livery",
         vehicleId: "v",
         coverHash: null,
-        primaryColor: "#FFFFFF",
-        secondaryColor: null,
+        primaryColor: "#225588",
+        secondaryColor: "#ABCDEF",
         preview: null,
       },
     ],
@@ -245,8 +257,8 @@ it("loads decal IDs from a selected livery instead of requiring manual code entr
     folderId: "f",
     name: "Patrol livery",
     vehicle: "Vehicle",
-    primaryColor: "#FFFFFF",
-    secondaryColor: null,
+    primaryColor: "#225588",
+    secondaryColor: "#ABCDEF",
     accountId: "123",
     textures: [
       {
@@ -279,6 +291,13 @@ it("loads decal IDs from a selected livery instead of requiring manual code entr
   );
   await user.selectOptions(await screen.findByLabelText("Livery source"), "f");
   await user.click(screen.getByRole("button", { name: "Include livery" }));
+  expect(screen.getByLabelText("Primary colour")).toHaveProperty(
+    "value",
+    "#225588",
+  );
+  expect(
+    document.querySelectorAll<HTMLInputElement>('input[type="color"]')[1],
+  ).toHaveProperty("value", "#abcdef");
   expect(await screen.findByLabelText("Decal ID for row 1")).toHaveProperty(
     "value",
     "456",
@@ -296,6 +315,8 @@ it("loads decal IDs from a selected livery instead of requiring manual code entr
       liveries: [
         expect.objectContaining({
           name: "Patrol livery",
+          primaryColor: "#225588",
+          secondaryColor: "#ABCDEF",
           source: { folderId: "f", accountId: "123", hashes: ["a".repeat(64)] },
           sides: [{ side: "Left 1", decalId: "456" }],
         }),
@@ -376,6 +397,75 @@ it("refreshes the source livery colours along with its Roblox IDs", async () => 
       "new-id",
     );
   });
+});
+
+it("prefills global ERLCX livery selection from project colours and keeps overrides post-local", async () => {
+  const user = userEvent.setup();
+  vi.mocked(robloxLiveries).mockResolvedValue([
+    {
+      id: "f",
+      projectId: "p",
+      projectName: "Studio",
+      name: "Patrol livery",
+      vehicleId: "v",
+      uploaded: 1,
+      textures: 1,
+    },
+  ]);
+  vi.mocked(robloxLivery).mockResolvedValue({
+    folderId: "f",
+    name: "Patrol livery",
+    vehicle: "Vehicle",
+    primaryColor: "#225588",
+    secondaryColor: "#ABCDEF",
+    accountId: "123",
+    textures: [
+      {
+        assetId: "a",
+        name: "Left1.png",
+        side: "Left 1",
+        hash: "a".repeat(64),
+        upload: {
+          accountId: "123",
+          hash: "a".repeat(64),
+          assetId: "456",
+          state: "uploaded",
+          operation: "operations/test",
+          moderation: "approved",
+          message: "",
+        },
+      },
+    ],
+  });
+  render(
+    <Publishing
+      draftId="post"
+      projects={[project]}
+      catalogue={null}
+      onEditingChange={() => {}}
+    />,
+  );
+  await user.click(await screen.findByRole("checkbox"));
+  await waitFor(() => {
+    expect(screen.getByLabelText("Primary colour")).toHaveProperty(
+      "value",
+      "#225588",
+    );
+    expect(
+      document.querySelectorAll<HTMLInputElement>('input[type="color"]')[1],
+    ).toHaveProperty("value", "#abcdef");
+  });
+  fireEvent.change(screen.getByLabelText("Primary colour"), {
+    target: { value: "#a0b0c0" },
+  });
+  await user.click(screen.getByRole("button", { name: "Reset to project colours" }));
+  await waitFor(() =>
+    expect(screen.getByLabelText("Primary colour")).toHaveProperty(
+      "value",
+      "#225588",
+    ),
+  );
+  expect(robloxLivery).toHaveBeenCalledTimes(2);
 });
 it("asks before uploading a missing livery and lets the user skip just that livery", async () => {
   const user = userEvent.setup();

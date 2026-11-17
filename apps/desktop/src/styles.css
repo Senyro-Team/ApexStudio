@@ -3350,6 +3350,20 @@ button:disabled:hover {
   align-items: center;
   margin-bottom: 24px;
 }
+.publishing-source-colors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+}
+.publishing-source-colors .field-hint {
+  margin: 0;
+}
 @media (max-width: 700px) {
   .roblox-textures li {
     grid-template-columns: 1fr;

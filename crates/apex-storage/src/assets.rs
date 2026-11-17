@@ -882,6 +882,9 @@ mod tests {
             ws.folder(&a).unwrap().secondary_color.as_deref(),
             Some("#ABCDEF")
         );
+        let upload = ws.livery_uploads(&a, "123").unwrap();
+        assert_eq!(upload.primary_color, "#123456");
+        assert_eq!(upload.secondary_color.as_deref(), Some("#ABCDEF"));
         assert_eq!(ws.versions(&aid).unwrap().len(), 2);
         let old = ws
             .versions(&aid)
