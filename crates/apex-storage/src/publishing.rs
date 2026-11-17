@@ -1,6 +1,6 @@
-use super::{Workspace, storage};
+use super::{storage, Workspace};
 use apex_core::{Error, PublishingDraft, PublishingImage, PublishingInput, PublishingPreview};
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{params, OptionalExtension};
 use sha2::{Digest, Sha256};
 use std::{
     fs,

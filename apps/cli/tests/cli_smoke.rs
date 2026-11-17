@@ -543,6 +543,7 @@ fn code_export_combines_selected_saved_posts_as_markdown_without_overwriting() {
                     title: title.into(),
                     liveries: vec![PublishingLivery {
                         source: None,
+                        name: title.into(),
                         vehicle: vehicle.into(),
                         primary_color: "#FFFFFF".into(),
                         secondary_color: None,
@@ -633,6 +634,7 @@ fn imports_a_public_apexpublish_bundle_as_a_new_draft() {
                 media,
                 liveries: vec![PublishingLivery {
                     source: None,
+                    name: "Imported livery".into(),
                     vehicle: "Falcon Interceptor".into(),
                     primary_color: "#FFFFFF".into(),
                     secondary_color: None,

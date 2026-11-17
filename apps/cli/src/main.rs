@@ -5821,6 +5821,7 @@ fn append_selected_liveries_to_post(
             .collect();
         draft.data.liveries.push(PublishingLivery {
             source: Some(source),
+            name: uploads.vehicle.clone(),
             vehicle: uploads.vehicle,
             primary_color: "#FFFFFF".into(),
             secondary_color: None,
@@ -6731,6 +6732,7 @@ fn save_post_livery_editor(state: &mut TuiState, app: &ApplicationServices) -> R
         }
         draft.data.liveries.push(PublishingLivery {
             source: None,
+            name: editor.vehicle.clone(),
             vehicle: editor.vehicle,
             primary_color: editor.primary_color,
             secondary_color,
@@ -11990,6 +11992,7 @@ mod tests {
                         .collect(),
                     liveries: vec![PublishingLivery {
                         source: None,
+                        name: "Falcon Interceptor".into(),
                         vehicle: "Falcon Interceptor".into(),
                         primary_color: "#FFFFFF".into(),
                         secondary_color: None,
@@ -12055,6 +12058,7 @@ mod tests {
                 PublishingInput {
                     liveries: vec![apex_core::PublishingLivery {
                         source: None,
+                        name: "Falcon Interceptor Utility".into(),
                         vehicle: "Falcon Interceptor Utility".into(),
                         primary_color: "#FFFFFF".into(),
                         secondary_color: None,
@@ -12249,6 +12253,7 @@ mod tests {
                             account_id: "123456789".into(),
                             hashes: vec!["a".repeat(64), "b".repeat(64)],
                         }),
+                        name: "Falcon Interceptor".into(),
                         vehicle: "Falcon Interceptor".into(),
                         primary_color: "#FFFFFF".into(),
                         secondary_color: None,
@@ -12642,6 +12647,7 @@ mod tests {
                         description: "Fixture description".into(),
                         liveries: vec![apex_core::PublishingLivery {
                             source: None,
+                            name: "Fixture vehicle".into(),
                             vehicle: "Fixture vehicle".into(),
                             primary_color: "#FFFFFF".into(),
                             secondary_color: None,

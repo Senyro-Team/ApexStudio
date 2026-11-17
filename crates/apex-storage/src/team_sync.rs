@@ -67,11 +67,21 @@ mod tests {
         assert_eq!(before.version, 2);
         let mut legacy = before.clone();
         legacy.version = 1;
+        let mut legacy_equivalent = before.clone();
         for folder in &mut legacy.tables[2] {
             folder.truncate(8);
         }
+        for folder in &mut legacy_equivalent.tables[2] {
+            if folder.len() >= 10 {
+                folder[8] = Value::String("#FFFFFF".into());
+                folder[9] = Value::Null;
+            }
+        }
         assert!(legacy.validate().is_ok());
-        assert_eq!(legacy.fingerprint().unwrap(), before.fingerprint().unwrap());
+        assert_eq!(
+            legacy.fingerprint().unwrap(),
+            legacy_equivalent.fingerprint().unwrap()
+        );
         assert_eq!(
             before.fingerprint().unwrap(),
             a.project_snapshot(&project.id)
