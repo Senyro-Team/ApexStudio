@@ -1029,6 +1029,63 @@ pub async fn sync_projects(
     sync_projects_guarded(server_url, team_id, workspace, Arc::new(|| true)).await
 }
 
+fn is_commission_name(name: &str) -> bool {
+    name.trim_start()
+        .get(..4)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("COM-"))
+}
+
+fn link_commission_projects(
+    workspace: &Workspace,
+    origin: &str,
+    instance: &str,
+    team_id: &str,
+    can_write: bool,
+) -> Result<(HashSet<String>, Vec<SyncEntry>), String> {
+    let bindings = workspace.project_sync_bindings().map_err(|error| error.to_string())?;
+    let mut ids = HashSet::new();
+    let mut issues = Vec::new();
+    for project in workspace.projects().map_err(|error| error.to_string())? {
+        if !is_commission_name(&project.fields.name) {
+            continue;
+        }
+        ids.insert(project.id.clone());
+        let binding = bindings.iter().find(|binding| binding.project_id == project.id);
+        if binding.is_some_and(|binding| {
+            binding.origin != origin || binding.server_instance != instance || binding.team_id != team_id
+        }) {
+            issues.push(SyncEntry {
+                project_id: project.id,
+                project_name: project.fields.name,
+                status: "skipped",
+                message: "This commission is linked to another team or server. Reconnect it manually to share it with the selected team.".into(),
+            });
+            continue;
+        }
+        if binding.is_some_and(|binding| binding.enabled) {
+            continue;
+        }
+        if !can_write {
+            issues.push(SyncEntry {
+                project_id: project.id,
+                project_name: project.fields.name,
+                status: "skipped",
+                message: "Read-only team members cannot share local commissions.".into(),
+            });
+            continue;
+        }
+        if let Err(error) = workspace.configure_project_sync(&project.id, Some((origin, instance, team_id))) {
+            issues.push(SyncEntry {
+                project_id: project.id,
+                project_name: project.fields.name,
+                status: "error",
+                message: error.to_string(),
+            });
+        }
+    }
+    Ok((ids, issues))
+}
+
 pub async fn sync_projects_guarded(
     server_url: &str,
     team_id: &str,
@@ -1054,8 +1111,15 @@ pub async fn sync_projects_guarded(
     if !c.can_apply() {
         return Err(error("Finish editing before synchronizing projects."));
     }
-    let bindings = ws.project_sync_bindings().map_err(|e| e.to_string())?;
     let origin = origin_text(&c.base);
+    let (_, commission_issues) = link_commission_projects(
+        &ws,
+        &origin,
+        &c.server.server_instance_id,
+        &c.team.id,
+        c.team.role != "read_only",
+    )?;
+    let bindings = ws.project_sync_bindings().map_err(|e| e.to_string())?;
     let projects: Vec<RemoteProject> = sync_json(
         client()?
             .get(c.url(&format!("api/v1/teams/{}/projects", c.team.id))?)
@@ -1078,7 +1142,17 @@ pub async fn sync_projects_guarded(
         remote_projects: projects.len(),
         ..SyncReport::default()
     };
-    let mut ids = projects.iter().map(|p| p.id.clone()).collect::<Vec<_>>();
+    let blocked_commission_ids = commission_issues
+        .iter()
+        .map(|issue| issue.project_id.clone())
+        .collect::<HashSet<_>>();
+    for issue in commission_issues {
+        if issue.status == "error" {
+            report.errors.push(format!("{}: {}", issue.project_name, issue.message));
+        }
+        report.entries.push(issue);
+    }
+    let mut ids = projects.iter().map(|project| project.id.clone()).collect::<Vec<_>>();
     for b in &bindings {
         if b.origin == origin
             && b.server_instance == c.server.server_instance_id
@@ -1113,6 +1187,9 @@ pub async fn sync_projects_guarded(
         }
     }
     for id in ids {
+        if blocked_commission_ids.contains(&id) {
+            continue;
+        }
         let binding = bindings.iter().find(|b| b.project_id == id);
         let name = ws.project(&id).map(|p| p.fields.name).unwrap_or_else(|_| {
             projects
@@ -1494,6 +1571,39 @@ mod tests {
                 t.join().unwrap();
             }
         }
+    }
+
+    #[test]
+    fn commission_projects_link_to_current_team_without_moving_other_projects() {
+        let temp = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(temp.path()).unwrap();
+        let commission = ws.save_project(None, apex_core::ProjectInput {
+            name: "COM-2026-001".into(), ..Default::default()
+        }).unwrap();
+        let other_team = ws.save_project(None, apex_core::ProjectInput {
+            name: "com-2026-002".into(), ..Default::default()
+        }).unwrap();
+        let standard = ws.save_project(None, apex_core::ProjectInput {
+            name: "Standard design".into(), ..Default::default()
+        }).unwrap();
+        ws.configure_project_sync(&other_team.id, Some(("https://other.example", "other", "other-team"))).unwrap();
+
+        let (ids, issues) = link_commission_projects(&ws, "https://sync.example", "instance", "team", true).unwrap();
+        assert!(ids.contains(&commission.id));
+        assert!(ids.contains(&other_team.id));
+        assert!(!ids.contains(&standard.id));
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].project_id, other_team.id);
+        let binding = ws.project_sync(&commission.id).unwrap().unwrap();
+        assert!(binding.enabled);
+        assert_eq!(binding.team_id, "team");
+        assert!(ws.project_sync(&standard.id).unwrap().is_none());
+        assert_eq!(ws.project_sync(&other_team.id).unwrap().unwrap().team_id, "other-team");
+
+        ws.configure_project_sync(&commission.id, None).unwrap();
+        let (_, issues) = link_commission_projects(&ws, "https://sync.example", "instance", "team", true).unwrap();
+        assert_eq!(issues.len(), 1);
+        assert!(ws.project_sync(&commission.id).unwrap().unwrap().enabled);
     }
 
     #[test]

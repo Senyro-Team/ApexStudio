@@ -446,7 +446,7 @@ export default function TeamSyncSettings({
           </section>}
           {selectedTeam && <section className="project-sync-options" aria-label="Team project synchronization">
             <h3>Project synchronization</h3>
-            <p className="field-hint">Projects transfer only when you select “Sync projects now”. Linking a project does not upload or download its contents.</p>
+            <p className="field-hint">Projects named COM-… are linked automatically to this team. All project contents transfer only when you select “Sync projects now”.</p>
             <button className="secondary" type="button" disabled={busy || syncBusy} onClick={() => {
               setSyncBusy(true); setError(""); setNotice("");
               void syncProjects(serverUrl, selectedTeam.id).then((report) => {

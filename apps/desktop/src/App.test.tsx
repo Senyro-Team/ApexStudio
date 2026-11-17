@@ -20,6 +20,7 @@ import {
   vehicleCatalogue,
   listAssets,
   saveProject,
+  syncProjects,
   statisticsHistory,
   statisticsProfile,
   statisticsSales,
@@ -153,10 +154,12 @@ const project: Project = {
   archived: false,
   assetCount: 0,
 };
-it("keeps synchronized own projects separate from projects received from the team", async () => {
+it("keeps own COM projects under My projects and also shows them in Commissions", async () => {
   const shared = { ...project, id: "shared-project", name: "Shared project" };
-  const syncedMine = { ...project, id: "synced-mine", name: "Synced own project" };
-  vi.mocked(listProjects).mockResolvedValue([project, shared, syncedMine]);
+  const commission = { ...project, id: "commission", name: "COM-2026-0003" };
+  const taggedCommission = { ...project, id: "tagged-commission", name: "Custom vehicle", tags: ["Commission"] };
+  const syncedMine = { ...project, id: "synced-mine", name: "COM-2026-0001" };
+  vi.mocked(listProjects).mockResolvedValue([project, shared, commission, taggedCommission, syncedMine]);
   const binding = {
     origin: "https://sync.example.test", serverInstance: "server",
     teamId: "team", enabled: true, localHash: null, revision: 1, cursor: 0,
@@ -164,6 +167,8 @@ it("keeps synchronized own projects separate from projects received from the tea
   };
   vi.mocked(listProjectSyncSettings).mockResolvedValue([
     { ...binding, projectId: shared.id, receivedFromTeam: true },
+    { ...binding, projectId: commission.id, receivedFromTeam: true },
+    { ...binding, projectId: taggedCommission.id, receivedFromTeam: true },
     { ...binding, projectId: syncedMine.id, receivedFromTeam: false },
   ]);
   render(<App />);
@@ -172,12 +177,21 @@ it("keeps synchronized own projects separate from projects received from the tea
   const view = await screen.findByRole("group", { name: "Project view" });
   expect(within(view).getByRole("button", { name: /My projects/ }).getAttribute("aria-pressed")).toBe("true");
   expect(screen.getByRole("button", { name: /Harbor project/ })).toBeTruthy();
-  expect(screen.getByRole("button", { name: /Synced own project/ })).toBeTruthy();
+  expect(within(screen.getByRole("button", { name: /COM-2026-0001/ })).getByText("Commission")).toBeTruthy();
   expect(screen.queryByRole("button", { name: /Shared project/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /COM-2026-0003/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Custom vehicle/ })).toBeNull();
   await userEvent.click(within(view).getByRole("button", { name: /Shared with me/ }));
   expect(screen.getByRole("button", { name: /Shared project/ })).toBeTruthy();
   expect(screen.queryByRole("button", { name: /Harbor project/ })).toBeNull();
-  expect(screen.queryByRole("button", { name: /Synced own project/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /COM-2026-0001/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /COM-2026-0003/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Custom vehicle/ })).toBeNull();
+  await userEvent.click(within(view).getByRole("button", { name: /Commissions/ }));
+  expect(screen.getByRole("button", { name: /COM-2026-0003/ })).toBeTruthy();
+  expect(screen.getByRole("button", { name: /Custom vehicle/ })).toBeTruthy();
+  expect(within(screen.getByRole("button", { name: /COM-2026-0001/ })).getByText("Commission")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Shared project/ })).toBeNull();
 });
 it("creates a project and opens the asset-first detail with no sample files", async () => {
   vi.mocked(saveProject).mockResolvedValue(project);
@@ -193,6 +207,34 @@ it("creates a project and opens the asset-first detail with no sample files", as
     null,
     expect.objectContaining({ name: "Harbor project" }),
   );
+});
+it("prefills a commission name and editable description brief", async () => {
+  vi.mocked(saveProject).mockResolvedValue(project);
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("My workspace");
+  await user.click(screen.getByRole("button", { name: /^New project$/ }));
+  await user.click(screen.getByRole("radio", { name: /Commission/ }));
+
+  const prefix = `COM-${new Date().getFullYear()}-`;
+  const name = screen.getByLabelText("Project name") as HTMLInputElement;
+  const description = screen.getByLabelText(/Description \(optional\)/) as HTMLTextAreaElement;
+  expect(name.value).toBe(prefix);
+  expect(screen.getByText("Commission", { selector: ".project-auto-tag" })).toBeTruthy();
+  expect(description.value).toContain("Commission Details:\n\tCommission ID:");
+  expect(description.value).toContain("Workflow & Management (partially public)");
+  expect(description.value).toContain("Payment & Licensing\n\tTotal Price:");
+  expect(description.value).toContain("\tLicense Notes:");
+  expect(screen.getByRole("button", { name: "Save project" })).toHaveProperty("disabled", true);
+
+  await user.type(name, "0042");
+  fireEvent.change(description, { target: { value: description.value.replace("\tClient:", "\tClient: Elias") } });
+  await user.click(screen.getByRole("button", { name: "Save project" }));
+  await waitFor(() => expect(saveProject).toHaveBeenCalledWith(null, expect.objectContaining({
+    name: `${prefix}0042`,
+    description: expect.stringContaining("\tClient: Elias"),
+    tags: ["Commission"],
+  })));
 });
 it("edits only writable project fields and retains the creation metadata", async () => {
   vi.mocked(listProjects).mockResolvedValue([project]);
@@ -236,6 +278,27 @@ it("lets a new project opt into the selected team's sync destination", async () 
   expect(saveProject).toHaveBeenCalledWith(null, expect.objectContaining({name: "Harbor project"}), {
     enabled: true, serverUrl: "https://sync.example.test", teamId: "team-id",
   });
+});
+it("links COM projects automatically but waits for manual transfer", async () => {
+  localStorage.setItem("apex-studio.team-sync.server-url", "https://sync.example.test");
+  localStorage.setItem("apex-studio.team-sync.active-team", "team-id");
+  vi.mocked(saveProject).mockResolvedValue(project);
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByText("My workspace");
+  await user.click(screen.getByRole("button", { name: /^New project$/ }));
+  await user.click(screen.getByRole("radio", { name: /Commission/ }));
+  await user.type(screen.getByLabelText("Project name"), "0042");
+  const toggle = screen.getByRole("checkbox", { name: "Synchronize with team server" });
+  expect(toggle).toHaveProperty("checked", true);
+  expect(toggle).toHaveProperty("disabled", true);
+  await user.click(screen.getByRole("button", { name: "Save project" }));
+  await waitFor(() => expect(saveProject).toHaveBeenCalledWith(null, expect.objectContaining({
+    name: `COM-${new Date().getFullYear()}-0042`,
+  }), {
+    enabled: true, serverUrl: "https://sync.example.test", teamId: "team-id",
+  }));
+  expect(syncProjects).not.toHaveBeenCalled();
 });
 afterEach(cleanup);
 

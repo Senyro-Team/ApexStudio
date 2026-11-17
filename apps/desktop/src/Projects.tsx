@@ -11,6 +11,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  BriefcaseBusiness,
   File,
   FolderOpen,
   MoreHorizontal,
@@ -41,6 +42,41 @@ import {
   type Asset,
   type Catalogue,
 } from "./bridge";
+
+const COMMISSION_TAG = "Commission";
+const COMMISSION_DESCRIPTION_TEMPLATE = [
+  "Commission Details:",
+  "\tCommission ID:",
+  "\tCommission ID (Internal):",
+  "\tCommission Name:",
+  "\tClient:",
+  "\tOrganisation:",
+  "\tCommission Type:",
+  "\tDescription:",
+  "\tRequirements:",
+  "\tReference Materials:",
+  "\tCreated At:",
+  "\tDue Date:",
+  "",
+  "Workflow & Management (partially public)",
+  "\tStatus:",
+  "\tPriority:",
+  "\tAssigned Designer:",
+  "\tStarted At:",
+  "\tCompleted At:",
+  "\tDelivered At:",
+  "\tRevision Count:",
+  "\tInternal Notes:",
+  "",
+  "Payment & Licensing",
+  "\tTotal Price:",
+  "\tCurrency:",
+  "\tPayment Status:",
+  "\tPayment Method:",
+  "\tUsage Rights:",
+  "\tExclusivity:",
+  "\tLicense Notes:",
+].join("\n");
 
 const blank: ProjectFields = {
   name: "",
@@ -92,6 +128,7 @@ function Editor({
   onCancel: () => void;
 }) {
   const [fields, setFields] = useState<ProjectFields>(() => fieldsOf(project));
+  const [projectType, setProjectType] = useState<"standard" | "commission">("standard");
   const [tags, setTags] = useState(fields.tags.join(", "));
   const [links, setLinks] = useState(fields.referenceLinks.join("\n"));
   const [vehicleSearch, setVehicleSearch] = useState("");
@@ -104,6 +141,8 @@ function Editor({
   const [syncLoading, setSyncLoading] = useState(Boolean(project && desktopAvailable));
   const [syncError, setSyncError] = useState("");
   const destination = savedSyncDestination();
+  const commissionNamePrefix = `COM-${new Date().getFullYear()}-`;
+  const autoShareCommission = fields.name.trimStart().toUpperCase().startsWith("COM-");
   useEffect(() => {
     if (!project || !desktopAvailable) return;
     let active = true;
@@ -117,10 +156,36 @@ function Editor({
   const dirty =
     JSON.stringify(fields) !== JSON.stringify(fieldsOf(project)) ||
     tags !== (project?.tags ?? []).join(", ") ||
-    links !== (project?.referenceLinks ?? []).join("\n") || syncEnabled !== syncInitial;
+    links !== (project?.referenceLinks ?? []).join("\n") || syncEnabled !== syncInitial || (!project && projectType === "commission");
+  function chooseProjectType(next: "standard" | "commission") {
+    setProjectType(next);
+    setFields((current) => ({
+      ...current,
+      name: next === "commission"
+        ? current.name.toUpperCase().startsWith("COM-")
+          ? current.name
+          : `${commissionNamePrefix}${current.name.trim()}`
+        : current.name === commissionNamePrefix
+          ? ""
+          : current.name,
+      description: next === "commission"
+        ? current.description.trim()
+          ? `${current.description.trimEnd()}\n\n${COMMISSION_DESCRIPTION_TEMPLATE}`
+          : COMMISSION_DESCRIPTION_TEMPLATE
+        : current.description === COMMISSION_DESCRIPTION_TEMPLATE
+          ? ""
+          : current.description.endsWith(`\n\n${COMMISSION_DESCRIPTION_TEMPLATE}`)
+            ? current.description.slice(0, -COMMISSION_DESCRIPTION_TEMPLATE.length - 2)
+            : current.description,
+    }));
+  }
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError("");
+    if (projectType === "commission" && fields.name.trim() === commissionNamePrefix) {
+      setError("Add a commission ID or name after the COM-year prefix.");
+      return;
+    }
     const reconnecting = syncEnabled && !syncInitial;
     const syncDestination = reconnecting
       ? destination
@@ -134,22 +199,27 @@ function Editor({
     )) return;
     setBusy(true);
     try {
+      const enteredTags = tags
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
       const values = {
           ...fields,
-          tags: tags
-            .split(",")
-            .map((value) => value.trim())
-            .filter(Boolean),
+          tags: projectType === "commission" && !enteredTags.some((tag) => tag.toLowerCase() === COMMISSION_TAG.toLowerCase())
+            ? [...enteredTags, COMMISSION_TAG]
+            : enteredTags,
           referenceLinks: links
             .split("\n")
             .map((value) => value.trim())
             .filter(Boolean),
         };
-      const sync = syncEnabled !== syncInitial ? {
-        enabled: syncEnabled,
-        serverUrl: syncDestination.serverUrl,
-        teamId: syncDestination.teamId,
-      } : undefined;
+      const sync = autoShareCommission && destination.serverUrl && destination.teamId
+        ? { enabled: true, serverUrl: destination.serverUrl, teamId: destination.teamId }
+        : syncEnabled !== syncInitial ? {
+            enabled: syncEnabled,
+            serverUrl: syncDestination.serverUrl,
+            teamId: syncDestination.teamId,
+          } : undefined;
       onSave(sync ? await saveProject(project?.id ?? null, values, sync) : await saveProject(project?.id ?? null, values));
     } catch (error) {
       setError(errorMessage(error));
@@ -182,11 +252,24 @@ function Editor({
       )}
       <form onSubmit={(event) => void submit(event)}>
         <fieldset disabled={busy}>
+          {!project && <div className="project-type-picker" role="radiogroup" aria-label="Project type">
+            <label className="project-type-option">
+              <input type="radio" name="project-type" checked={projectType === "standard"} onChange={() => chooseProjectType("standard")} />
+              <FolderOpen size={21} aria-hidden="true" />
+              <span><strong>Standard project</strong><small>A regular project in your workspace</small></span>
+            </label>
+            <label className="project-type-option">
+              <input type="radio" name="project-type" checked={projectType === "commission"} onChange={() => chooseProjectType("commission")} />
+              <BriefcaseBusiness size={21} aria-hidden="true" />
+              <span><strong>Commission</strong><small>Starts with a ready-to-fill brief</small></span>
+            </label>
+          </div>}
           <label htmlFor="project-name">Project name</label>
           <input
             id="project-name"
             required
             maxLength={120}
+            placeholder={projectType === "commission" ? "e.g. COM-2026-0001" : undefined}
             value={fields.name}
             onChange={(e) => setFields({ ...fields, name: e.target.value })}
             autoFocus
@@ -196,7 +279,8 @@ function Editor({
           </label>
           <textarea
             id="project-description"
-            rows={4}
+            className={projectType === "commission" ? "commission-description" : undefined}
+            rows={projectType === "commission" ? 18 : 4}
             maxLength={20000}
             value={fields.description}
             onChange={(e) =>
@@ -213,6 +297,9 @@ function Editor({
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
               />
+              {!project && projectType === "commission" && (
+                <span className="project-auto-tag" aria-label="Automatic tag: Commission">{COMMISSION_TAG}</span>
+              )}
               <p className="field-hint">Separate tags with commas.</p>
             </div>
             <div>
@@ -313,13 +400,15 @@ function Editor({
           />
           <div className="project-sync-options">
             <label className="check-label">
-              <input type="checkbox" checked={syncEnabled}
-                disabled={syncLoading || Boolean(syncError) || (!syncEnabled && !(syncBinding?.origin && syncBinding.teamId) && !(destination.serverUrl && destination.teamId))}
+              <input type="checkbox" checked={syncEnabled || (autoShareCommission && Boolean(destination.serverUrl && destination.teamId))}
+                disabled={autoShareCommission || syncLoading || Boolean(syncError) || (!syncEnabled && !(syncBinding?.origin && syncBinding.teamId) && !(destination.serverUrl && destination.teamId))}
                 onChange={(e) => setSyncEnabled(e.target.checked)} />
               Synchronize with team server
             </label>
             <p className="field-hint">
-              {syncEnabled ? "Include this project's files, folders, notes and details in manual team sync. Linking it does not transfer content." : "Keep this project on this device. Turning sync off keeps existing copies on the server and other devices."}
+              {autoShareCommission
+                ? "COM- projects are linked automatically to the selected team. Transfer their contents with “Sync projects now”."
+                : syncEnabled ? "Include this project's files, folders, notes and details in manual team sync. Linking it does not transfer content." : "Keep this project on this device. Turning sync off keeps existing copies on the server and other devices."}
             </p>
             {(syncBinding?.origin || destination.serverUrl) && <p className="field-hint">Server: {syncBinding?.origin ?? destination.serverUrl}</p>}
             {!syncBinding && (!destination.serverUrl || !destination.teamId) && <p className="field-hint">Sign in and choose a team in Server → Team sync to enable sharing.</p>}
@@ -333,7 +422,7 @@ function Editor({
           </p>
         )}
         <div className="form-actions">
-          <button className="primary" disabled={busy || !fields.name.trim()}>
+          <button className="primary" disabled={busy || !fields.name.trim() || (projectType === "commission" && fields.name.trim() === commissionNamePrefix)}>
             {busy ? "Saving…" : "Save project"}
           </button>
           <span className="muted">{dirty ? "Unsaved changes" : ""}</span>
@@ -357,7 +446,7 @@ export default function Projects({
   const [showMediaLibrary, setShowMediaLibrary] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [syncBindings, setSyncBindings] = useState<Record<string, ProjectSyncSettings>>({});
-  const [projectView, setProjectView] = useState<"own" | "shared">("own");
+  const [projectView, setProjectView] = useState<"own" | "shared" | "commissions">("own");
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -552,6 +641,14 @@ export default function Projects({
       setBusy(false);
     }
   }
+  const isReceivedProject = (item: Project) => Boolean(syncBindings[item.id]?.receivedFromTeam);
+  const hasCommissionTag = (item: Project) => item.tags.some((tag) => tag.toLowerCase() === COMMISSION_TAG.toLowerCase());
+  const isCommissionProject = (item: Project) => item.name.toUpperCase().startsWith("COM-") || hasCommissionTag(item);
+  const matchesProjectView = (item: Project) => projectView === "own"
+    ? !isReceivedProject(item)
+    : projectView === "shared"
+      ? isReceivedProject(item) && !isCommissionProject(item)
+      : isCommissionProject(item);
   const rows = (items: Project[]) => (
     <div className="project-list">
       {items.map((item) => (
@@ -568,15 +665,17 @@ export default function Projects({
               {item.archived ? " · Archived" : ""}
             </small>
           </span>
-          <span className="project-row-kind">{syncBindings[item.id]?.receivedFromTeam ? "Shared" : "Mine"}</span>
+          <span className="project-row-kind">{isReceivedProject(item) ? "Shared" : "Mine"}</span>
+          {isCommissionProject(item) && <span className="project-row-tag">{COMMISSION_TAG}</span>}
           <ArrowRight className="project-row-arrow" size={18} aria-hidden="true" />
         </button>
       ))}
     </div>
   );
   const active = projects.filter((project) => !project.archived);
-  const ownCount = active.filter((item) => !syncBindings[item.id]?.receivedFromTeam).length;
-  const sharedCount = active.length - ownCount;
+  const ownCount = active.filter((item) => !isReceivedProject(item)).length;
+  const sharedCount = active.filter((item) => isReceivedProject(item) && !isCommissionProject(item)).length;
+  const commissionCount = active.filter(isCommissionProject).length;
   const deadlines = active
     .filter((project) => project.deadline)
     .sort((a, b) => a.deadline!.localeCompare(b.deadline!))
@@ -584,7 +683,7 @@ export default function Projects({
   const filtered = projects.filter(
     (item) =>
       item.archived === showArchived &&
-      Boolean(syncBindings[item.id]?.receivedFromTeam) === (projectView === "shared") &&
+      matchesProjectView(item) &&
       [item.name, item.description, ...item.tags, ...item.vehicles].some(
         (value) => value.toLowerCase().includes(query.toLowerCase()),
       ),
@@ -903,6 +1002,7 @@ export default function Projects({
           <div className="project-view-switch" role="group" aria-label="Project view">
             <button type="button" aria-pressed={projectView === "own"} onClick={() => setProjectView("own")}>My projects <span>{ownCount}</span></button>
             <button type="button" aria-pressed={projectView === "shared"} onClick={() => setProjectView("shared")}>Shared with me <span>{sharedCount}</span></button>
+            <button type="button" aria-pressed={projectView === "commissions"} onClick={() => setProjectView("commissions")}>Commissions <span>{commissionCount}</span></button>
           </div>
           <div className="file-toolbar">
             <label className="search-field">
@@ -935,6 +1035,8 @@ export default function Projects({
                     ? "No archived projects"
                     : projectView === "shared"
                       ? "No shared projects"
+                      : projectView === "commissions"
+                        ? "No commissions shared with you"
                       : "No projects yet"}
               </h2>
             </div>

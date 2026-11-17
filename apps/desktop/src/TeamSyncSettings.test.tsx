@@ -73,9 +73,9 @@ it("restores an available team when the saved team selection is missing", async 
   expect(localStorage.getItem("apex-studio.team-sync.active-team")).toBe("team");
 });
 
-it("keeps team transfers behind the explicit manual sync action", async () => {
+it("keeps all project transfers behind the explicit manual sync action", async () => {
   render(<TeamSyncSettings onBusy={vi.fn()} />);
-  expect(await screen.findByText(/Projects transfer only when you select/)).toBeTruthy();
+  expect(await screen.findByText(/All project contents transfer only when you select/)).toBeTruthy();
   expect(screen.queryByRole("checkbox", { name: /automatically synchronize/i })).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Sync projects now" }));
   await screen.findAllByText("1 uploaded · 0 downloaded · 0 already current");

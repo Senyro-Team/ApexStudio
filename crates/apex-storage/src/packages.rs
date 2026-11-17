@@ -331,9 +331,13 @@ fn checked(path: &Path) -> Result<Checked, Error> {
         {
             return Err(invalid("The backup has broken file or project references."));
         }
-        let mut stmt = db
-            .prepare("SELECT hash,size FROM managed_files")
-            .map_err(storage)?;
+        let local_files_query = if super::table_has_column(&db, "managed_files", "local_available")?
+        {
+            "SELECT hash,size FROM managed_files WHERE local_available=1"
+        } else {
+            "SELECT hash,size FROM managed_files"
+        };
+        let mut stmt = db.prepare(local_files_query).map_err(storage)?;
         for row in stmt
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
             .map_err(storage)?
@@ -636,9 +640,13 @@ impl Workspace {
             .map_err(storage)?;
         drop(target);
         let snapshot = rusqlite::Connection::open(&path).map_err(storage)?;
-        let mut stmt = snapshot
-            .prepare("SELECT hash,size FROM managed_files ORDER BY hash")
-            .map_err(storage)?;
+        let local_files_query =
+            if super::table_has_column(&snapshot, "managed_files", "local_available")? {
+                "SELECT hash,size FROM managed_files WHERE local_available=1 ORDER BY hash"
+            } else {
+                "SELECT hash,size FROM managed_files ORDER BY hash"
+            };
+        let mut stmt = snapshot.prepare(local_files_query).map_err(storage)?;
         let blobs = stmt
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
             .map_err(storage)?
@@ -787,6 +795,36 @@ mod tests {
             "Neutral template"
         );
         assert_eq!(restored.markdown_presets().unwrap()[0].name, "Join link");
+    }
+    #[test]
+    fn backup_preserves_remote_only_file_records_without_requiring_local_blobs() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path().join("source")).unwrap();
+        let hash = "0".repeat(64);
+        ws.connection()
+            .unwrap()
+            .execute(
+                "INSERT INTO managed_files(hash,size,local_available) VALUES(?1,42,0)",
+                [&hash],
+            )
+            .unwrap();
+        let backup = dir.path().join("remote-only.apexbackup");
+        ws.backup(&backup).unwrap();
+        assert_eq!(ws.preview_package(&backup).unwrap().bytes, 0);
+
+        let restored = Workspace::open(dir.path().join("restored")).unwrap();
+        restored.restore_backup(&backup).unwrap();
+        let available: bool = restored
+            .connection()
+            .unwrap()
+            .query_row(
+                "SELECT local_available FROM managed_files WHERE hash=?1",
+                [&hash],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!available);
+        assert!(!restored.root.join("files").join(hash).exists());
     }
     #[test]
     fn corrupt_files_are_rejected_before_records_are_imported() {
