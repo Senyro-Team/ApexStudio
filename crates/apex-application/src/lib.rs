@@ -3,8 +3,9 @@
 //! validation or storage rules.
 
 use apex_core::{
-    Asset, AssetBoard, AssetFolder, AssetVersion, Error, ImportReport, Note, Project, ProjectInput,
-    PublishingDraft, PublishingInput, PublishingPreview, WorkspaceInfo, WorkspaceRepository,
+    Asset, AssetBoard, AssetFolder, AssetFolderOption, AssetVersion, Error, ImportReport, Note,
+    Project, ProjectInput, PublishingDraft, PublishingInput, PublishingPreview, WorkspaceInfo,
+    WorkspaceRepository,
 };
 use apex_storage::Workspace;
 use std::path::{Path, PathBuf};
@@ -346,6 +347,10 @@ impl ApplicationServices {
 
     pub fn asset_board(&self, project_id: &str) -> Result<AssetBoard, Error> {
         self.workspace.board(project_id)
+    }
+
+    pub fn folder_filter_options(&self, project_id: &str) -> Result<Vec<AssetFolderOption>, Error> {
+        self.workspace.folder_filter_options(project_id)
     }
 
     pub fn save_folder(

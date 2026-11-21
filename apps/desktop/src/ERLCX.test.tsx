@@ -48,6 +48,7 @@ vi.mock("./bridge", () => ({
   robloxLiveries: vi.fn().mockResolvedValue([
     {
       id: "l1",
+      parentId: null,
       name: "Livery One",
       projectId: "p",
       projectName: "Project One",
@@ -57,6 +58,7 @@ vi.mock("./bridge", () => ({
     },
     {
       id: "l2",
+      parentId: null,
       name: "Livery Two",
       projectId: "q",
       projectName: "Project Two",
@@ -65,6 +67,7 @@ vi.mock("./bridge", () => ({
       uploaded: 0,
     },
   ]),
+  listProjectFolderOptions: vi.fn().mockResolvedValue([]),
   robloxLivery: vi.fn(),
   savePost: vi.fn(),
   exportPost: vi.fn(),

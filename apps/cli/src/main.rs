@@ -11796,6 +11796,7 @@ mod tests {
         state.roblox_liveries = vec![
             RobloxLiverySummary {
                 id: "livery-1".into(),
+                parent_id: None,
                 project_id: "project-1".into(),
                 project_name: "EMS Fleet".into(),
                 name: "Highway Patrol".into(),
@@ -11805,6 +11806,7 @@ mod tests {
             },
             RobloxLiverySummary {
                 id: "livery-2".into(),
+                parent_id: None,
                 project_id: "project-2".into(),
                 project_name: "Fire Rescue".into(),
                 name: "Engine Company".into(),
@@ -11835,6 +11837,7 @@ mod tests {
         state.roblox_liveries = vec![
             RobloxLiverySummary {
                 id: "livery-1".into(),
+                parent_id: None,
                 project_id: "project-1".into(),
                 project_name: "EMS Fleet".into(),
                 name: "Highway Patrol".into(),
@@ -11844,6 +11847,7 @@ mod tests {
             },
             RobloxLiverySummary {
                 id: "livery-2".into(),
+                parent_id: None,
                 project_id: "project-2".into(),
                 project_name: "Fire Rescue".into(),
                 name: "Engine Company".into(),
@@ -12701,6 +12705,7 @@ mod tests {
                 state.roblox_account_id = Some("123456789".into());
                 state.roblox_liveries = vec![RobloxLiverySummary {
                     id: "livery-1".into(),
+                    parent_id: None,
                     project_id: project.id.clone(),
                     project_name: project.fields.name.clone(),
                     name: "Dummy livery".into(),

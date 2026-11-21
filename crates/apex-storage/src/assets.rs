@@ -1,5 +1,7 @@
 use super::{storage, Workspace};
-use apex_core::{AssetBoard, AssetFolder, AssetVersion, Error, ImportReport, Placement};
+use apex_core::{
+    AssetBoard, AssetFolder, AssetFolderOption, AssetVersion, Error, ImportReport, Placement,
+};
 use image::GenericImageView;
 use rusqlite::{params, OptionalExtension};
 use std::{
@@ -35,6 +37,25 @@ fn validate_livery_colors(primary: &str, secondary: Option<&str>) -> Result<(), 
     Ok(())
 }
 impl Workspace {
+    pub fn folder_filter_options(&self, project: &str) -> Result<Vec<AssetFolderOption>, Error> {
+        let db = self.connection()?;
+        let mut statement = db
+            .prepare("SELECT id,parent_id,name FROM asset_folders WHERE project_id=?1 AND kind='folder' AND trash_id IS NULL ORDER BY name COLLATE NOCASE,id")
+            .map_err(storage)?;
+        let options = statement
+            .query_map([project], |row| {
+                Ok(AssetFolderOption {
+                    id: row.get(0)?,
+                    parent_id: row.get(1)?,
+                    name: row.get(2)?,
+                })
+            })
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)?;
+        Ok(options)
+    }
+
     pub fn editable_project(&self, id: &str) -> Result<(), Error> {
         let archived = self
             .connection()?
@@ -783,6 +804,61 @@ mod tests {
         image::RgbImage::from_pixel(2, 2, image::Rgb([color, 0, 0]))
             .save(path)
             .unwrap();
+    }
+    #[test]
+    fn folder_filter_options_are_project_scoped_and_exclude_livery_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::open(dir.path().join("ws")).unwrap();
+        let project = ws
+            .save_project(
+                None,
+                ProjectInput {
+                    name: "Project".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let other = ws
+            .save_project(
+                None,
+                ProjectInput {
+                    name: "Other".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let root = ws.save_folder(&project.id, None, None, "Liveries").unwrap();
+        let child = ws
+            .save_folder(&project.id, None, Some(&root.id), "EMS")
+            .unwrap();
+        ws.save_folder(&other.id, None, None, "Other folder")
+            .unwrap();
+        let catalogue = apex_core::vehicle_catalogue().unwrap();
+        let path = dir.path().join("Left1.png");
+        png(&path, 1);
+        ws.import_livery(
+            &project.id,
+            Some(&child.id),
+            None,
+            "Rescue 1",
+            &catalogue.vehicles[0].id,
+            &[(path, "Left1.png".into(), Some("Left 1".into()))],
+            None,
+        )
+        .unwrap();
+
+        let options = ws.folder_filter_options(&project.id).unwrap();
+        assert_eq!(options.len(), 2);
+        assert!(options
+            .iter()
+            .any(|option| option.id == root.id && option.parent_id.is_none()));
+        assert!(options
+            .iter()
+            .any(|option| option.id == child.id && option.parent_id.as_deref() == Some(&root.id)));
+        assert!(ws
+            .folder_filter_options("missing-project")
+            .unwrap()
+            .is_empty());
     }
     #[test]
     fn folders_liveries_versions_and_packages_survive_roundtrip() {

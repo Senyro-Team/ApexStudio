@@ -5,6 +5,7 @@ import Publishing from "./Publishing";
 import {
   robloxLivery,
   robloxLiveries,
+  listProjectFolderOptions,
   postDraft,
   publishingDraft,
   assetBoard,
@@ -27,6 +28,7 @@ import {
 vi.mock("./bridge", () => ({
   robloxLivery: vi.fn(),
   robloxLiveries: vi.fn(),
+  listProjectFolderOptions: vi.fn(),
   postDraft: vi.fn(),
   browserStatus: vi.fn().mockResolvedValue(null),
   postSources: vi.fn().mockResolvedValue([]),
@@ -102,6 +104,7 @@ beforeEach(() => {
     data: structuredClone(empty),
   });
   vi.mocked(robloxLiveries).mockResolvedValue([]);
+  vi.mocked(listProjectFolderOptions).mockResolvedValue([]);
   vi.mocked(assetBoard).mockResolvedValue({
     assets: [],
     folders: [],
@@ -404,6 +407,7 @@ it("prefills global ERLCX livery selection from project colours and keeps overri
   vi.mocked(robloxLiveries).mockResolvedValue([
     {
       id: "f",
+      parentId: null,
       projectId: "p",
       projectName: "Studio",
       name: "Patrol livery",

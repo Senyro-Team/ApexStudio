@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppSelect from "./AppSelect";
+import useProjectFolderFilter from "./useProjectFolderFilter";
 import { liveryCodesMarkdown } from "./liveryCodesMarkdown";
 import { listen } from "@tauri-apps/api/event";
 import { CheckCheck, CloudUpload, FileCode2, Gamepad2, Layers3, ListTodo, RefreshCw, Search, Settings2, Trash2 } from "lucide-react";
@@ -71,6 +72,7 @@ export default function Roblox({
   const dialog = useRef<HTMLDialogElement>(null),
     codesDialog = useRef<HTMLDialogElement>(null),
     requestId = useRef<string | null>(null);
+  const folderFilter = useProjectFolderFilter(project);
   const load = useCallback(async () => {
     const [rows, settings] = await Promise.all([
       robloxLiveries(),
@@ -121,6 +123,7 @@ export default function Roblox({
   }, [completed, load]);
   useEffect(() => {
     setProject(focus.projectId ?? "");
+    folderFilter.setFolderId("");
     setSelected(new Set(focus.folderIds ?? []));
   }, [focus]);
   useEffect(() => {
@@ -129,7 +132,7 @@ export default function Roblox({
   useEffect(() => {
     if (codesPreview && !codesDialog.current?.open) codesDialog.current?.showModal();
   }, [codesPreview]);
-  useEffect(() => setPage(0), [project, search]);
+  useEffect(() => setPage(0), [project, folderFilter.folderId, search]);
   const projects = useMemo(
     () => [
       ...new Map(liveries.map((l) => [l.projectId, l.projectName])).entries(),
@@ -141,11 +144,12 @@ export default function Roblox({
       liveries.filter(
         (l) =>
           (!project || l.projectId === project) &&
+          (!folderFilter.matchingFolderIds || (l.parentId !== null && folderFilter.matchingFolderIds.has(l.parentId))) &&
           `${l.name} ${l.projectName}`
             .toLowerCase()
             .includes(search.trim().toLowerCase()),
       ),
-    [liveries, project, search],
+    [liveries, project, folderFilter.matchingFolderIds, search],
   );
   const jobsById = useMemo(
     () => new Map(snapshot.queue.jobs.map((j) => [j.id, j])),
@@ -366,13 +370,30 @@ export default function Roblox({
             <AppSelect
               aria-label="Roblox project"
               value={project}
-              onChange={(e) => setProject(e.target.value)}
+              onChange={(e) => {
+                setProject(e.target.value);
+                folderFilter.setFolderId("");
+              }}
             >
               <option value="">All projects</option>
               {projects.map(([id, name]) => (
                 <option key={id} value={id}>
                   {name}
                 </option>
+              ))}
+            </AppSelect>
+          </label>
+          <label>
+            Folder
+            <AppSelect
+              aria-label="Roblox folder"
+              value={folderFilter.folderId}
+              disabled={!project || folderFilter.loading || !folderFilter.options.length}
+              onChange={(e) => folderFilter.setFolderId(e.target.value)}
+            >
+              <option value="">All folders</option>
+              {folderFilter.options.map((folder) => (
+                <option key={folder.id} value={folder.id}>{folder.label}</option>
               ))}
             </AppSelect>
           </label>
@@ -387,6 +408,11 @@ export default function Roblox({
               /></span>
           </label>
         </div>
+        {folderFilter.error && (
+          <p className="error folder-filter-error" role="alert">
+            Could not load project folders. <button className="secondary" type="button" onClick={folderFilter.retry}>Retry</button>
+          </p>
+        )}
         <div className="roblox-selection">
           <label>
             <input

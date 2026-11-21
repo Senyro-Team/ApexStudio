@@ -1,5 +1,5 @@
 use super::{projects::work, CommandError};
-use apex_core::{AssetBoard, AssetFolder, AssetVersion, Error};
+use apex_core::{AssetBoard, AssetFolder, AssetFolderOption, AssetVersion, Error};
 use apex_storage::Workspace;
 use std::{collections::HashMap, path::PathBuf, sync::Mutex};
 use tauri::Manager;
@@ -452,6 +452,14 @@ pub async fn asset_board(
 ) -> Result<AssetBoard, CommandError> {
     let ws = workspace.inner().clone();
     work(move || ws.board(&project_id)).await
+}
+#[tauri::command]
+pub async fn folder_filter_options(
+    project_id: String,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<Vec<AssetFolderOption>, CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || ws.folder_filter_options(&project_id)).await
 }
 #[tauri::command]
 pub async fn save_folder(

@@ -55,6 +55,7 @@ pub struct QueueSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct RobloxLiverySummary {
     pub id: String,
+    pub parent_id: Option<String>,
     pub project_id: String,
     pub project_name: String,
     pub name: String,
@@ -106,17 +107,18 @@ impl Workspace {
     }
     pub fn roblox_liveries(&self, account: &str) -> Result<Vec<RobloxLiverySummary>, Error> {
         let db = self.connection()?;
-        let mut q=db.prepare("SELECT f.id,f.project_id,json_extract(pr.metadata,'$.name'),f.name,f.vehicle_id,count(p.asset_id),sum(CASE WHEN (u.asset_id IS NOT NULL AND u.moderation!='rejected') OR s.decal_asset_id IS NOT NULL THEN 1 ELSE 0 END) FROM asset_folders f JOIN projects pr ON pr.id=f.project_id LEFT JOIN asset_placements p ON p.folder_id=f.id AND p.slot IS NOT NULL LEFT JOIN assets a ON a.id=p.asset_id LEFT JOIN roblox_uploads u ON u.account_id=?1 AND u.hash=a.hash LEFT JOIN shared_decal_codes s ON s.project_id=f.project_id AND s.hash=a.hash AND s.team_id=(SELECT team_id FROM project_sync WHERE project_id=f.project_id AND enabled=1) WHERE f.kind='livery' AND f.trash_id IS NULL AND a.trash_id IS NULL AND pr.archived=0 GROUP BY f.id ORDER BY pr.updated_at DESC,f.name COLLATE NOCASE").map_err(storage)?;
+        let mut q=db.prepare("SELECT f.id,f.parent_id,f.project_id,json_extract(pr.metadata,'$.name'),f.name,f.vehicle_id,count(p.asset_id),sum(CASE WHEN (u.asset_id IS NOT NULL AND u.moderation!='rejected') OR s.decal_asset_id IS NOT NULL THEN 1 ELSE 0 END) FROM asset_folders f JOIN projects pr ON pr.id=f.project_id LEFT JOIN asset_placements p ON p.folder_id=f.id AND p.slot IS NOT NULL LEFT JOIN assets a ON a.id=p.asset_id LEFT JOIN roblox_uploads u ON u.account_id=?1 AND u.hash=a.hash LEFT JOIN shared_decal_codes s ON s.project_id=f.project_id AND s.hash=a.hash AND s.team_id=(SELECT team_id FROM project_sync WHERE project_id=f.project_id AND enabled=1) WHERE f.kind='livery' AND f.trash_id IS NULL AND a.trash_id IS NULL AND pr.archived=0 GROUP BY f.id ORDER BY pr.updated_at DESC,f.name COLLATE NOCASE").map_err(storage)?;
         let result = q
             .query_map([account], |r| {
                 Ok(RobloxLiverySummary {
                     id: r.get(0)?,
-                    project_id: r.get(1)?,
-                    project_name: r.get(2)?,
-                    name: r.get(3)?,
-                    vehicle_id: r.get(4)?,
-                    textures: r.get(5)?,
-                    uploaded: r.get::<_, Option<u32>>(6)?.unwrap_or(0),
+                    parent_id: r.get(1)?,
+                    project_id: r.get(2)?,
+                    project_name: r.get(3)?,
+                    name: r.get(4)?,
+                    vehicle_id: r.get(5)?,
+                    textures: r.get(6)?,
+                    uploaded: r.get::<_, Option<u32>>(7)?.unwrap_or(0),
                 })
             })
             .map_err(storage)?
@@ -522,10 +524,11 @@ mod tests {
         let v = apex_core::vehicle_catalogue().unwrap().vehicles.remove(0);
         let path = dir.path().join("Left1.png");
         image::RgbImage::new(3, 2).save(&path).unwrap();
+        let parent = ws.save_folder(&p.id, None, None, "Liveries").unwrap();
         let f = ws
             .import_livery(
                 &p.id,
-                None,
+                Some(&parent.id),
                 None,
                 "Patrol",
                 &v.id,
@@ -558,6 +561,15 @@ mod tests {
         assert!(ws.lease_upload_tasks(false, 10).unwrap().is_empty());
         ws.create_upload_batch("other", "456", &[f], false).unwrap();
         assert_eq!(ws.upload_snapshot().unwrap().jobs.len(), 2);
+    }
+    #[test]
+    fn global_livery_summaries_include_their_parent_folder_id() {
+        let (_d, ws, livery_id, _) = fixture();
+        let expected_parent = ws.folder(&livery_id).unwrap().parent_id;
+        assert!(expected_parent.is_some());
+        let summaries = ws.roblox_liveries("123").unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].parent_id, expected_parent);
     }
     #[test]
     fn second_pass_only_is_selected_and_retry_preserves_first() {

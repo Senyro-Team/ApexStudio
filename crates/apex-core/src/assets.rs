@@ -19,6 +19,13 @@ pub struct AssetFolder {
     #[serde(default)]
     pub preview: Option<String>,
 }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssetFolderOption {
+    pub id: String,
+    pub parent_id: Option<String>,
+    pub name: String,
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Placement {

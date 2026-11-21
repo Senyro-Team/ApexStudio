@@ -429,6 +429,7 @@ pub fn run() {
             assets::restore_trash,
             assets::purge_trash,
             assets::asset_board,
+            assets::folder_filter_options,
             assets::assign_asset_slot,
             assets::copy_asset_item,
             assets::save_folder,

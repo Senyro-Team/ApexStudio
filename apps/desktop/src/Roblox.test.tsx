@@ -5,6 +5,7 @@ import Roblox from "./Roblox";
 import {
   robloxLivery,
   robloxLiveries,
+  listProjectFolderOptions,
   robloxSettings,
   uploadSnapshot,
   previewUploadBatch,
@@ -18,6 +19,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 vi.mock("./bridge", () => ({
   robloxLiveries: vi.fn(),
+  listProjectFolderOptions: vi.fn(),
   robloxSettings: vi.fn(),
   robloxLivery: vi.fn(),
   uploadSnapshot: vi.fn(),
@@ -42,6 +44,7 @@ beforeEach(() => {
   vi.mocked(robloxLiveries).mockResolvedValue([
     {
       id: "a",
+      parentId: null,
       name: "EMS",
       projectId: "p",
       projectName: "FDNY",
@@ -51,6 +54,7 @@ beforeEach(() => {
     },
     {
       id: "b",
+      parentId: null,
       name: "Patrol",
       projectId: "q",
       projectName: "Police",
@@ -59,6 +63,7 @@ beforeEach(() => {
       uploaded: 0,
     },
   ]);
+  vi.mocked(listProjectFolderOptions).mockResolvedValue([]);
   vi.mocked(robloxSettings).mockResolvedValue({
     configured: true,
     accountId: "123",
@@ -118,6 +123,55 @@ it("selects only filtered liveries and supports explicit re-upload", async () =>
   await screen.findByRole("dialog");
   expect(previewUploadBatch).toHaveBeenCalledWith(["b"], true);
   expect(startUploadBatch).not.toHaveBeenCalled();
+});
+it("filters by a nested project folder while preserving selections from other folders", async () => {
+  const user = userEvent.setup();
+  vi.mocked(robloxLiveries).mockResolvedValue([
+    { id: "direct", parentId: "ems", name: "EMS Rescue", projectId: "p", projectName: "FDNY", vehicleId: "v", textures: 1, uploaded: 0 },
+    { id: "nested", parentId: "special", name: "EMS Special", projectId: "p", projectName: "FDNY", vehicleId: "v", textures: 1, uploaded: 0 },
+    { id: "sibling", parentId: "patrol", name: "Patrol", projectId: "p", projectName: "FDNY", vehicleId: "v", textures: 1, uploaded: 0 },
+    { id: "other-project", parentId: null, name: "Fire", projectId: "q", projectName: "Police", vehicleId: "v", textures: 1, uploaded: 0 },
+  ]);
+  vi.mocked(listProjectFolderOptions).mockResolvedValue([
+    { id: "root", parentId: null, name: "Liveries" },
+    { id: "ems", parentId: "root", name: "EMS" },
+    { id: "special", parentId: "ems", name: "Special" },
+    { id: "patrol", parentId: "root", name: "Patrol" },
+  ]);
+  render(<Roblox focus={{}} onSettings={() => {}} />);
+  await screen.findByText("EMS Rescue");
+  await user.click(screen.getByRole("checkbox", { name: /Patrol FDNY/ }));
+  await user.selectOptions(screen.getByLabelText("Roblox project"), "p");
+  await user.selectOptions(screen.getByLabelText("Roblox folder"), "ems");
+  expect(screen.getByText("EMS Rescue")).toBeTruthy();
+  expect(screen.getByText("EMS Special")).toBeTruthy();
+  expect(screen.queryByText("Patrol")).toBeNull();
+  expect(screen.queryByText("Fire")).toBeNull();
+  await user.click(screen.getByRole("checkbox", { name: "Select all filtered liveries" }));
+  expect(screen.getByText("3 selected")).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Re-upload selected" }));
+  await screen.findByRole("dialog");
+  expect(previewUploadBatch).toHaveBeenCalledWith(["sibling", "direct", "nested"], true);
+});
+it("resets the folder filter on project change but retains selected liveries", async () => {
+  const user = userEvent.setup();
+  vi.mocked(robloxLiveries).mockResolvedValue([
+    { id: "p-livery", parentId: "p-folder", name: "EMS", projectId: "p", projectName: "FDNY", vehicleId: "v", textures: 1, uploaded: 0 },
+    { id: "q-livery", parentId: null, name: "Fire", projectId: "q", projectName: "Police", vehicleId: "v", textures: 1, uploaded: 0 },
+  ]);
+  vi.mocked(listProjectFolderOptions).mockImplementation(async (projectId) =>
+    projectId === "p" ? [{ id: "p-folder", parentId: null, name: "Liveries" }] : [],
+  );
+  render(<Roblox focus={{}} onSettings={() => {}} />);
+  await user.selectOptions(await screen.findByLabelText("Roblox project"), "p");
+  await screen.findByRole("option", { name: "Liveries" });
+  await user.selectOptions(screen.getByLabelText("Roblox folder"), "p-folder");
+  await user.click(screen.getByRole("checkbox", { name: /EMS/ }));
+  expect(screen.getByText("1 selected")).toBeTruthy();
+  await user.selectOptions(screen.getByLabelText("Roblox project"), "q");
+  expect(await screen.findByText("Fire")).toBeTruthy();
+  expect(screen.getByLabelText("Roblox folder")).toHaveProperty("value", "");
+  expect(screen.getByText("1 selected")).toBeTruthy();
 });
 it("resumes paused native queues without changing their account", async () => {
   const user = userEvent.setup();

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import AppSelect from "./AppSelect";
+import useProjectFolderFilter from "./useProjectFolderFilter";
 import {
   robloxLiveries,
   robloxLivery,
@@ -30,6 +31,7 @@ export default function PostLiveryPicker({
     [error, setError] = useState(""),
     [loadFailed, setLoadFailed] = useState(false),
     [loadAttempt, setLoadAttempt] = useState(0);
+  const folderFilter = useProjectFolderFilter(project);
   useEffect(() => {
     let active = true;
     setError("");
@@ -59,11 +61,13 @@ export default function PostLiveryPicker({
       rows.filter(
         (r) =>
           (!project || r.projectId === project) &&
+          (!folderFilter.matchingFolderIds ||
+            (r.parentId !== null && folderFilter.matchingFolderIds.has(r.parentId))) &&
           `${r.name} ${vehicleName(r.vehicleId)} ${r.projectName}`
             .toLowerCase()
             .includes(search.toLowerCase()),
       ),
-    [rows, project, search, vehicleNames],
+    [rows, project, folderFilter.matchingFolderIds, search, vehicleNames],
   );
   const selected = new Set(
     value.flatMap((l) => (l.source ? [l.source.folderId] : [])),
@@ -117,6 +121,7 @@ export default function PostLiveryPicker({
             disabled={disabled || busy}
             onChange={(e) => {
               setProject(e.target.value);
+              folderFilter.setFolderId("");
               setPage(0);
             }}
           >
@@ -133,6 +138,23 @@ export default function PostLiveryPicker({
           </AppSelect>
         </label>
         <label>
+          Folder
+          <AppSelect
+            aria-label="ERLCX folder"
+            value={folderFilter.folderId}
+            disabled={disabled || busy || !project || folderFilter.loading || !folderFilter.options.length}
+            onChange={(e) => {
+              folderFilter.setFolderId(e.target.value);
+              setPage(0);
+            }}
+          >
+            <option value="">All folders</option>
+            {folderFilter.options.map((folder) => (
+              <option key={folder.id} value={folder.id}>{folder.label}</option>
+            ))}
+          </AppSelect>
+        </label>
+        <label>
           Search
           <input
             value={search}
@@ -144,6 +166,11 @@ export default function PostLiveryPicker({
           />
         </label>
       </div>
+      {folderFilter.error && (
+        <div role="alert" className="error folder-filter-error">
+          Could not load project folders. <button className="secondary" type="button" onClick={folderFilter.retry}>Retry</button>
+        </div>
+      )}
       <div className="button-row">
         <button
           className="secondary"

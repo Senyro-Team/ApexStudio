@@ -449,6 +449,11 @@ export interface AssetFolder {
   secondaryColor: string | null;
   preview: string | null;
 }
+export interface AssetFolderOption {
+  id: string;
+  parentId: string | null;
+  name: string;
+}
 export interface Placement {
   assetId: string;
   folderId: string | null;
@@ -472,6 +477,8 @@ export interface LiveryDraft {
 }
 export const assetBoard = (projectId: string) =>
   invoke<AssetBoard>("asset_board", { projectId });
+export const listProjectFolderOptions = (projectId: string) =>
+  invoke<AssetFolderOption[]>("folder_filter_options", { projectId });
 export const saveFolder = (
   projectId: string,
   id: string | null,
@@ -650,6 +657,7 @@ export interface RobloxFocus {
 }
 export interface RobloxLiverySummary {
   id: string;
+  parentId: string | null;
   projectId: string;
   projectName: string;
   name: string;
