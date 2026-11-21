@@ -410,6 +410,8 @@ export const exportProject = (
   embedded: boolean,
   includeNotes: boolean,
 ) => invoke<boolean>("export_project", { id, embedded, includeNotes });
+export const exportLiveryPreview = (folderId: string) =>
+  invoke<boolean>("export_livery_preview", { folderId });
 export const createBackup = () => invoke<boolean>("create_backup");
 export interface ArchivePreview {
   token: string;

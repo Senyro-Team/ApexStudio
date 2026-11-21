@@ -85,3 +85,5 @@ Asset-manager follow-up: see [changes and verification](docs/phases/PHASE-04-FIX
 Roblox workflow: [setup, uploads, publishing handoff and verification](docs/phases/PHASE-05-ROBLOX.md).
 
 Multiple-folder livery imports: [workflow and limits](docs/phases/LIVERY-FOLDER-IMPORT.md).
+
+Livery Lab handoff format: [`.apexpreview` file format and vehicle scope](docs/design/APEXPREVIEW-FORMAT.md).

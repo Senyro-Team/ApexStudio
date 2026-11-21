@@ -536,6 +536,56 @@ pub async fn set_livery_colors(
     let ws = workspace.inner().clone();
     work(move || ws.set_livery_colors(&folder_id, &primary_color, secondary_color.as_deref())).await
 }
+
+#[tauri::command]
+pub async fn export_livery_preview(
+    folder_id: String,
+    app: tauri::AppHandle,
+    workspace: tauri::State<'_, Workspace>,
+) -> Result<bool, CommandError> {
+    let ws = workspace.inner().clone();
+    work(move || {
+        let folder = ws.folder(&folder_id)?;
+        if folder.kind != "livery" {
+            return Err(Error::InvalidContent(
+                "Choose a livery folder to export.".into(),
+            ));
+        }
+        let base = folder
+            .name
+            .chars()
+            .map(|character| {
+                if character.is_control()
+                    || matches!(
+                        character,
+                        '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+                    )
+                {
+                    '_'
+                } else {
+                    character
+                }
+            })
+            .collect::<String>();
+        let Some(destination) = app
+            .dialog()
+            .file()
+            .add_filter("Apex Livery Lab preview", &["apexpreview"])
+            .set_file_name(format!("{base}.apexpreview"))
+            .set_title("Export livery for Apex Livery Lab")
+            .blocking_save_file()
+        else {
+            return Ok(false);
+        };
+        let destination = destination
+            .into_path()
+            .map_err(|error| Error::Storage(error.to_string()))?;
+        ws.export_livery_preview(&folder_id, &destination)?;
+        Ok(true)
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn prepare_livery(
     project_id: String,

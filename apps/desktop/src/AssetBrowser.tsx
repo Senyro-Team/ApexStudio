@@ -28,6 +28,7 @@ import {
   restoreAssetVersion,
   setFolderCover,
   setLiveryColors,
+  exportLiveryPreview,
   prepareLivery,
   commitLivery,
   cancelLivery,
@@ -624,6 +625,21 @@ export default function AssetBrowser({
               <MoreHorizontal size={20} />
             </summary>
             <div className="asset-folder-menu-items">
+              {folder.kind === "livery" && (
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={(e) => {
+                    e.currentTarget.closest("details")?.removeAttribute("open");
+                    void act(
+                      () => exportLiveryPreview(folder.id),
+                      "Livery preview exported.",
+                    );
+                  }}
+                >
+                  Export for Apex Livery Lab
+                </button>
+              )}
               <button
                 className="text-button"
                 disabled={project.archived || busy}

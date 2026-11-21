@@ -54,6 +54,54 @@ pub struct PackagePreview {
     pub bytes: u64,
     pub kind: String,
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApexPreviewManifest {
+    format: &'static str,
+    format_version: u32,
+    exporter: ApexPreviewExporter,
+    project: ApexPreviewIdentity,
+    livery: ApexPreviewIdentity,
+    vehicle: ApexPreviewVehicle,
+    colors: ApexPreviewColors,
+    images: Vec<ApexPreviewImage>,
+}
+
+#[derive(Serialize)]
+struct ApexPreviewExporter {
+    name: &'static str,
+}
+
+#[derive(Serialize)]
+struct ApexPreviewIdentity {
+    id: String,
+    name: String,
+}
+
+#[derive(Serialize)]
+struct ApexPreviewVehicle {
+    id: String,
+    name: String,
+    category: &'static str,
+}
+
+#[derive(Serialize)]
+struct ApexPreviewColors {
+    primary: String,
+    secondary: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApexPreviewImage {
+    id: String,
+    file: String,
+    file_name: String,
+    role: &'static str,
+    panel_id: Option<String>,
+    mime_type: &'static str,
+}
 fn validate_graph(m: &Manifest) -> Result<(), Error> {
     if m.folders.len() > 2000 || m.placements.len() > 10000 || m.versions.len() > 10000 {
         return Err(invalid("The asset structure is too large."));
@@ -375,6 +423,144 @@ impl Workspace {
     pub fn preview_package(&self, path: &Path) -> Result<PackagePreview, Error> {
         Ok(preview(&checked(path)?))
     }
+
+    pub fn export_livery_preview(&self, livery_id: &str, destination: &Path) -> Result<(), Error> {
+        let gate = self.content_gate();
+        let _content = gate.lock();
+        let livery = self.folder(livery_id)?;
+        if livery.kind != "livery" {
+            return Err(invalid("Choose a livery folder to export."));
+        }
+        let vehicle_id = livery
+            .vehicle_id
+            .as_deref()
+            .filter(|id| !id.trim().is_empty())
+            .ok_or_else(|| invalid("This livery has no vehicle assigned."))?;
+        let catalogue = apex_core::vehicle_catalogue()?;
+        let vehicle = catalogue
+            .vehicles
+            .iter()
+            .find(|vehicle| vehicle.id == vehicle_id)
+            .ok_or_else(|| {
+                invalid("The assigned vehicle is not in the supported vehicle catalogue.")
+            })?;
+        let job_team = matches!(
+            vehicle.team.as_str(),
+            "Law Enforcement Vehicles"
+                | "Fire Department Vehicles"
+                | "Department of Transportation Vehicles"
+        );
+        if !job_team || vehicle.livery_support != "supported" {
+            return Err(invalid(&format!(
+                "{} is not a supported Job Vehicle in Apex Livery Lab. Choose a supported Law, Fire, or DoT vehicle.",
+                vehicle.name
+            )));
+        }
+
+        let project = self.project(&livery.project_id)?;
+        let board = self.board(&livery.project_id)?;
+        let placements: HashMap<_, _> = board
+            .placements
+            .iter()
+            .map(|placement| (placement.asset_id.as_str(), placement))
+            .collect();
+        let livery_assets: Vec<_> = board
+            .assets
+            .iter()
+            .filter(|asset| {
+                placements
+                    .get(asset.id.as_str())
+                    .is_some_and(|placement| placement.folder_id.as_deref() == Some(livery_id))
+            })
+            .collect();
+        if livery_assets.is_empty() {
+            return Err(invalid("This livery does not contain any PNG images."));
+        }
+
+        let parent = destination
+            .parent()
+            .ok_or_else(|| invalid("Choose a destination folder."))?;
+        let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(storage)?;
+        let mut images = Vec::with_capacity(livery_assets.len());
+        {
+            let mut zip = ZipWriter::new(temporary.as_file_mut());
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            for (index, asset) in livery_assets.iter().enumerate() {
+                let source = self.root.join("files").join(&asset.hash);
+                if !source.is_file()
+                    || file_hash(&source).ok().as_deref() != Some(asset.hash.as_str())
+                {
+                    return Err(invalid(&format!(
+                        "{} is missing or failed its integrity check.",
+                        asset.name
+                    )));
+                }
+                let mut input = fs::File::open(&source).map_err(storage)?;
+                let mut signature = [0_u8; 8];
+                input.read_exact(&mut signature).map_err(|_| {
+                    invalid(&format!("{} is not a readable PNG image.", asset.name))
+                })?;
+                if signature != [137, 80, 78, 71, 13, 10, 26, 10] {
+                    return Err(invalid(&format!(
+                        "{} is not a PNG image and cannot be exported.",
+                        asset.name
+                    )));
+                }
+
+                let archive_path = format!("assets/image-{:03}.png", index + 1);
+                zip.start_file(&archive_path, options).map_err(storage)?;
+                zip.write_all(&signature).map_err(storage)?;
+                std::io::copy(&mut input, &mut zip).map_err(storage)?;
+                let slot = placements
+                    .get(asset.id.as_str())
+                    .and_then(|placement| placement.slot.as_deref());
+                images.push(ApexPreviewImage {
+                    id: asset.id.clone(),
+                    file: archive_path,
+                    file_name: asset.name.clone(),
+                    role: if slot.is_some() { "panel" } else { "reference" },
+                    panel_id: slot.map(preview_panel_id),
+                    mime_type: "image/png",
+                });
+            }
+            let manifest = ApexPreviewManifest {
+                format: "apexpreview",
+                format_version: 1,
+                exporter: ApexPreviewExporter {
+                    name: "Apex Studio",
+                },
+                project: ApexPreviewIdentity {
+                    id: project.id,
+                    name: project.fields.name,
+                },
+                livery: ApexPreviewIdentity {
+                    id: livery.id,
+                    name: livery.name,
+                },
+                vehicle: ApexPreviewVehicle {
+                    id: vehicle.id.clone(),
+                    name: vehicle.name.clone(),
+                    category: "JobVehicle",
+                },
+                colors: ApexPreviewColors {
+                    primary: livery.primary_color.to_ascii_uppercase(),
+                    secondary: livery
+                        .secondary_color
+                        .map(|color| color.to_ascii_uppercase()),
+                },
+                images,
+            };
+            zip.start_file("manifest.json", options).map_err(storage)?;
+            zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(storage)?)
+                .map_err(storage)?;
+            zip.finish().map_err(storage)?;
+        }
+        temporary.as_file().sync_all().map_err(storage)?;
+        temporary.persist_noclobber(destination).map_err(storage)?;
+        Ok(())
+    }
+
     fn write_archive(
         &self,
         manifest: &Manifest,
@@ -706,6 +892,16 @@ impl Workspace {
         let _ = self.info()?;
         Ok(safety)
     }
+}
+
+fn preview_panel_id(slot: &str) -> String {
+    let mut chars = slot
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric());
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    first.to_uppercase().chain(chars).collect()
 }
 
 #[cfg(test)]
