@@ -143,6 +143,162 @@ mod tests {
                 .received_from_team
         );
     }
+
+    #[test]
+    fn applying_snapshot_preserves_trashed_livery_slots_for_recovery() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = Workspace::open(temp.path().join("source")).unwrap();
+        let destination = Workspace::open(temp.path().join("destination")).unwrap();
+        let project = project(&source);
+        let parent = source
+            .save_folder(&project.id, None, None, "Liveries")
+            .unwrap();
+        let vehicle = apex_core::vehicle_catalogue().unwrap().vehicles.remove(0);
+        let livery_id = source
+            .import_livery(
+                &project.id,
+                Some(&parent.id),
+                None,
+                "Patrol",
+                &vehicle.id,
+                &[(
+                    {
+                        let path = temp.path().join("Left1-old.png");
+                        image::RgbImage::from_pixel(2, 2, image::Rgb([10, 20, 30]))
+                            .save(&path)
+                            .unwrap();
+                        path
+                    },
+                    "Left1.png".into(),
+                    Some("Left 1".into()),
+                )],
+                None,
+            )
+            .unwrap();
+        let old_asset = source
+            .board(&project.id)
+            .unwrap()
+            .assets
+            .into_iter()
+            .find(|asset| asset.name == "Left1.png")
+            .unwrap()
+            .id;
+        let trash_id = source.trash_item(&old_asset, false).unwrap();
+
+        let replacement = temp.path().join("Left1-new.png");
+        image::RgbImage::from_pixel(2, 2, image::Rgb([40, 50, 60]))
+            .save(&replacement)
+            .unwrap();
+        source
+            .import_livery(
+                &project.id,
+                Some(&parent.id),
+                Some(&livery_id),
+                "Patrol",
+                &vehicle.id,
+                &[(replacement, "Left1.png".into(), Some("Left 1".into()))],
+                None,
+            )
+            .unwrap();
+        let replacement_asset = source
+            .board(&project.id)
+            .unwrap()
+            .placements
+            .into_iter()
+            .find(|placement| placement.slot.as_deref() == Some("Left 1"))
+            .unwrap()
+            .asset_id;
+        let snapshot = source.project_snapshot(&project.id).unwrap();
+        for blob in &snapshot.blobs {
+            destination
+                .receive_sync_blob(&source.sync_blob_path(&blob.hash).unwrap(), &blob.hash)
+                .unwrap();
+        }
+
+        destination
+            .apply_project_snapshot(&snapshot, None, DEST, 1)
+            .unwrap();
+        let board = destination.board(&project.id).unwrap();
+        assert_eq!(board.assets.len(), 1);
+        assert_eq!(
+            board
+                .placements
+                .iter()
+                .find(|placement| placement.asset_id == replacement_asset)
+                .and_then(|placement| placement.slot.as_deref()),
+            Some("Left 1")
+        );
+        assert!(destination
+            .trash_items()
+            .unwrap()
+            .iter()
+            .any(|item| item.id == trash_id && item.files == 1));
+
+        destination.restore_trash(&trash_id).unwrap();
+        let restored = destination.board(&project.id).unwrap();
+        assert_eq!(restored.assets.len(), 2);
+        assert_eq!(
+            restored
+                .placements
+                .iter()
+                .find(|placement| placement.asset_id == replacement_asset)
+                .and_then(|placement| placement.slot.as_deref()),
+            Some("Left 1")
+        );
+        assert_eq!(
+            restored
+                .placements
+                .iter()
+                .find(|placement| placement.asset_id == old_asset)
+                .and_then(|placement| placement.slot.as_deref()),
+            None
+        );
+    }
+
+    #[test]
+    fn snapshot_with_duplicate_active_livery_slots_rolls_back_atomically() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = Workspace::open(temp.path().join("source")).unwrap();
+        let destination = Workspace::open(temp.path().join("destination")).unwrap();
+        let project = project(&source);
+        let parent = source
+            .save_folder(&project.id, None, None, "Liveries")
+            .unwrap();
+        let vehicle = apex_core::vehicle_catalogue().unwrap().vehicles.remove(0);
+        let png = temp.path().join("Left1.png");
+        image::RgbImage::new(2, 2).save(&png).unwrap();
+        source
+            .import_livery(
+                &project.id,
+                Some(&parent.id),
+                None,
+                "Patrol",
+                &vehicle.id,
+                &[(png, "Left1.png".into(), Some("Left 1".into()))],
+                None,
+            )
+            .unwrap();
+        let mut snapshot = source.project_snapshot(&project.id).unwrap();
+        let mut duplicate_asset = snapshot.tables[3][0].clone();
+        let duplicate_id = "duplicate-active-slot";
+        duplicate_asset[0] = Value::String(duplicate_id.into());
+        snapshot.tables[3].push(duplicate_asset);
+        let mut duplicate_placement = snapshot.tables[4][0].clone();
+        duplicate_placement[0] = Value::String(duplicate_id.into());
+        snapshot.tables[4].push(duplicate_placement);
+        assert!(snapshot.validate().is_ok());
+        for blob in &snapshot.blobs {
+            destination
+                .receive_sync_blob(&source.sync_blob_path(&blob.hash).unwrap(), &blob.hash)
+                .unwrap();
+        }
+
+        assert!(destination
+            .apply_project_snapshot(&snapshot, None, DEST, 1)
+            .is_err());
+        assert!(destination.projects().unwrap().is_empty());
+    }
+
     #[test]
     fn concurrent_edits_disabled_sync_and_cross_project_rows_never_overwrite_local_data() {
         let temp = tempfile::tempdir().unwrap();
@@ -854,13 +1010,19 @@ impl Workspace {
             .map_err(storage)?;
         }
         for ((table, columns, _), rows) in TABLES.iter().zip(&incoming.tables) {
+            let staged_placements = *table == "asset_placements";
+            let insert_columns = if staged_placements {
+                format!("{columns},active")
+            } else {
+                (*columns).to_owned()
+            };
             let count = columns.split(',').count();
-            let placeholders = vec!["?"; count].join(",");
+            let placeholders = vec!["?"; count + usize::from(staged_placements)].join(",");
             for row in rows {
                 if row.len() != count {
                     return Err(Error::InvalidContent("Invalid project sync record.".into()));
                 }
-                let values = row
+                let mut values = row
                     .iter()
                     .map(|v| match v {
                         Value::Null => Ok(SqlValue::Null),
@@ -871,13 +1033,27 @@ impl Workspace {
                         _ => Err(Error::InvalidContent("Invalid project sync value.".into())),
                     })
                     .collect::<Result<Vec<_>, _>>()?;
+                if staged_placements {
+                    // A placement's active state is derived from its asset's trash state.
+                    // Stage all placements inactive so a trashed texture and its replacement
+                    // can temporarily share a livery slot while the snapshot is applied.
+                    values.push(SqlValue::Integer(0));
+                }
                 tx.execute(
-                    &format!("INSERT INTO {table}({columns}) VALUES({placeholders})"),
+                    &format!("INSERT INTO {table}({insert_columns}) VALUES({placeholders})"),
                     rusqlite::params_from_iter(values),
                 )
                 .map_err(storage)?;
             }
         }
+        // `active` is intentionally not part of the sync snapshot: it mirrors
+        // assets.trash_id locally. Promote only live assets after every record
+        // has been inserted, preserving old files for trash recovery.
+        tx.execute(
+            "UPDATE asset_placements SET active=1 WHERE asset_id IN (SELECT id FROM assets WHERE project_id=?1 AND trash_id IS NULL)",
+            [&incoming.project_id],
+        )
+        .map_err(storage)?;
         // Reject cross-project rows and references, including references to undisclosed local files.
         if snapshot(&tx, &incoming.project_id)? != *incoming {
             return Err(Error::InvalidContent(
